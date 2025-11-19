@@ -51,6 +51,7 @@ export const geofences = pgTable("geofences", {
   type: text("type").notNull().default("polygon"), // polygon, circle
   coordinates: jsonb("coordinates").notNull(), // array of [lat, lng] or {center: [lat, lng], radius: number}
   color: text("color").default("#10b981"),
+  active: boolean("active").default(true).notNull(),
   alertOnEntry: boolean("alert_on_entry").default(true),
   alertOnExit: boolean("alert_on_exit").default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
+import { checkGeofences, checkSpeedViolation, setEventBroadcaster } from "./geofence-monitor";
 import {
   insertVehicleSchema,
   insertLocationSchema,
@@ -119,6 +120,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const speed = parseFloat(validatedData.speed || "0");
       const status = speed > 5 ? "active" : speed === 0 ? "stopped" : "active";
       await storage.updateVehicle(validatedData.vehicleId, { status });
+      
+      // Check geofences and speed violations (non-blocking)
+      checkGeofences(location).catch(err => console.error("Geofence check error:", err));
+      checkSpeedViolation(location).catch(err => console.error("Speed check error:", err));
       
       // Broadcast to WebSocket clients
       broadcastLocation(location);
@@ -305,6 +310,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
+  function broadcastEvent(event: any) {
+    const message = JSON.stringify({ type: "event", data: event });
+    clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+
+  // Set up event broadcasting for geofence monitor
+  setEventBroadcaster(broadcastEvent);
+
   // Simulate location updates for demo vehicle
   setInterval(async () => {
     const vehicles = await storage.getVehicles();
@@ -337,6 +354,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const status = newSpeed > 5 ? "active" : newSpeed < 1 ? "stopped" : "active";
         await storage.updateVehicle(demoVehicle.id, { status });
+        
+        // Check geofences and speed violations for simulated updates
+        checkGeofences(newLocation).catch(err => console.error("Geofence check error:", err));
+        checkSpeedViolation(newLocation).catch(err => console.error("Speed check error:", err));
         
         broadcastLocation(newLocation);
       }
