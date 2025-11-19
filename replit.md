@@ -1,162 +1,292 @@
-# GPS Tracking Application
+# GPS Tracking Application - React Native Mobile Apps
 
 ## Overview
 
-This is a real-time GPS tracking and fleet management application built with a React frontend and Express backend. The application provides comprehensive vehicle tracking capabilities including live location monitoring, historical route playback, geofencing, points of interest management, and reporting features. The system is designed with a map-centric interface following Material Design 3 principles for utility-focused enterprise tools.
+This is a React Native GPS tracking and fleet management application for Android and iOS mobile platforms. The application provides comprehensive vehicle tracking capabilities including live location monitoring, historical route playback, geofencing, points of interest management, and reporting features.
 
-## User Preferences
+**⚠️ Important Note:** This project has been converted from a React web application to React Native. The React Native app cannot be compiled or run directly in Replit. You must move the project to a local development environment or use Expo's cloud services. See `REACT_NATIVE_SETUP.md` for detailed setup instructions.
 
-Preferred communication style: Simple, everyday language.
+## Architecture
 
-## System Architecture
+### Mobile Frontend (React Native + Expo)
+- **Framework:** React Native with Expo SDK
+- **UI Library:** React Native Paper (Material Design)
+- **Navigation:** React Navigation (Bottom Tabs + Stack Navigator)
+- **State Management:** TanStack Query (React Query v5)
+- **Maps:** React Native Maps
+- **Real-time Updates:** WebSocket connection to backend
 
-### Frontend Architecture
+### Backend API (Express.js)
+- **Server:** Express.js with TypeScript
+- **Database:** PostgreSQL (Neon serverless)
+- **ORM:** Drizzle ORM
+- **Real-time:** WebSocket server for live location updates
+- **APIs:** RESTful endpoints for all data operations
 
-**Technology Stack:**
-- React 18 with TypeScript for type-safe component development
-- Vite as the build tool and development server
-- Wouter for lightweight client-side routing
-- TanStack Query (React Query) for server state management with caching and automatic refetching
+### Shared Types
+- **Location:** `shared/schema.ts` - Shared TypeScript types between mobile and backend
+- **Validation:** Zod schemas for runtime type validation
 
-**UI Framework:**
-- Shadcn/ui component library built on Radix UI primitives
-- Tailwind CSS for utility-first styling with custom design tokens
-- Inter font family for consistent typography
-- Material Design 3 dashboard variant as the design foundation
+## Project Structure
 
-**State Management:**
-- React Query handles all server state with configurable refetch intervals (10s for real-time tracking)
-- Local component state for UI interactions
-- Theme context for light/dark mode management
+```
+/
+├── App.tsx                   # Main React Native app entry point
+├── app.json                  # Expo configuration (permissions, bundle IDs)
+├── package-mobile.json       # React Native dependencies
+├── REACT_NATIVE_SETUP.md     # Complete setup guide
+│
+├── src/                      # Mobile app source code
+│   ├── screens/             # Screen components
+│   │   ├── DashboardScreen.tsx    # Fleet overview with live map
+│   │   ├── TrackingScreen.tsx     # Real-time vehicle tracking
+│   │   ├── HistoryScreen.tsx      # Route playback
+│   │   └── MoreScreen.tsx         # Settings and additional features
+│   ├── services/            # Business logic
+│   │   └── api.ts          # Backend API client
+│   └── components/          # Reusable UI components (to be added)
+│
+├── server/                  # Express backend (unchanged from web app)
+│   ├── index.ts            # Server entry point
+│   ├── routes.ts           # API endpoints
+│   ├── storage.ts          # Database operations
+│   ├── geofence-monitor.ts # Geofence detection logic
+│   └── db.ts               # Database connection
+│
+├── shared/                  # Shared between mobile and backend
+│   └── schema.ts           # Database schema and types
+│
+└── migrations/             # Database migrations
+```
 
-**Map Integration:**
-- Leaflet.js for interactive map rendering
-- OpenStreetMap tiles as the base layer
-- Custom markers, polylines, and geofence overlays
-- Real-time vehicle position updates via WebSocket connections
+## Mobile App Features
 
-**Page Structure:**
-- Dashboard: Overview with fleet statistics and live vehicle map
-- Real-time Tracking: Live vehicle monitoring with vehicle list sidebar
-- History: Historical route playback with timeline controls
-- Geofences: Virtual boundary creation and management
-- Routes: Predefined route planning and visualization
-- POIs: Points of interest management (parking, fuel stations, warehouses)
-- Reports: Trip analytics with charts and data tables
-- Vehicles: Fleet management and vehicle configuration
+### Implemented
+- ✅ Bottom tab navigation (Dashboard, Tracking, History, More)
+- ✅ Dashboard with fleet statistics and live map
+- ✅ Real-time location tracking (10-second updates)
+- ✅ Vehicle list with search functionality
+- ✅ Historical route playback with date picker
+- ✅ Map integration with vehicle markers
+- ✅ API client service for backend communication
 
-### Backend Architecture
+### Planned (See task list)
+- 🚧 Geofence management UI
+- 🚧 POI management
+- 🚧 Trip reports and analytics
+- 🚧 Push notifications for events
+- 🚧 Offline support with AsyncStorage
+- 🚧 Background location tracking
+- 🚧 Vehicle management screens
 
-**Technology Stack:**
-- Express.js server with TypeScript
-- HTTP REST API for CRUD operations
-- WebSocket server (ws library) for real-time location streaming
-- Drizzle ORM for database interactions
+## Backend Features (Fully Implemented)
 
-**API Design:**
-- RESTful endpoints following resource-based patterns
-- Zod schema validation for request/response data
-- Consistent error handling with appropriate HTTP status codes
-- Request logging middleware with response capture
+- ✅ PostgreSQL database with Drizzle ORM
+- ✅ RESTful API for all resources (vehicles, locations, geofences, POIs, routes, events, trips)
+- ✅ WebSocket server for real-time location updates
+- ✅ Geofence detection (point-in-circle and point-in-polygon algorithms)
+- ✅ Automatic event generation (geofence entry/exit, speed violations)
+- ✅ Event broadcasting via WebSocket
+- ✅ Demo data seeding
 
-**Data Models:**
-- Vehicles: Fleet inventory with device IDs and status tracking
-- Locations: GPS coordinates with timestamps, speed, heading, altitude
-- Geofences: Polygon/circle boundaries with entry/exit alerts
-- Routes: Predefined paths with coordinate arrays
-- POIs: Categorized landmarks with descriptions
-- Events: System events and alerts
-- Trips: Aggregated journey data for reporting
+## Development Workflow
 
-**Real-time Updates:**
-- WebSocket connections for live location broadcasting
-- 10-second polling fallback via HTTP endpoints
-- Vehicle status updates (active/stopped/offline)
+### Running the Backend (in Replit or locally)
 
-### Data Storage
+The Express backend can run in Replit or locally:
 
-**Database:**
-- PostgreSQL via Neon serverless database
-- Drizzle ORM with schema-first approach
-- UUID primary keys generated via `gen_random_uuid()`
-- Timestamps for all records using `defaultNow()`
+```bash
+# Install dependencies
+npm install
 
-**Schema Design:**
-- Decimal precision for geographic coordinates (10,7) and measurements
-- JSONB columns for flexible coordinate arrays in geofences/routes
-- Text fields for addresses resolved via reverse geocoding
-- Indexed foreign keys for efficient vehicle-location queries
+# Push database schema
+npm run db:push
 
-**Migration Strategy:**
-- Drizzle Kit for schema migrations in `/migrations` directory
-- `db:push` command for development schema synchronization
+# Seed demo data
+tsx server/seed.ts
 
-### Styling and Theming
+# Start server
+npm run dev
+```
 
-**Design System:**
-- CSS custom properties for theme variables (light/dark modes)
-- HSL color space for programmatic color manipulation
-- Elevation system using layered shadows (`--elevate-1`, `--elevate-2`)
-- Border utilities with opacity-based outlines
+Backend runs on `http://localhost:5000`
 
-**Responsive Design:**
-- Mobile-first breakpoints (768px tablet, 1024px desktop)
-- Collapsible sidebar navigation on mobile devices
-- Full-width maps with overlay panels
-- Touch-optimized controls for map interactions
+### Running the Mobile App (Local environment required)
 
-**Component Variants:**
-- Button variants: default, destructive, outline, secondary, ghost
-- Badge variants for status indicators
-- Card components with consistent padding and borders
-- Form controls with validation states
+See `REACT_NATIVE_SETUP.md` for complete setup instructions.
 
-## External Dependencies
+Quick start:
+```bash
+# Install dependencies
+npm install
 
-### Third-Party Services
+# Start Expo development server
+npm start
 
-**Mapping:**
-- Leaflet 1.9.4 - Open-source map library loaded via CDN
-- OpenStreetMap - Tile provider for base map layers
-- Potential integration point for reverse geocoding services (address resolution)
+# Run on Android
+npm run android
 
-**Fonts:**
-- Google Fonts CDN - Inter font family (weights 300-700)
+# Run on iOS (macOS only)
+npm run ios
+```
 
-### NPM Packages
+## Database Schema
 
-**UI Components:**
-- @radix-ui/* - Headless UI primitives (20+ component packages)
-- shadcn/ui - Pre-configured Radix components with Tailwind styling
-- lucide-react - Icon library
-- recharts - Chart components for reports
-- embla-carousel-react - Carousel functionality
+### Tables
+- **vehicles** - Fleet inventory (id, name, deviceId, type, status, iconColor)
+- **locations** - GPS coordinates (vehicleId, latitude, longitude, speed, heading, altitude, timestamp)
+- **geofences** - Virtual boundaries (name, type, coordinates, color, active, alertOnEntry, alertOnExit)
+- **routes** - Predefined paths (name, coordinates, color)
+- **pois** - Points of interest (name, latitude, longitude, category, icon)
+- **events** - System events (vehicleId, type, description, severity, data, timestamp)
+- **trips** - Aggregated journey data (vehicleId, startTime, endTime, distance, duration, avgSpeed, maxSpeed)
 
-**Forms and Validation:**
-- react-hook-form - Form state management
-- @hookform/resolvers - Form validation resolver
-- zod - Runtime type validation
-- drizzle-zod - Drizzle schema to Zod conversion
+## API Endpoints
 
-**Data Fetching:**
-- @tanstack/react-query - Server state management
-- ws - WebSocket server implementation
+### Vehicles
+- `GET /api/vehicles` - List all vehicles
+- `GET /api/vehicles/:id` - Get vehicle details
+- `POST /api/vehicles` - Create vehicle
+- `PATCH /api/vehicles/:id` - Update vehicle
+- `DELETE /api/vehicles/:id` - Delete vehicle
 
-**Database:**
-- @neondatabase/serverless - Neon Postgres client
-- drizzle-orm - TypeScript ORM
-- drizzle-kit - Migration tooling
-- connect-pg-simple - PostgreSQL session store (available but not actively used)
+### Locations
+- `GET /api/locations` - Get locations (with query filters)
+- `GET /api/locations/latest` - Get latest location for each vehicle
+- `POST /api/locations` - Create location update (triggers geofence checks)
 
-**Development Tools:**
-- @replit/vite-plugin-* - Replit-specific development plugins
-- tsx - TypeScript execution
-- esbuild - Production build bundler
+### Geofences
+- `GET /api/geofences` - List all geofences
+- `POST /api/geofences` - Create geofence
+- `PATCH /api/geofences/:id` - Update geofence
+- `DELETE /api/geofences/:id` - Delete geofence
 
-### Potential Future Integrations
+### Events
+- `GET /api/events` - Get events (filterable by vehicle and date)
+- Event types: `geofence_entry`, `geofence_exit`, `speed_violation`
 
-- GPS device communication protocols (not yet implemented)
-- Reverse geocoding API for address resolution
-- SMS/email notification services for geofence alerts
-- Export functionality for reports (PDF/Excel generation)
-- Advanced analytics and route optimization algorithms
+### WebSocket
+- `ws://localhost:5000/ws` - Real-time updates
+- Message types: `location` (location updates), `event` (geofence/speed events)
+
+## Key Technologies
+
+### Mobile
+- **React Native 0.73**
+- **Expo SDK ~50.0**
+- **React Navigation 6.x**
+- **React Native Maps**
+- **React Native Paper 5.x**
+- **TanStack Query 5.x**
+- **TypeScript 5.6**
+
+### Backend
+- **Express.js 4.x**
+- **Drizzle ORM 0.39**
+- **PostgreSQL (Neon)**
+- **WebSocket (ws library)**
+- **Zod validation**
+
+## Mobile App Configuration
+
+### Permissions
+
+**Android** (`app.json`):
+- `ACCESS_FINE_LOCATION` - GPS location
+- `ACCESS_COARSE_LOCATION` - Network location
+- `ACCESS_BACKGROUND_LOCATION` - Background tracking
+
+**iOS** (`app.json`):
+- Location permissions requested via expo-location plugin
+
+### Build Configuration
+
+- **Bundle ID (iOS):** `com.gpstracker.app`
+- **Package Name (Android):** `com.gpstracker.app`
+- **Expo SDK:** ~50.0
+- **Minimum iOS:** 13.0
+- **Minimum Android:** API 21 (Android 5.0)
+
+## Environment Variables
+
+Create `.env` file:
+```env
+# Mobile App
+API_URL=http://192.168.1.100:5000/api
+WS_URL=ws://192.168.1.100:5000/ws
+
+# Backend
+DATABASE_URL=postgresql://user:password@host:5432/database
+SESSION_SECRET=your-session-secret
+```
+
+## Building for Production
+
+### Using Expo Application Services (EAS)
+
+```bash
+# Install EAS CLI
+npm install -g eas-cli
+
+# Configure build
+eas build:configure
+
+# Build for Android
+eas build --platform android
+
+# Build for iOS
+eas build --platform ios
+```
+
+See `REACT_NATIVE_SETUP.md` for detailed build instructions.
+
+## Migration Notes
+
+### From Web to React Native
+
+This project was converted from a React web application to React Native:
+
+**What Changed:**
+- Frontend completely rebuilt with React Native
+- Vite + React → Expo + React Native
+- Shadcn/ui + Tailwind → React Native Paper
+- Leaflet.js → React Native Maps
+- Wouter → React Navigation
+
+**What Stayed the Same:**
+- Express backend (API routes, WebSocket, business logic)
+- Database schema and Drizzle ORM
+- Shared types in `shared/schema.ts`
+- Geofence detection algorithms
+
+**Legacy Files (can be removed):**
+- `client/` directory (old web frontend)
+- `vite.config.ts`
+- `tailwind.config.ts`
+- Web-specific dependencies in old package.json
+
+## Known Limitations
+
+1. **Cannot run in Replit** - React Native requires native compilation tools (Android Studio, Xcode)
+2. **Requires physical device or emulator** - Use Expo Go app or configured emulator
+3. **Network configuration** - Mobile app must connect to backend via local IP, not localhost
+4. **Development complexity** - Requires more setup than web development
+
+## Next Steps
+
+1. Complete remaining mobile screens (see task list)
+2. Implement offline support
+3. Add push notifications
+4. Implement background location tracking
+5. Add comprehensive testing
+6. Deploy backend to production server
+7. Publish apps to App Store and Play Store
+
+## Resources
+
+- [React Native Documentation](https://reactnative.dev/)
+- [Expo Documentation](https://docs.expo.dev/)
+- [React Navigation](https://reactnavigation.org/)
+- [React Native Maps](https://github.com/react-native-maps/react-native-maps)
+- [TanStack Query](https://tanstack.com/query/)
+- [React Native Paper](https://reactnativepaper.com/)
