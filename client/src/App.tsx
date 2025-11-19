@@ -15,12 +15,18 @@ import Routes from "@/pages/routes";
 import Pois from "@/pages/pois";
 import Reports from "@/pages/reports";
 import Vehicles from "@/pages/vehicles";
+import TrackActivity from "@/pages/track";
+import Activities from "@/pages/activities";
+import Statistics from "@/pages/stats";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/track" component={TrackActivity} />
+      <Route path="/activities" component={Activities} />
+      <Route path="/stats" component={Statistics} />
       <Route path="/tracking" component={Tracking} />
       <Route path="/history" component={History} />
       <Route path="/geofences" component={Geofences} />

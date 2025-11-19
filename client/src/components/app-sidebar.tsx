@@ -7,7 +7,10 @@ import {
   MapPin, 
   FileText, 
   Car,
-  BarChart3
+  BarChart3,
+  Activity,
+  Play,
+  TrendingUp
 } from "lucide-react";
 import {
   Sidebar,
@@ -22,19 +25,42 @@ import {
 } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
 
-const menuItems = [
+const personalMenuItems = [
   {
-    title: "Dashboard",
+    title: "Track Activity",
+    url: "/track",
+    icon: Play,
+  },
+  {
+    title: "My Activities",
+    url: "/activities",
+    icon: Activity,
+  },
+  {
+    title: "Statistics",
+    url: "/stats",
+    icon: TrendingUp,
+  },
+];
+
+const fleetMenuItems = [
+  {
+    title: "Fleet Dashboard",
     url: "/",
     icon: BarChart3,
   },
   {
-    title: "Real-time Tracking",
+    title: "Live Tracking",
     url: "/tracking",
     icon: Radio,
   },
   {
-    title: "History",
+    title: "Vehicles",
+    url: "/vehicles",
+    icon: Car,
+  },
+  {
+    title: "Trip History",
     url: "/history",
     icon: History,
   },
@@ -58,11 +84,6 @@ const menuItems = [
     url: "/reports",
     icon: FileText,
   },
-  {
-    title: "Vehicles",
-    url: "/vehicles",
-    icon: Car,
-  },
 ];
 
 export function AppSidebar() {
@@ -75,13 +96,36 @@ export function AppSidebar() {
           <Map className="h-6 w-6 text-primary" />
           <span className="text-lg font-semibold">GPS Tracker</span>
         </div>
+        <p className="text-xs text-muted-foreground mt-1">Personal + Fleet</p>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel>Personal Tracking</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
+              {personalMenuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton 
+                    asChild 
+                    isActive={location === item.url}
+                    data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Fleet Management</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {fleetMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton 
                     asChild 
