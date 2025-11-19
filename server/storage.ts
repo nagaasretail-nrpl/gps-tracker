@@ -13,8 +13,17 @@ import {
   type InsertEvent,
   type Trip,
   type InsertTrip,
+  vehicles,
+  locations,
+  geofences,
+  routes,
+  pois,
+  events,
+  trips,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
   // Vehicles
@@ -58,264 +67,192 @@ export interface IStorage {
   updateTrip(id: string, trip: Partial<Trip>): Promise<Trip | undefined>;
 }
 
-export class MemStorage implements IStorage {
-  private vehicles: Map<string, Vehicle>;
-  private locations: Map<string, Location>;
-  private geofences: Map<string, Geofence>;
-  private routes: Map<string, Route>;
-  private pois: Map<string, Poi>;
-  private events: Map<string, Event>;
-  private trips: Map<string, Trip>;
-
-  constructor() {
-    this.vehicles = new Map();
-    this.locations = new Map();
-    this.geofences = new Map();
-    this.routes = new Map();
-    this.pois = new Map();
-    this.events = new Map();
-    this.trips = new Map();
-    
-    this.seedDemoData();
-  }
-
-  private seedDemoData() {
-    const demoVehicle: Vehicle = {
-      id: randomUUID(),
-      name: "Demo Vehicle 1",
-      deviceId: "DEMO-001",
-      type: "car",
-      status: "active",
-      iconColor: "#2563eb",
-      createdAt: new Date(),
-    };
-    this.vehicles.set(demoVehicle.id, demoVehicle);
-
-    const demoLocation: Location = {
-      id: randomUUID(),
-      vehicleId: demoVehicle.id,
-      latitude: "40.7128",
-      longitude: "-74.0060",
-      altitude: "10",
-      speed: "45.5",
-      heading: "90",
-      address: "New York, NY",
-      accuracy: "5",
-      timestamp: new Date(),
-    };
-    this.locations.set(demoLocation.id, demoLocation);
-  }
-
+export class DbStorage implements IStorage {
   async getVehicles(): Promise<Vehicle[]> {
-    return Array.from(this.vehicles.values());
+    return await db.select().from(vehicles);
   }
 
   async getVehicle(id: string): Promise<Vehicle | undefined> {
-    return this.vehicles.get(id);
+    const result = await db.select().from(vehicles).where(eq(vehicles.id, id)).limit(1);
+    return result[0];
   }
 
   async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> {
-    const id = randomUUID();
-    const vehicle: Vehicle = {
-      ...insertVehicle,
-      id,
-      createdAt: new Date(),
-    };
-    this.vehicles.set(id, vehicle);
-    return vehicle;
+    const result = await db.insert(vehicles).values(insertVehicle).returning();
+    return result[0];
   }
 
   async updateVehicle(id: string, updates: Partial<Vehicle>): Promise<Vehicle | undefined> {
-    const vehicle = this.vehicles.get(id);
-    if (!vehicle) return undefined;
-    const updated = { ...vehicle, ...updates };
-    this.vehicles.set(id, updated);
-    return updated;
+    const result = await db.update(vehicles).set(updates).where(eq(vehicles.id, id)).returning();
+    return result[0];
   }
 
   async deleteVehicle(id: string): Promise<boolean> {
-    return this.vehicles.delete(id);
+    const result = await db.delete(vehicles).where(eq(vehicles.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
   }
 
   async getLocations(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Location[]> {
-    let locations = Array.from(this.locations.values());
+    const conditions = [];
     
     if (vehicleId) {
-      locations = locations.filter(l => l.vehicleId === vehicleId);
+      conditions.push(eq(locations.vehicleId, vehicleId));
     }
-    
     if (startDate) {
-      locations = locations.filter(l => new Date(l.timestamp) >= startDate);
+      conditions.push(gte(locations.timestamp, startDate));
     }
-    
     if (endDate) {
-      locations = locations.filter(l => new Date(l.timestamp) <= endDate);
+      conditions.push(lte(locations.timestamp, endDate));
+    }
+
+    let query = db.select().from(locations);
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as typeof query;
     }
     
-    return locations.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return await query.orderBy(desc(locations.timestamp));
   }
 
   async getLatestLocations(): Promise<Location[]> {
-    const locationsByVehicle = new Map<string, Location>();
-    
-    Array.from(this.locations.values()).forEach(location => {
-      const existing = locationsByVehicle.get(location.vehicleId);
-      if (!existing || new Date(location.timestamp) > new Date(existing.timestamp)) {
-        locationsByVehicle.set(location.vehicleId, location);
-      }
-    });
-    
-    return Array.from(locationsByVehicle.values());
+    const result = await db.execute(sql`
+      SELECT DISTINCT ON (vehicle_id) *
+      FROM locations
+      ORDER BY vehicle_id, timestamp DESC
+    `);
+    return result.rows as Location[];
   }
 
   async getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]> {
-    return this.getLocations(vehicleId, startDate, endDate);
+    return await db.select().from(locations)
+      .where(and(
+        eq(locations.vehicleId, vehicleId),
+        gte(locations.timestamp, startDate),
+        lte(locations.timestamp, endDate)
+      ))
+      .orderBy(desc(locations.timestamp));
   }
 
   async createLocation(insertLocation: InsertLocation): Promise<Location> {
-    const id = randomUUID();
-    const location: Location = {
-      ...insertLocation,
-      id,
-      timestamp: new Date(),
-    };
-    this.locations.set(id, location);
-    return location;
+    const result = await db.insert(locations).values(insertLocation).returning();
+    return result[0];
   }
 
   async getGeofences(): Promise<Geofence[]> {
-    return Array.from(this.geofences.values());
+    return await db.select().from(geofences);
   }
 
   async getGeofence(id: string): Promise<Geofence | undefined> {
-    return this.geofences.get(id);
+    const result = await db.select().from(geofences).where(eq(geofences.id, id)).limit(1);
+    return result[0];
   }
 
   async createGeofence(insertGeofence: InsertGeofence): Promise<Geofence> {
-    const id = randomUUID();
-    const geofence: Geofence = {
-      ...insertGeofence,
-      id,
-      createdAt: new Date(),
-    };
-    this.geofences.set(id, geofence);
-    return geofence;
+    const result = await db.insert(geofences).values(insertGeofence).returning();
+    return result[0];
   }
 
   async deleteGeofence(id: string): Promise<boolean> {
-    return this.geofences.delete(id);
+    const result = await db.delete(geofences).where(eq(geofences.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
   }
 
   async getRoutes(): Promise<Route[]> {
-    return Array.from(this.routes.values());
+    return await db.select().from(routes);
   }
 
   async getRoute(id: string): Promise<Route | undefined> {
-    return this.routes.get(id);
+    const result = await db.select().from(routes).where(eq(routes.id, id)).limit(1);
+    return result[0];
   }
 
   async createRoute(insertRoute: InsertRoute): Promise<Route> {
-    const id = randomUUID();
-    const route: Route = {
-      ...insertRoute,
-      id,
-      createdAt: new Date(),
-    };
-    this.routes.set(id, route);
-    return route;
+    const result = await db.insert(routes).values(insertRoute).returning();
+    return result[0];
   }
 
   async deleteRoute(id: string): Promise<boolean> {
-    return this.routes.delete(id);
+    const result = await db.delete(routes).where(eq(routes.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
   }
 
   async getPois(): Promise<Poi[]> {
-    return Array.from(this.pois.values());
+    return await db.select().from(pois);
   }
 
   async getPoi(id: string): Promise<Poi | undefined> {
-    return this.pois.get(id);
+    const result = await db.select().from(pois).where(eq(pois.id, id)).limit(1);
+    return result[0];
   }
 
   async createPoi(insertPoi: InsertPoi): Promise<Poi> {
-    const id = randomUUID();
-    const poi: Poi = {
-      ...insertPoi,
-      id,
-      createdAt: new Date(),
-    };
-    this.pois.set(id, poi);
-    return poi;
+    const result = await db.insert(pois).values(insertPoi).returning();
+    return result[0];
   }
 
   async deletePoi(id: string): Promise<boolean> {
-    return this.pois.delete(id);
+    const result = await db.delete(pois).where(eq(pois.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
   }
 
   async getEvents(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Event[]> {
-    let events = Array.from(this.events.values());
+    const conditions = [];
     
     if (vehicleId) {
-      events = events.filter(e => e.vehicleId === vehicleId);
+      conditions.push(eq(events.vehicleId, vehicleId));
     }
-    
     if (startDate) {
-      events = events.filter(e => new Date(e.timestamp) >= startDate);
+      conditions.push(gte(events.timestamp, startDate));
     }
-    
     if (endDate) {
-      events = events.filter(e => new Date(e.timestamp) <= endDate);
+      conditions.push(lte(events.timestamp, endDate));
+    }
+
+    let query = db.select().from(events);
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as typeof query;
     }
     
-    return events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return await query.orderBy(desc(events.timestamp));
   }
 
   async createEvent(insertEvent: InsertEvent): Promise<Event> {
-    const id = randomUUID();
-    const event: Event = {
-      ...insertEvent,
-      id,
-      timestamp: new Date(),
-    };
-    this.events.set(id, event);
-    return event;
+    const result = await db.insert(events).values(insertEvent).returning();
+    return result[0];
   }
 
   async getTrips(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Trip[]> {
-    let trips = Array.from(this.trips.values());
+    const conditions = [];
     
     if (vehicleId) {
-      trips = trips.filter(t => t.vehicleId === vehicleId);
+      conditions.push(eq(trips.vehicleId, vehicleId));
     }
-    
     if (startDate) {
-      trips = trips.filter(t => new Date(t.startTime) >= startDate);
+      conditions.push(gte(trips.startTime, startDate));
     }
-    
     if (endDate) {
-      trips = trips.filter(t => new Date(t.startTime) <= endDate);
+      conditions.push(lte(trips.startTime, endDate));
+    }
+
+    let query = db.select().from(trips);
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as typeof query;
     }
     
-    return trips.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    return await query.orderBy(desc(trips.startTime));
   }
 
   async createTrip(insertTrip: InsertTrip): Promise<Trip> {
-    const id = randomUUID();
-    const trip: Trip = {
-      ...insertTrip,
-      id,
-    };
-    this.trips.set(id, trip);
-    return trip;
+    const result = await db.insert(trips).values(insertTrip).returning();
+    return result[0];
   }
 
   async updateTrip(id: string, updates: Partial<Trip>): Promise<Trip | undefined> {
-    const trip = this.trips.get(id);
-    if (!trip) return undefined;
-    const updated = { ...trip, ...updates };
-    this.trips.set(id, updated);
-    return updated;
+    const result = await db.update(trips).set(updates).where(eq(trips.id, id)).returning();
+    return result[0];
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DbStorage();
