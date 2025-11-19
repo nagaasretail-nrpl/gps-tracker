@@ -1,6 +1,10 @@
-# GPS Tracker - React Native Mobile Application
+# GPS Tracker - Backend API + React Native Mobile App
 
-> **⚠️ Important:** This React Native application cannot be compiled or run in Replit. You must move this project to a local development environment or use Expo's cloud services.
+> **⚠️ Important:** This project contains TWO applications:
+> 1. **Backend API (Express.js)** - Deploys and runs on Replit ✅
+> 2. **Mobile App (React Native)** - Must be developed locally ⚠️
+> 
+> Replit automatically deploys **only the backend**. The mobile app files are included for local development.
 
 ## What's Been Delivered
 
@@ -36,26 +40,36 @@ This is a complete React Native GPS tracking application for Android and iOS, co
 
 ## Quick Start
 
-### 1. Move to Local Environment
+### Option A: Deploy Backend on Replit (Recommended)
 
-Since React Native requires native development tools (Android Studio, Xcode) that aren't available in Replit:
+**The backend is already configured and ready to deploy!**
 
-1. Download this entire project
-2. Extract to your local machine
-3. Open terminal in the project directory
+1. Click "Deploy" in Replit
+2. Set environment variables (if needed):
+   - `DATABASE_URL` (auto-configured with Replit PostgreSQL)
+   - `SESSION_SECRET` (generate a random string)
+3. Your API will be live at: `https://your-repl.replit.app`
 
-### 2. Set Up for Mobile Development
+### Option B: Run Mobile App Locally
 
-```bash
-# Replace package.json with mobile version
-cp package-mobile.json package.json
+Since React Native requires native development tools (Android Studio, Xcode):
 
-# Install dependencies
-npm install
+1. Download this project to your local machine
+2. In project directory:
+   ```bash
+   # Use mobile dependencies
+   cp package-mobile.json package.json
+   
+   # Install
+   npm install
+   
+   # Install Expo CLI
+   npm install -g expo-cli
+   ```
+3. Update API URL in `src/services/api.ts`
+4. Run: `npm start`
 
-# Install Expo CLI (if not already installed)
-npm install -g expo-cli eas-cli
-```
+**See `DEPLOYMENT.md` for detailed instructions**
 
 ### 3. Configure Backend Connection
 
