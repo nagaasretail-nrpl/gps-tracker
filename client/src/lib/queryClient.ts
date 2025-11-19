@@ -23,13 +23,44 @@ export async function apiRequest(
   return res;
 }
 
+/**
+ * Build URL from queryKey, supporting optional query params object
+ * Pattern: ["/api/endpoint"] or ["/api/endpoint", { params: { key: value } }]
+ */
+function buildUrlFromQueryKey(queryKey: readonly unknown[]): string {
+  if (queryKey.length === 1) {
+    // Simple endpoint with no params
+    return queryKey[0] as string;
+  }
+  
+  if (queryKey.length === 2 && typeof queryKey[1] === "object" && queryKey[1] !== null) {
+    const endpoint = queryKey[0] as string;
+    const paramsObj = queryKey[1] as Record<string, unknown>;
+    
+    // Build query string from params object
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(paramsObj)) {
+      if (value !== null && value !== undefined) {
+        params.append(key, String(value));
+      }
+    }
+    
+    const queryString = params.toString();
+    return queryString ? `${endpoint}?${queryString}` : endpoint;
+  }
+  
+  // Fallback to old behavior for compatibility
+  return queryKey.join("/") as string;
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const url = buildUrlFromQueryKey(queryKey);
+    const res = await fetch(url, {
       credentials: "include",
     });
 

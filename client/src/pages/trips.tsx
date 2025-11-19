@@ -22,23 +22,11 @@ export default function Trips() {
   });
 
   const { data: trips, isLoading } = useQuery<Trip[]>({
-    queryKey: [
-      "/api/trips",
-      selectedVehicle !== "all" ? selectedVehicle : undefined,
-      dateRange.from.toISOString(),
-      dateRange.to.toISOString(),
-    ],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (selectedVehicle !== "all") {
-        params.append("vehicleId", selectedVehicle);
-      }
-      params.append("startDate", dateRange.from.toISOString());
-      params.append("endDate", dateRange.to.toISOString());
-      
-      const response = await fetch(`/api/trips?${params}`);
-      return response.json();
-    },
+    queryKey: ["/api/trips", {
+      vehicleId: selectedVehicle !== "all" ? selectedVehicle : undefined,
+      startDate: dateRange.from.toISOString(),
+      endDate: dateRange.to.toISOString(),
+    }],
   });
 
   const lastTrip = trips?.[0];
@@ -107,6 +95,7 @@ export default function Trips() {
                       size="sm"
                       className="w-full"
                       onClick={() => setDateRange({ from: subDays(new Date(), 7), to: new Date() })}
+                      data-testid="button-filter-7-days"
                     >
                       Last 7 Days
                     </Button>
@@ -115,6 +104,7 @@ export default function Trips() {
                       size="sm"
                       className="w-full"
                       onClick={() => setDateRange({ from: subDays(new Date(), 30), to: new Date() })}
+                      data-testid="button-filter-30-days"
                     >
                       Last 30 Days
                     </Button>
@@ -123,6 +113,7 @@ export default function Trips() {
                       size="sm"
                       className="w-full"
                       onClick={() => setDateRange({ from: subDays(new Date(), 90), to: new Date() })}
+                      data-testid="button-filter-90-days"
                     >
                       Last 90 Days
                     </Button>
@@ -153,7 +144,7 @@ export default function Trips() {
             <Navigation className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatDistance(totalDistance)}</div>
+            <div className="text-2xl font-bold" data-testid="text-total-distance">{formatDistance(totalDistance)}</div>
             <p className="text-xs text-muted-foreground mt-1">Across all trips</p>
           </CardContent>
         </Card>
@@ -164,7 +155,7 @@ export default function Trips() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatDuration(totalDuration)}</div>
+            <div className="text-2xl font-bold" data-testid="text-total-duration">{formatDuration(totalDuration)}</div>
             <p className="text-xs text-muted-foreground mt-1">Total driving time</p>
           </CardContent>
         </Card>
@@ -175,7 +166,7 @@ export default function Trips() {
             <Gauge className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold" data-testid="text-avg-speed">
               {trips && trips.length > 0
                 ? (trips.reduce((sum, t) => sum + parseFloat(t.avgSpeed || "0"), 0) / trips.length).toFixed(1)
                 : "0.0"} km/h
@@ -203,7 +194,7 @@ export default function Trips() {
                 <Car className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Vehicle</p>
-                  <p className="font-semibold">{getVehicleName(lastTrip.vehicleId)}</p>
+                  <p className="font-semibold" data-testid="text-last-trip-vehicle">{getVehicleName(lastTrip.vehicleId)}</p>
                 </div>
               </div>
 
@@ -211,7 +202,7 @@ export default function Trips() {
                 <Navigation className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Distance</p>
-                  <p className="font-semibold">{formatDistance(parseFloat(lastTrip.distance || "0"))}</p>
+                  <p className="font-semibold" data-testid="text-last-trip-distance">{formatDistance(parseFloat(lastTrip.distance || "0"))}</p>
                 </div>
               </div>
 
@@ -219,7 +210,7 @@ export default function Trips() {
                 <Clock className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Duration</p>
-                  <p className="font-semibold">{formatDuration(lastTrip.duration || 0)}</p>
+                  <p className="font-semibold" data-testid="text-last-trip-duration">{formatDuration(lastTrip.duration || 0)}</p>
                 </div>
               </div>
 
@@ -227,7 +218,7 @@ export default function Trips() {
                 <Gauge className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Avg Speed</p>
-                  <p className="font-semibold">{parseFloat(lastTrip.avgSpeed || "0").toFixed(1)} km/h</p>
+                  <p className="font-semibold" data-testid="text-last-trip-avg-speed">{parseFloat(lastTrip.avgSpeed || "0").toFixed(1)} km/h</p>
                 </div>
               </div>
             </div>
@@ -236,11 +227,11 @@ export default function Trips() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Started</p>
-                  <p className="font-medium">{format(new Date(lastTrip.startTime), "PPp")}</p>
+                  <p className="font-medium" data-testid="text-last-trip-start-time">{format(new Date(lastTrip.startTime), "PPp")}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Ended</p>
-                  <p className="font-medium">
+                  <p className="font-medium" data-testid="text-last-trip-end-time">
                     {lastTrip.endTime ? format(new Date(lastTrip.endTime), "PPp") : "In progress"}
                   </p>
                 </div>
@@ -257,7 +248,19 @@ export default function Trips() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading trips...</div>
+            <div className="space-y-3" data-testid="loading-trips">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-4 rounded-lg border bg-card animate-pulse">
+                  <div className="h-6 bg-muted rounded w-1/3 mb-3"></div>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="h-4 bg-muted rounded"></div>
+                    <div className="h-4 bg-muted rounded"></div>
+                    <div className="h-4 bg-muted rounded"></div>
+                    <div className="h-4 bg-muted rounded"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : trips && trips.length > 0 ? (
             <div className="space-y-3">
               {trips.map((trip, index) => (
@@ -272,42 +275,45 @@ export default function Trips() {
                     <div className="flex items-center gap-3">
                       <Car className="h-5 w-5 text-muted-foreground" />
                       <div>
-                        <p className="font-semibold">{getVehicleName(trip.vehicleId)}</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="font-semibold" data-testid={`text-trip-vehicle-${trip.id}`}>{getVehicleName(trip.vehicleId)}</p>
+                        <p className="text-sm text-muted-foreground" data-testid={`text-trip-start-time-${trip.id}`}>
                           {format(new Date(trip.startTime), "MMM dd, yyyy 'at' h:mm a")}
                         </p>
                       </div>
                     </div>
-                    {index === 0 && <Badge variant="outline">Latest</Badge>}
+                    {index === 0 && <Badge variant="outline" data-testid="badge-latest-trip">Latest</Badge>}
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
                       <p className="text-muted-foreground">Distance</p>
-                      <p className="font-semibold">{formatDistance(parseFloat(trip.distance || "0"))}</p>
+                      <p className="font-semibold" data-testid={`text-trip-distance-${trip.id}`}>{formatDistance(parseFloat(trip.distance || "0"))}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Duration</p>
-                      <p className="font-semibold">{formatDuration(trip.duration || 0)}</p>
+                      <p className="font-semibold" data-testid={`text-trip-duration-${trip.id}`}>{formatDuration(trip.duration || 0)}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Avg Speed</p>
-                      <p className="font-semibold">{parseFloat(trip.avgSpeed || "0").toFixed(1)} km/h</p>
+                      <p className="font-semibold" data-testid={`text-trip-avg-speed-${trip.id}`}>{parseFloat(trip.avgSpeed || "0").toFixed(1)} km/h</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Max Speed</p>
-                      <p className="font-semibold">{parseFloat(trip.maxSpeed || "0").toFixed(1)} km/h</p>
+                      <p className="font-semibold" data-testid={`text-trip-max-speed-${trip.id}`}>{parseFloat(trip.maxSpeed || "0").toFixed(1)} km/h</p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-12">
+            <div className="text-center py-12" data-testid="empty-state-trips">
               <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="font-semibold text-lg mb-2">No trips found</h3>
               <p className="text-sm text-muted-foreground">
                 No trips recorded for the selected vehicle and date range.
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Try selecting a different vehicle or expanding the date range.
               </p>
             </div>
           )}

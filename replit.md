@@ -78,10 +78,15 @@ Built as a React Native mobile app (Android/iOS) with an Express.js backend and 
 ### Fleet Management
 - ✅ **Vehicle Management** - CRUD operations for fleet vehicles
 - ✅ **Live Location Tracking** - Real-time GPS updates via WebSocket
+- ✅ **Trip Tracking** - Comprehensive trip management with:
+  - Last trip details (most recent trip highlighted)
+  - Past trips list with full statistics
+  - Date-wise filtering (7/30/90 days or custom range)
+  - Vehicle-specific filtering
+  - Summary statistics (total trips, distance, duration, avg speed)
 - ✅ **Historical Playback** - Replay vehicle routes by date
 - ✅ **Geofencing** - Create circular/polygon zones with entry/exit alerts
 - ✅ **Event System** - Automatic alerts for geofence violations, speed limits
-- ✅ **Trip Tracking** - Aggregated journey data with statistics
 - 🚧 **Fleet Dashboard** - Overview of all vehicles with status
 - 🚧 **Vehicle Detail View** - Individual vehicle tracking and history
 
