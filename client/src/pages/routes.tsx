@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Route as RouteIcon } from "lucide-react";
 import type { Route as RouteType, InsertRoute } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -234,7 +234,7 @@ export default function Routes() {
             ))
           ) : (
             <div className="text-center py-12">
-              <Route className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+              <RouteIcon className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
               <p className="text-sm font-medium text-foreground mb-1">No routes yet</p>
               <p className="text-xs text-muted-foreground mb-4">
                 Draw routes to track vehicle paths

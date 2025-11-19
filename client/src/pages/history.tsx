@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Play, Pause, SkipBack, SkipForward } from "lucide-react";
+import { CalendarIcon, Play, Pause, SkipBack, SkipForward, History as HistoryIcon } from "lucide-react";
 import { format } from "date-fns";
 import type { Vehicle, Location } from "@shared/schema";
 import { MapComponent } from "@/components/map-component";
@@ -138,7 +138,7 @@ export default function History() {
         ) : (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
-              <History className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
+              <HistoryIcon className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
               <p className="text-sm font-medium text-foreground mb-2">View Route History</p>
               <p className="text-xs text-muted-foreground max-w-sm">
                 Select a vehicle and date range to replay historical routes
