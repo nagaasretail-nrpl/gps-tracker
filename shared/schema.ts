@@ -3,7 +3,61 @@ import { pgTable, text, varchar, decimal, timestamp, integer, jsonb, boolean } f
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Vehicles table
+// User profiles (for personal tracking mode)
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  email: text("email").unique(),
+  avatar: text("avatar"),
+  preferences: jsonb("preferences"), // units, map type, etc
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+
+// Activities table (for personal tracking: hikes, runs, bike rides, etc.)
+export const activities = pgTable("activities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  name: text("name").notNull(),
+  type: text("type").notNull().default("walking"), // walking, running, hiking, cycling, driving, etc.
+  description: text("description"),
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time"),
+  distance: decimal("distance", { precision: 10, scale: 2 }), // km
+  duration: integer("duration"), // seconds
+  maxSpeed: decimal("max_speed", { precision: 6, scale: 2 }), // km/h
+  avgSpeed: decimal("avg_speed", { precision: 6, scale: 2 }), // km/h
+  avgMovingSpeed: decimal("avg_moving_speed", { precision: 6, scale: 2 }), // km/h (excluding stops)
+  movingTime: integer("moving_time"), // seconds
+  maxAltitude: decimal("max_altitude", { precision: 7, scale: 2 }), // meters
+  minAltitude: decimal("min_altitude", { precision: 7, scale: 2 }), // meters
+  elevationGain: decimal("elevation_gain", { precision: 7, scale: 2 }), // meters (total ascent)
+  elevationLoss: decimal("elevation_loss", { precision: 7, scale: 2 }), // meters (total descent)
+  avgSlope: decimal("avg_slope", { precision: 5, scale: 2 }), // percentage
+  maxSlope: decimal("max_slope", { precision: 5, scale: 2 }), // percentage
+  minSlope: decimal("min_slope", { precision: 5, scale: 2 }), // percentage
+  coordinates: jsonb("coordinates"), // array of location points
+  color: text("color").default("#FF6B35"), // track color on map
+  isRecording: boolean("is_recording").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertActivitySchema = createInsertSchema(activities).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertActivity = z.infer<typeof insertActivitySchema>;
+export type Activity = typeof activities.$inferSelect;
+
+// Vehicles table (for fleet management)
 export const vehicles = pgTable("vehicles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -11,6 +65,8 @@ export const vehicles = pgTable("vehicles", {
   type: text("type").notNull().default("car"), // car, truck, motorcycle, etc.
   status: text("status").notNull().default("offline"), // active, stopped, offline
   iconColor: text("icon_color").default("#2563eb"),
+  driverName: text("driver_name"),
+  licensePlate: text("license_plate"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -22,10 +78,12 @@ export const insertVehicleSchema = createInsertSchema(vehicles).omit({
 export type InsertVehicle = z.infer<typeof insertVehicleSchema>;
 export type Vehicle = typeof vehicles.$inferSelect;
 
-// Location updates table
+// Location updates table (used by both vehicles and activities)
+// CONSTRAINT: Must have either vehicleId OR activityId (not both, not neither)
 export const locations = pgTable("locations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  vehicleId: varchar("vehicle_id").notNull(),
+  vehicleId: varchar("vehicle_id"),
+  activityId: varchar("activity_id"),
   latitude: decimal("latitude", { precision: 10, scale: 7 }).notNull(),
   longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
   altitude: decimal("altitude", { precision: 7, scale: 2 }),
@@ -34,11 +92,22 @@ export const locations = pgTable("locations", {
   address: text("address"),
   accuracy: decimal("accuracy", { precision: 6, scale: 2 }),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
-});
+}, (table) => ({
+  // Check constraint: exactly one of vehicleId or activityId must be non-null
+  checkConstraint: sql`CHECK (
+    (vehicle_id IS NOT NULL AND activity_id IS NULL) OR 
+    (vehicle_id IS NULL AND activity_id IS NOT NULL)
+  )`,
+}));
 
 export const insertLocationSchema = createInsertSchema(locations).omit({
   id: true,
-});
+}).refine(
+  (data) => (data.vehicleId && !data.activityId) || (!data.vehicleId && data.activityId),
+  {
+    message: "Location must have exactly one of vehicleId or activityId",
+  }
+);
 
 export type InsertLocation = z.infer<typeof insertLocationSchema>;
 export type Location = typeof locations.$inferSelect;

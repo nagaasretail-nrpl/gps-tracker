@@ -11,6 +11,8 @@ import {
   insertPoiSchema,
   insertEventSchema,
   insertTripSchema,
+  insertUserSchema,
+  insertActivitySchema,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {

@@ -1,8 +1,12 @@
-# GPS Tracking Application - React Native Mobile Apps
+# Hybrid GPS Tracking Application - Personal + Fleet Management
 
 ## Overview
 
-This is a React Native GPS tracking and fleet management application for Android and iOS mobile platforms. The application provides comprehensive vehicle tracking capabilities including live location monitoring, historical route playback, geofencing, points of interest management, and reporting features.
+This is a **hybrid GPS tracking system** that combines:
+1. **Personal Activity Tracking** (GeoTracker-style) - Track your own hikes, runs, bike rides, and outdoor activities
+2. **Fleet Management** - Track multiple vehicles for business purposes
+
+Built as a React Native mobile app (Android/iOS) with an Express.js backend and PostgreSQL database. The design is inspired by GeoTracker's clean, modern, data-focused interface.
 
 **⚠️ Important Note:** This project has been converted from a React web application to React Native. The React Native app cannot be compiled or run directly in Replit. You must move the project to a local development environment or use Expo's cloud services. See `REACT_NATIVE_SETUP.md` for detailed setup instructions.
 
@@ -59,25 +63,33 @@ This is a React Native GPS tracking and fleet management application for Android
 └── migrations/             # Database migrations
 ```
 
-## Mobile App Features
+## Features
 
-### Implemented
-- ✅ Bottom tab navigation (Dashboard, Tracking, History, More)
-- ✅ Dashboard with fleet statistics and live map
-- ✅ Real-time location tracking (10-second updates)
-- ✅ Vehicle list with search functionality
-- ✅ Historical route playback with date picker
-- ✅ Map integration with vehicle markers
-- ✅ API client service for backend communication
+### Personal Activity Tracking (GeoTracker-Inspired)
+- 🚧 **Live Recording** - Start/stop tracking with large FAB button
+- 🚧 **Real-time Statistics** - Distance, duration, speed, elevation gain/loss
+- 🚧 **Activity History** - List of all recorded activities with filtering
+- 🚧 **Detailed Analytics** - Charts for speed, elevation, slope over time
+- 🚧 **Activity Types** - Walking, running, cycling, hiking, driving
+- 🚧 **GPX/KML Export** - Export tracks for use in other apps
+- 🚧 **Offline Maps** - Cached map tiles for offline use
+- 🚧 **Background Tracking** - Continue recording when app is backgrounded
 
-### Planned (See task list)
-- 🚧 Geofence management UI
-- 🚧 POI management
-- 🚧 Trip reports and analytics
-- 🚧 Push notifications for events
-- 🚧 Offline support with AsyncStorage
-- 🚧 Background location tracking
-- 🚧 Vehicle management screens
+### Fleet Management
+- ✅ **Vehicle Management** - CRUD operations for fleet vehicles
+- ✅ **Live Location Tracking** - Real-time GPS updates via WebSocket
+- ✅ **Historical Playback** - Replay vehicle routes by date
+- ✅ **Geofencing** - Create circular/polygon zones with entry/exit alerts
+- ✅ **Event System** - Automatic alerts for geofence violations, speed limits
+- ✅ **Trip Tracking** - Aggregated journey data with statistics
+- 🚧 **Fleet Dashboard** - Overview of all vehicles with status
+- 🚧 **Vehicle Detail View** - Individual vehicle tracking and history
+
+### Shared Features
+- 🚧 **Points of Interest** - Mark and save important locations
+- 🚧 **Map Layers** - OSM street maps, satellite imagery, dark mode
+- 🚧 **User Profiles** - Personal settings and preferences
+- 🚧 **Statistics Dashboard** - Comprehensive analytics for both modes
 
 ## Backend Features (Fully Implemented)
 
@@ -133,13 +145,23 @@ npm run ios
 ## Database Schema
 
 ### Tables
-- **vehicles** - Fleet inventory (id, name, deviceId, type, status, iconColor)
-- **locations** - GPS coordinates (vehicleId, latitude, longitude, speed, heading, altitude, timestamp)
-- **geofences** - Virtual boundaries (name, type, coordinates, color, active, alertOnEntry, alertOnExit)
-- **routes** - Predefined paths (name, coordinates, color)
-- **pois** - Points of interest (name, latitude, longitude, category, icon)
-- **events** - System events (vehicleId, type, description, severity, data, timestamp)
+
+**Personal Tracking:**
+- **users** - User profiles (id, name, email, avatar, preferences)
+- **activities** - Recorded activities (id, userId, name, type, startTime, endTime, distance, duration, speed metrics, elevation metrics, slope metrics, coordinates, isRecording)
+
+**Fleet Management:**
+- **vehicles** - Fleet inventory (id, name, deviceId, type, status, iconColor, driverName, licensePlate)
 - **trips** - Aggregated journey data (vehicleId, startTime, endTime, distance, duration, avgSpeed, maxSpeed)
+- **geofences** - Virtual boundaries (name, type, coordinates, color, active, alertOnEntry, alertOnExit)
+- **events** - System events (vehicleId, type, description, severity, data, timestamp)
+
+**Shared:**
+- **locations** - GPS coordinates (vehicleId OR activityId, latitude, longitude, speed, heading, altitude, accuracy, timestamp)
+- **routes** - Saved paths (name, coordinates, color)
+- **pois** - Points of interest (name, latitude, longitude, category, icon)
+
+**Key Constraint:** Every location must belong to either a vehicle OR an activity (enforced in storage layer)
 
 ## API Endpoints
 
