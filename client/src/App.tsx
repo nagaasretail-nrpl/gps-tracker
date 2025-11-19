@@ -18,6 +18,7 @@ import Vehicles from "@/pages/vehicles";
 import TrackActivity from "@/pages/track";
 import Activities from "@/pages/activities";
 import Statistics from "@/pages/stats";
+import Trips from "@/pages/trips";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/activities" component={Activities} />
       <Route path="/stats" component={Statistics} />
       <Route path="/tracking" component={Tracking} />
+      <Route path="/trips" component={Trips} />
       <Route path="/history" component={History} />
       <Route path="/geofences" component={Geofences} />
       <Route path="/routes" component={Routes} />

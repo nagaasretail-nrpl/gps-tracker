@@ -10,7 +10,8 @@ import {
   BarChart3,
   Activity,
   Play,
-  TrendingUp
+  TrendingUp,
+  Navigation
 } from "lucide-react";
 import {
   Sidebar,
@@ -60,7 +61,12 @@ const fleetMenuItems = [
     icon: Car,
   },
   {
-    title: "Trip History",
+    title: "Trips",
+    url: "/trips",
+    icon: Navigation,
+  },
+  {
+    title: "Location History",
     url: "/history",
     icon: History,
   },
