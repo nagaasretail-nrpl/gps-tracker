@@ -75,9 +75,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Locations
   app.get("/api/locations", async (req, res) => {
     try {
-      const { vehicleId, startDate, endDate } = req.query;
+      const { vehicleId, activityId, startDate, endDate } = req.query;
       const locations = await storage.getLocations(
         vehicleId as string,
+        activityId as string,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
       );
@@ -118,14 +119,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertLocationSchema.parse(req.body);
       const location = await storage.createLocation(validatedData);
       
-      // Update vehicle status based on speed
-      const speed = parseFloat(validatedData.speed || "0");
-      const status = speed > 5 ? "active" : speed === 0 ? "stopped" : "active";
-      await storage.updateVehicle(validatedData.vehicleId, { status });
-      
-      // Check geofences and speed violations (non-blocking)
-      checkGeofences(location).catch(err => console.error("Geofence check error:", err));
-      checkSpeedViolation(location).catch(err => console.error("Speed check error:", err));
+      // If this is a vehicle location, update vehicle status and check geofences
+      if (validatedData.vehicleId) {
+        const speed = parseFloat(validatedData.speed || "0");
+        const status = speed > 5 ? "active" : speed === 0 ? "stopped" : "active";
+        await storage.updateVehicle(validatedData.vehicleId, { status });
+        
+        // Check geofences and speed violations (non-blocking)
+        checkGeofences(location).catch(err => console.error("Geofence check error:", err));
+        checkSpeedViolation(location).catch(err => console.error("Speed check error:", err));
+      }
       
       // Broadcast to WebSocket clients
       broadcastLocation(location);
@@ -279,6 +282,145 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(trip);
     } catch (error) {
       res.status(400).json({ error: "Invalid trip data" });
+    }
+  });
+
+  // Users (Personal Tracking)
+  app.get("/api/users", async (req, res) => {
+    try {
+      const users = await storage.getUsers();
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
+  app.post("/api/users", async (req, res) => {
+    try {
+      const validatedData = insertUserSchema.parse(req.body);
+      const user = await storage.createUser(validatedData);
+      res.status(201).json(user);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid user data" });
+    }
+  });
+
+  app.patch("/api/users/:id", async (req, res) => {
+    try {
+      const user = await storage.updateUser(req.params.id, req.body);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+
+  app.delete("/api/users/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteUser(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
+  // Activities (Personal Tracking)
+  app.get("/api/activities", async (req, res) => {
+    try {
+      const { userId, startDate, endDate } = req.query;
+      const activities = await storage.getActivities(
+        userId as string,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(activities);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch activities" });
+    }
+  });
+
+  app.get("/api/activities/current", async (req, res) => {
+    try {
+      const { userId } = req.query;
+      if (!userId) {
+        return res.status(400).json({ error: "userId query parameter is required" });
+      }
+      const activity = await storage.getCurrentActivity(userId as string);
+      res.json(activity || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch current activity" });
+    }
+  });
+
+  app.get("/api/activities/:id", async (req, res) => {
+    try {
+      const activity = await storage.getActivity(req.params.id);
+      if (!activity) {
+        return res.status(404).json({ error: "Activity not found" });
+      }
+      res.json(activity);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch activity" });
+    }
+  });
+
+  app.post("/api/activities", async (req, res) => {
+    try {
+      const validatedData = insertActivitySchema.parse(req.body);
+      const activity = await storage.createActivity(validatedData);
+      res.status(201).json(activity);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid activity data" });
+    }
+  });
+
+  app.patch("/api/activities/:id", async (req, res) => {
+    try {
+      const activity = await storage.updateActivity(req.params.id, req.body);
+      if (!activity) {
+        return res.status(404).json({ error: "Activity not found" });
+      }
+      res.json(activity);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update activity" });
+    }
+  });
+
+  app.delete("/api/activities/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteActivity(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Activity not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete activity" });
+    }
+  });
+
+  app.get("/api/activities/:id/locations", async (req, res) => {
+    try {
+      const locations = await storage.getActivityLocationHistory(req.params.id);
+      res.json(locations);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch activity locations" });
     }
   });
 
