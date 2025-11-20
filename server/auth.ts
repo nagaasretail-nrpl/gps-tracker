@@ -71,17 +71,28 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   res.status(401).json({ error: "Authentication required" });
 }
 
-export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
     return res.status(401).json({ error: "Authentication required" });
   }
 
-  const user = req.user as User;
-  if (user.role !== "admin") {
-    return res.status(403).json({ error: "Admin access required" });
-  }
+  const sessionUser = req.user as User;
+  
+  try {
+    const freshUser = await storage.getUserById(sessionUser.id);
+    
+    if (!freshUser) {
+      return res.status(401).json({ error: "Session invalid - user not found" });
+    }
 
-  next();
+    if (freshUser.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    next();
+  } catch (error) {
+    return res.status(500).json({ error: "Authorization check failed" });
+  }
 }
 
 export function optionalAuth(req: Request, res: Response, next: NextFunction) {

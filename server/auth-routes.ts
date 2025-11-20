@@ -22,7 +22,7 @@ authRoutes.post("/signup", async (req, res, next) => {
       name: validatedData.name,
       email: validatedData.email,
       password: hashedPassword,
-      role: validatedData.role || "user",
+      role: "user", // Always create as regular user - admins must be promoted by existing admin
       avatar: validatedData.avatar,
       preferences: validatedData.preferences,
     });

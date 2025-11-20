@@ -22,8 +22,10 @@ export const insertUserSchema = createInsertSchema(users).omit({
 });
 
 // Schema for signup requests (includes plain password before hashing)
+// Role is omitted to prevent privilege escalation - users are always created as "user" role
 export const signupSchema = insertUserSchema.omit({
   password: true,
+  role: true,
 }).extend({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
@@ -34,10 +36,26 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+// Schema for regular users updating their own profile (safe fields only)
+export const updateProfileSchema = z.object({
+  name: z.string().optional(),
+  avatar: z.string().optional(),
+  preferences: z.any().optional(),
+});
+
+// Schema for admin updating any user (includes sensitive fields)
+export const adminUpdateUserSchema = updateProfileSchema.extend({
+  email: z.string().email().optional(),
+  role: z.enum(["user", "admin"]).optional(),
+  password: z.string().min(8, "Password must be at least 8 characters").optional(),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type UpdateProfile = z.infer<typeof updateProfileSchema>;
+export type AdminUpdateUser = z.infer<typeof adminUpdateUserSchema>;
 
 // Activities table (for personal tracking: hikes, runs, bike rides, etc.)
 export const activities = pgTable("activities", {

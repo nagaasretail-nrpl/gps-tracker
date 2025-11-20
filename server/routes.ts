@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation, setEventBroadcaster } from "./geofence-monitor";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
+import { z } from "zod";
 import {
   insertVehicleSchema,
   insertLocationSchema,
@@ -15,6 +16,9 @@ import {
   insertTripSchema,
   insertUserSchema,
   insertActivitySchema,
+  updateProfileSchema,
+  adminUpdateUserSchema,
+  type User,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -294,7 +298,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users", requireAdmin, async (req, res) => {
     try {
       const users = await storage.getUsers();
-      res.json(users);
+      const usersWithoutPasswords = users.map(({ password, ...user }) => user);
+      res.json(usersWithoutPasswords);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch users" });
     }
@@ -302,11 +307,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/users/:id", requireAuth, async (req, res) => {
     try {
-      const user = await storage.getUser(req.params.id);
+      const sessionUser = req.user as User;
+      const targetUserId = req.params.id;
+
+      const freshUser = await storage.getUserById(sessionUser.id);
+      if (!freshUser) {
+        return res.status(401).json({ error: "Session invalid - user not found" });
+      }
+
+      if (freshUser.role !== "admin" && freshUser.id !== targetUserId) {
+        return res.status(403).json({ error: "You can only view your own profile" });
+      }
+
+      const user = await storage.getUser(targetUserId);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      res.json(user);
+      
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch user" });
     }
@@ -315,21 +334,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/users", requireAdmin, async (req, res) => {
     try {
       const validatedData = insertUserSchema.parse(req.body);
-      const user = await storage.createUser(validatedData);
-      res.status(201).json(user);
+      
+      const bcrypt = await import("bcrypt");
+      const hashedPassword = await bcrypt.hash(validatedData.password, 10);
+      
+      const user = await storage.createUser({
+        ...validatedData,
+        password: hashedPassword,
+      });
+      
+      const { password, ...userWithoutPassword } = user;
+      res.status(201).json(userWithoutPassword);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
       res.status(400).json({ error: "Invalid user data" });
     }
   });
 
   app.patch("/api/users/:id", requireAuth, async (req, res) => {
     try {
-      const user = await storage.updateUser(req.params.id, req.body);
+      const sessionUser = req.user as User;
+      const targetUserId = req.params.id;
+
+      const freshUser = await storage.getUserById(sessionUser.id);
+      if (!freshUser) {
+        return res.status(401).json({ error: "Session invalid - user not found" });
+      }
+
+      if (freshUser.role === "admin") {
+        const validatedData = adminUpdateUserSchema.parse(req.body);
+        
+        const updates: Partial<User> = { ...validatedData };
+        if (updates.password) {
+          const bcrypt = await import("bcrypt");
+          updates.password = await bcrypt.hash(updates.password, 10);
+        }
+        
+        const user = await storage.updateUser(targetUserId, updates);
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+        
+        const { password, ...userWithoutPassword } = user;
+        return res.json(userWithoutPassword);
+      }
+
+      if (freshUser.id !== targetUserId) {
+        return res.status(403).json({ error: "You can only update your own profile" });
+      }
+
+      const validatedData = updateProfileSchema.parse(req.body);
+      const user = await storage.updateUser(freshUser.id, validatedData);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      res.json(user);
+      
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
       res.status(500).json({ error: "Failed to update user" });
     }
   });
