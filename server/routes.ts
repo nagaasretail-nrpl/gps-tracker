@@ -3,6 +3,8 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation, setEventBroadcaster } from "./geofence-monitor";
+import { authRoutes } from "./auth-routes";
+import { requireAuth, requireAdmin } from "./auth";
 import {
   insertVehicleSchema,
   insertLocationSchema,
@@ -16,8 +18,11 @@ import {
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Vehicles
-  app.get("/api/vehicles", async (req, res) => {
+  // Authentication routes (public)
+  app.use("/api/auth", authRoutes);
+
+  // Vehicles (protected routes)
+  app.get("/api/vehicles", requireAuth, async (req, res) => {
     try {
       const vehicles = await storage.getVehicles();
       res.json(vehicles);
@@ -26,7 +31,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/vehicles/:id", async (req, res) => {
+  app.get("/api/vehicles/:id", requireAuth, async (req, res) => {
     try {
       const vehicle = await storage.getVehicle(req.params.id);
       if (!vehicle) {
@@ -38,7 +43,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/vehicles", async (req, res) => {
+  app.post("/api/vehicles", requireAdmin, async (req, res) => {
     try {
       const validatedData = insertVehicleSchema.parse(req.body);
       const vehicle = await storage.createVehicle(validatedData);
@@ -48,7 +53,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/vehicles/:id", async (req, res) => {
+  app.patch("/api/vehicles/:id", requireAdmin, async (req, res) => {
     try {
       const vehicle = await storage.updateVehicle(req.params.id, req.body);
       if (!vehicle) {
@@ -60,7 +65,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/vehicles/:id", async (req, res) => {
+  app.delete("/api/vehicles/:id", requireAdmin, async (req, res) => {
     try {
       const deleted = await storage.deleteVehicle(req.params.id);
       if (!deleted) {
@@ -72,8 +77,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Locations
-  app.get("/api/locations", async (req, res) => {
+  // Locations (protected routes)
+  app.get("/api/locations", requireAuth, async (req, res) => {
     try {
       const { vehicleId, activityId, startDate, endDate } = req.query;
       const locations = await storage.getLocations(
@@ -88,7 +93,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/locations/latest", async (req, res) => {
+  app.get("/api/locations/latest", requireAuth, async (req, res) => {
     try {
       const locations = await storage.getLatestLocations();
       res.json(locations);
@@ -97,7 +102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/locations/history", async (req, res) => {
+  app.get("/api/locations/history", requireAuth, async (req, res) => {
     try {
       const { vehicleId, startDate, endDate } = req.query;
       if (!vehicleId || !startDate || !endDate) {
@@ -114,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/locations", async (req, res) => {
+  app.post("/api/locations", requireAuth, async (req, res) => {
     try {
       const validatedData = insertLocationSchema.parse(req.body);
       const location = await storage.createLocation(validatedData);
@@ -139,8 +144,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Geofences
-  app.get("/api/geofences", async (req, res) => {
+  // Geofences (protected routes)
+  app.get("/api/geofences", requireAuth, async (req, res) => {
     try {
       const geofences = await storage.getGeofences();
       res.json(geofences);
@@ -149,7 +154,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/geofences", async (req, res) => {
+  app.post("/api/geofences", requireAdmin, async (req, res) => {
     try {
       const validatedData = insertGeofenceSchema.parse(req.body);
       const geofence = await storage.createGeofence(validatedData);
@@ -159,7 +164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/geofences/:id", async (req, res) => {
+  app.delete("/api/geofences/:id", requireAdmin, async (req, res) => {
     try {
       const deleted = await storage.deleteGeofence(req.params.id);
       if (!deleted) {
@@ -171,8 +176,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Routes
-  app.get("/api/routes", async (req, res) => {
+  // Routes (protected routes)
+  app.get("/api/routes", requireAuth, async (req, res) => {
     try {
       const routes = await storage.getRoutes();
       res.json(routes);
@@ -181,7 +186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/routes", async (req, res) => {
+  app.post("/api/routes", requireAuth, async (req, res) => {
     try {
       const validatedData = insertRouteSchema.parse(req.body);
       const route = await storage.createRoute(validatedData);
@@ -191,7 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/routes/:id", async (req, res) => {
+  app.delete("/api/routes/:id", requireAuth, async (req, res) => {
     try {
       const deleted = await storage.deleteRoute(req.params.id);
       if (!deleted) {
@@ -203,8 +208,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POIs
-  app.get("/api/pois", async (req, res) => {
+  // POIs (protected routes)
+  app.get("/api/pois", requireAuth, async (req, res) => {
     try {
       const pois = await storage.getPois();
       res.json(pois);
@@ -213,7 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/pois", async (req, res) => {
+  app.post("/api/pois", requireAuth, async (req, res) => {
     try {
       const validatedData = insertPoiSchema.parse(req.body);
       const poi = await storage.createPoi(validatedData);
@@ -223,7 +228,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/pois/:id", async (req, res) => {
+  app.delete("/api/pois/:id", requireAuth, async (req, res) => {
     try {
       const deleted = await storage.deletePoi(req.params.id);
       if (!deleted) {
@@ -235,8 +240,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Events
-  app.get("/api/events", async (req, res) => {
+  // Events (protected routes)
+  app.get("/api/events", requireAuth, async (req, res) => {
     try {
       const { vehicleId, startDate, endDate } = req.query;
       const events = await storage.getEvents(
@@ -250,7 +255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/events", async (req, res) => {
+  app.post("/api/events", requireAuth, async (req, res) => {
     try {
       const validatedData = insertEventSchema.parse(req.body);
       const event = await storage.createEvent(validatedData);
@@ -260,8 +265,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Trips
-  app.get("/api/trips", async (req, res) => {
+  // Trips (protected routes)
+  app.get("/api/trips", requireAuth, async (req, res) => {
     try {
       const { vehicleId, startDate, endDate } = req.query;
       const trips = await storage.getTrips(
@@ -275,7 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/trips", async (req, res) => {
+  app.post("/api/trips", requireAuth, async (req, res) => {
     try {
       const validatedData = insertTripSchema.parse(req.body);
       const trip = await storage.createTrip(validatedData);
@@ -285,8 +290,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Users (Personal Tracking)
-  app.get("/api/users", async (req, res) => {
+  // Users (Admin only)
+  app.get("/api/users", requireAdmin, async (req, res) => {
     try {
       const users = await storage.getUsers();
       res.json(users);
@@ -295,7 +300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/users/:id", async (req, res) => {
+  app.get("/api/users/:id", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser(req.params.id);
       if (!user) {
@@ -307,7 +312,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/users", async (req, res) => {
+  app.post("/api/users", requireAdmin, async (req, res) => {
     try {
       const validatedData = insertUserSchema.parse(req.body);
       const user = await storage.createUser(validatedData);
@@ -317,7 +322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/users/:id", async (req, res) => {
+  app.patch("/api/users/:id", requireAuth, async (req, res) => {
     try {
       const user = await storage.updateUser(req.params.id, req.body);
       if (!user) {
@@ -329,7 +334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/users/:id", async (req, res) => {
+  app.delete("/api/users/:id", requireAdmin, async (req, res) => {
     try {
       const deleted = await storage.deleteUser(req.params.id);
       if (!deleted) {
@@ -341,8 +346,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Activities (Personal Tracking)
-  app.get("/api/activities", async (req, res) => {
+  // Activities (protected routes - Personal Tracking)
+  app.get("/api/activities", requireAuth, async (req, res) => {
     try {
       const { userId, startDate, endDate } = req.query;
       const activities = await storage.getActivities(
@@ -356,7 +361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/activities/current", async (req, res) => {
+  app.get("/api/activities/current", requireAuth, async (req, res) => {
     try {
       const { userId } = req.query;
       if (!userId) {
@@ -369,7 +374,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/activities/:id", async (req, res) => {
+  app.get("/api/activities/:id", requireAuth, async (req, res) => {
     try {
       const activity = await storage.getActivity(req.params.id);
       if (!activity) {
@@ -381,7 +386,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/activities", async (req, res) => {
+  app.post("/api/activities", requireAuth, async (req, res) => {
     try {
       const validatedData = insertActivitySchema.parse(req.body);
       const activity = await storage.createActivity(validatedData);
@@ -391,7 +396,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/activities/:id", async (req, res) => {
+  app.patch("/api/activities/:id", requireAuth, async (req, res) => {
     try {
       const activity = await storage.updateActivity(req.params.id, req.body);
       if (!activity) {
@@ -403,7 +408,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/activities/:id", async (req, res) => {
+  app.delete("/api/activities/:id", requireAuth, async (req, res) => {
     try {
       const deleted = await storage.deleteActivity(req.params.id);
       if (!deleted) {
@@ -415,7 +420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/activities/:id/locations", async (req, res) => {
+  app.get("/api/activities/:id/locations", requireAuth, async (req, res) => {
     try {
       const locations = await storage.getActivityLocationHistory(req.params.id);
       res.json(locations);

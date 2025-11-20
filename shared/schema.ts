@@ -3,23 +3,41 @@ import { pgTable, text, varchar, decimal, timestamp, integer, jsonb, boolean } f
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// User profiles (for personal tracking mode)
+// User profiles (for personal tracking mode + authentication)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
-  email: text("email").unique(),
+  email: text("email").unique().notNull(),
+  password: text("password").notNull(), // bcrypt hashed password
+  role: text("role").notNull().default("user"), // user, admin
   avatar: text("avatar"),
   preferences: jsonb("preferences"), // units, map type, etc
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Schema for creating new users (signup)
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
 });
 
+// Schema for signup requests (includes plain password before hashing)
+export const signupSchema = insertUserSchema.omit({
+  password: true,
+}).extend({
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+// Schema for login requests
+export const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type SignupInput = z.infer<typeof signupSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
 
 // Activities table (for personal tracking: hikes, runs, bike rides, etc.)
 export const activities = pgTable("activities", {
