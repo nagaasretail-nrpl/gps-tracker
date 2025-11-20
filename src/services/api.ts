@@ -1,9 +1,11 @@
-import type { Vehicle, Location, Geofence, Route, Poi, Event, Trip } from '../../shared/schema';
+import type { Vehicle, Location, Geofence, Route, Poi, Event, Trip, User } from '../../shared/schema';
 
-// API base URL - update this for your environment
-// For mobile development, use your computer's local IP address (e.g., 192.168.1.100)
-// NOT localhost, as the mobile device runs in a separate network context
-const API_BASE_URL = 'http://localhost:5000/api'; // Change to your local IP for mobile testing
+// API base URL - configured for Replit backend
+// This is your live Replit server URL
+const API_BASE_URL = 'https://4869a092-e3cd-4bee-bb16-14d4f7e6f9b6-00-hyqpud9sy9dl.kirk.replit.dev/api';
+
+// Authentication token storage (you'll need to implement AsyncStorage for production)
+let authToken: string | null = null;
 
 class ApiService {
   private async request<T>(
@@ -15,13 +17,18 @@ class ApiService {
     try {
       const response = await fetch(url, {
         ...options,
+        credentials: 'include', // Include cookies for session authentication
         headers: {
           'Content-Type': 'application/json',
+          ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
           ...options?.headers,
         },
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication required - please login');
+        }
         throw new Error(`API Error: ${response.statusText}`);
       }
 
@@ -30,6 +37,53 @@ class ApiService {
       console.error('API Request failed:', error);
       throw error;
     }
+  }
+
+  // Authentication methods
+  async login(email: string, password: string): Promise<User> {
+    const response = await fetch(`${API_BASE_URL.replace('/api', '')}/api/auth/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Login failed - check your credentials');
+    }
+
+    return await response.json();
+  }
+
+  async signup(email: string, password: string, name: string): Promise<User> {
+    const response = await fetch(`${API_BASE_URL.replace('/api', '')}/api/auth/signup`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password, name }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Signup failed');
+    }
+
+    return await response.json();
+  }
+
+  async logout(): Promise<void> {
+    await fetch(`${API_BASE_URL.replace('/api', '')}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    authToken = null;
+  }
+
+  async getCurrentUser(): Promise<User> {
+    return this.request<User>('/auth/me');
   }
 
   // Vehicles
