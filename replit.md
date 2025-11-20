@@ -105,6 +105,14 @@ Built as a React Native mobile app (Android/iOS) with an Express.js backend and 
 - ✅ Automatic event generation (geofence entry/exit, speed violations)
 - ✅ Event broadcasting via WebSocket
 - ✅ Demo data seeding
+- ✅ **Secure Authentication & Authorization:**
+  - Passport.js with local strategy (email/password)
+  - Bcrypt password hashing (10 salt rounds)
+  - Session-based authentication with PostgreSQL storage
+  - Role-based access control (user/admin)
+  - Fresh privilege verification on every admin request
+  - Protected API routes with requireAuth/requireAdmin middleware
+  - Secure user signup, login, logout endpoints
 
 ## Development Workflow
 
