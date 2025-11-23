@@ -8,6 +8,8 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
+import { LogOut } from "lucide-react";
 import Login from "@/pages/login";
 import Tracking from "@/pages/tracking";
 import History from "@/pages/history";
@@ -70,7 +72,7 @@ function App() {
     };
 
     checkAuth();
-  }, []);
+  }, [location]);
 
   if (isLoading) {
     return (
@@ -99,7 +101,24 @@ function App() {
                 <div className="flex flex-col flex-1 relative">
                   <header className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between h-14 px-4 bg-transparent">
                     <SidebarTrigger data-testid="button-sidebar-toggle" className="hover-elevate" />
-                    <ThemeToggle />
+                    <div className="flex items-center gap-2">
+                      <ThemeToggle />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={async () => {
+                          await fetch("/api/auth/logout", {
+                            method: "POST",
+                            credentials: "include",
+                          });
+                          setIsAuthenticated(false);
+                        }}
+                        data-testid="button-logout"
+                        title="Logout"
+                      >
+                        <LogOut className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </header>
                   <main className="flex-1 overflow-auto">
                     <Router isAuthenticated={isAuthenticated} />
