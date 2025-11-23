@@ -71,8 +71,8 @@ export default function Tracking() {
   const isLoading = vehiclesLoading || locationsLoading;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
-      <div className="w-80 border-r bg-card">
+    <div className="flex h-screen w-full relative">
+      <div className="absolute left-4 top-20 w-80 border rounded-md bg-card z-10 shadow-lg max-h-[calc(100vh-8rem)] overflow-hidden">
         <div className="p-4 border-b">
           <h2 className="text-lg font-semibold mb-4">Vehicles</h2>
           <div className="relative">
@@ -87,7 +87,7 @@ export default function Tracking() {
           </div>
         </div>
 
-        <ScrollArea className="h-[calc(100vh-12rem)]">
+        <ScrollArea className="h-[calc(100%-4rem)]">
           {isLoading ? (
             <div className="p-4 space-y-3">
               {[1, 2, 3, 4].map(i => (
@@ -145,14 +145,14 @@ export default function Tracking() {
         </ScrollArea>
       </div>
 
-      <div className="flex-1 relative">
+      <div className="absolute inset-0">
         {isLoading ? (
           <Skeleton className="h-full w-full" />
         ) : (
           <MapComponent
             vehicles={vehicles}
             locations={latestLocations}
-            className="h-full"
+            className="h-full w-full"
             onVehicleClick={setSelectedVehicle}
           />
         )}
