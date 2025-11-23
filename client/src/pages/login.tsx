@@ -25,16 +25,22 @@ export default function Login() {
         body: JSON.stringify({ email, password }),
       });
 
-      if (!response.ok) {
-        throw new Error("Login failed");
+      const data = await response.json();
+      
+      if (!response.ok || !data.user) {
+        throw new Error(data.error || "Login failed");
       }
 
       toast({ description: "Logged in successfully!" });
-      setLocation("/");
+      
+      // Force page reload to refresh auth state
+      window.location.href = "/";
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Invalid email or password";
+      console.error("Login error:", errorMsg);
       toast({ 
         variant: "destructive",
-        description: "Invalid email or password" 
+        description: errorMsg
       });
     } finally {
       setIsLoading(false);
