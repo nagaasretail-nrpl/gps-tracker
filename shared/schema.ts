@@ -9,8 +9,11 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").unique().notNull(),
   password: text("password").notNull(), // bcrypt hashed password
-  role: text("role").notNull().default("user"), // user, admin
+  role: text("role").notNull().default("user"), // user, admin, subuser
+  parentUserId: varchar("parent_user_id"), // for subusers - links to parent user
   avatar: text("avatar"),
+  phone: text("phone"),
+  department: text("department"),
   preferences: jsonb("preferences"), // units, map type, etc
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -46,7 +49,9 @@ export const updateProfileSchema = z.object({
 // Schema for admin updating any user (includes sensitive fields)
 export const adminUpdateUserSchema = updateProfileSchema.extend({
   email: z.string().email().optional(),
-  role: z.enum(["user", "admin"]).optional(),
+  role: z.enum(["user", "admin", "subuser"]).optional(),
+  phone: z.string().optional(),
+  department: z.string().optional(),
   password: z.string().min(8, "Password must be at least 8 characters").optional(),
 });
 
