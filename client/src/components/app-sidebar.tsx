@@ -11,7 +11,10 @@ import {
   Activity,
   Play,
   TrendingUp,
-  Navigation
+  Navigation,
+  User,
+  Users,
+  LogOut
 } from "lucide-react";
 import {
   Sidebar,
@@ -92,6 +95,22 @@ const fleetMenuItems = [
   },
 ];
 
+const adminMenuItems = [
+  {
+    title: "User Management",
+    url: "/admin-users",
+    icon: Users,
+  },
+];
+
+const userMenuItems = [
+  {
+    title: "My Profile",
+    url: "/profile",
+    icon: User,
+  },
+];
+
 export function AppSidebar() {
   const [location] = useLocation();
 
@@ -132,6 +151,50 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {fleetMenuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton 
+                    asChild 
+                    isActive={location === item.url}
+                    data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Account</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {userMenuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton 
+                    asChild 
+                    isActive={location === item.url}
+                    data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Administration</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {adminMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton 
                     asChild 

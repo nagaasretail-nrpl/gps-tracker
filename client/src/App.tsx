@@ -20,6 +20,8 @@ import TrackActivity from "@/pages/track";
 import Activities from "@/pages/activities";
 import Statistics from "@/pages/stats";
 import Trips from "@/pages/trips";
+import Profile from "@/pages/profile";
+import AdminUsers from "@/pages/admin-users";
 import NotFound from "@/pages/not-found";
 
 function Router({ isAuthenticated }: { isAuthenticated: boolean }) {
@@ -41,6 +43,8 @@ function Router({ isAuthenticated }: { isAuthenticated: boolean }) {
       <Route path="/pois" component={Pois} />
       <Route path="/reports" component={Reports} />
       <Route path="/vehicles" component={Vehicles} />
+      <Route path="/profile" component={Profile} />
+      <Route path="/admin-users" component={AdminUsers} />
       <Route component={NotFound} />
     </Switch>
   );

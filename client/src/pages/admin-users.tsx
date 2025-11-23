@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { Trash2, Plus, User } from "lucide-react";
+import { Trash2, Plus, User as UserIcon } from "lucide-react";
 import type { User } from "@shared/schema";
 
 export default function AdminUsers() {
@@ -146,7 +146,7 @@ export default function AdminUsers() {
             <Card key={user.id} className="hover-elevate">
               <CardContent className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3 flex-1">
-                  <User className="h-5 w-5 text-muted-foreground" />
+                  <UserIcon className="h-5 w-5 text-muted-foreground" />
                   <div className="flex-1">
                     <h3 className="font-medium">{user.name}</h3>
                     <p className="text-sm text-muted-foreground">{user.email}</p>
