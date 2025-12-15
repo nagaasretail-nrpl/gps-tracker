@@ -2,8 +2,9 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { registerRoutes } from "./routes";
-import { setupAuth } from "./auth";
+import { setupAuth, hashPassword } from "./auth";
 import { setupVite, serveStatic, log } from "./vite";
+import { storage } from "./storage";
 
 const app = express();
 const MemoryStore = createMemoryStore(session);
@@ -71,6 +72,25 @@ app.use((req, res, next) => {
 
 (async () => {
   const server = await registerRoutes(app);
+
+  // Seed default test user if it doesn't exist
+  try {
+    const existingTestUser = await storage.getUserByEmail("test@example.com");
+    if (!existingTestUser) {
+      const hashedPassword = await hashPassword("password123");
+      await storage.createUser({
+        name: "Test User",
+        email: "test@example.com",
+        password: hashedPassword,
+        role: "user",
+        avatar: null,
+        preferences: {},
+      });
+      log("Created default test user: test@example.com / password123");
+    }
+  } catch (error) {
+    log("Error seeding test user: " + (error instanceof Error ? error.message : "Unknown error"));
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
