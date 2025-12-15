@@ -73,23 +73,38 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
-  // Seed default test user if it doesn't exist
+  // Seed demo users if they don't exist
   try {
-    const existingTestUser = await storage.getUserByEmail("test@example.com");
-    if (!existingTestUser) {
-      const hashedPassword = await hashPassword("password123");
-      await storage.createUser({
-        name: "Test User",
-        email: "test@example.com",
-        password: hashedPassword,
-        role: "user",
-        avatar: null,
-        preferences: {},
-      });
-      log("Created default test user: test@example.com / password123");
+    log("Seeding demo users...");
+    const demoUsers = [
+      { email: "admin@gps.com", password: "admin123", name: "Admin User", role: "admin" as const },
+      { email: "user@gps.com", password: "user123", name: "Regular User", role: "user" as const },
+      { email: "test@example.com", password: "password123", name: "Test User", role: "user" as const },
+    ];
+
+    for (const demoUser of demoUsers) {
+      try {
+        const existing = await storage.getUserByEmail(demoUser.email);
+        if (!existing) {
+          const hashedPassword = await hashPassword(demoUser.password);
+          await storage.createUser({
+            name: demoUser.name,
+            email: demoUser.email,
+            password: hashedPassword,
+            role: demoUser.role,
+            avatar: null,
+            preferences: {},
+          });
+          log(`✓ Created: ${demoUser.email} / ${demoUser.password}`);
+        } else {
+          log(`✓ Already exists: ${demoUser.email}`);
+        }
+      } catch (userError) {
+        log(`✗ Failed to create ${demoUser.email}: ${userError instanceof Error ? userError.message : "Unknown error"}`);
+      }
     }
   } catch (error) {
-    log("Error seeding test user: " + (error instanceof Error ? error.message : "Unknown error"));
+    log("Error in user seeding: " + (error instanceof Error ? error.message : "Unknown error"));
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
