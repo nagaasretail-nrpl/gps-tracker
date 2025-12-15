@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,40 +6,46 @@ import { useToast } from "@/hooks/use-toast";
 import { MapPin } from "lucide-react";
 
 export default function Login() {
-  const [, setLocation] = useLocation();
-  const [email, setEmail] = useState("user@gps.com");
-  const [password, setPassword] = useState("user123");
+  const [email, setEmail] = useState("admin@gps.com");
+  const [password, setPassword] = useState("admin123");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!email.trim() || !password.trim()) {
+      toast({ 
+        variant: "destructive",
+        description: "Email and password are required" 
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/login", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password: password.trim() }),
       });
 
-      const data = await response.json();
-      
-      if (!response.ok || !data.user) {
-        throw new Error(data.error || "Login failed");
+      if (res.ok) {
+        toast({ description: "Logged in successfully!" });
+        window.location.href = "/";
+      } else {
+        const err = await res.json();
+        toast({ 
+          variant: "destructive",
+          description: err.error || "Login failed"
+        });
       }
-
-      toast({ description: "Logged in successfully!" });
-      
-      // Force page reload to refresh auth state
-      window.location.href = "/";
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Invalid email or password";
-      console.error("Login error:", errorMsg);
       toast({ 
         variant: "destructive",
-        description: errorMsg
+        description: "Network error - please try again"
       });
     } finally {
       setIsLoading(false);
