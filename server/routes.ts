@@ -25,6 +25,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes (public)
   app.use("/api/auth", authRoutes);
 
+  // Public device data ingestion endpoint (no session auth — uses deviceId as identifier)
+  app.post("/api/device/location", async (req, res) => {
+    try {
+      const schema = z.object({
+        deviceId: z.string().min(1),
+        latitude: z.number(),
+        longitude: z.number(),
+        speed: z.number().optional().default(0),
+        altitude: z.number().optional().nullable(),
+        accuracy: z.number().optional().nullable(),
+        timestamp: z.string().optional(),
+      });
+
+      const data = schema.parse(req.body);
+      const vehicle = await storage.getVehicleByDeviceId(data.deviceId);
+
+      if (!vehicle) {
+        return res.status(404).json({ error: "Device not registered. Add the vehicle in the app first." });
+      }
+
+      const location = await storage.createLocation({
+        vehicleId: vehicle.id,
+        latitude: String(data.latitude),
+        longitude: String(data.longitude),
+        speed: String(data.speed ?? 0),
+        altitude: data.altitude != null ? String(data.altitude) : null,
+        accuracy: data.accuracy != null ? String(data.accuracy) : null,
+        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+        activityId: null,
+      });
+
+      const speed = data.speed ?? 0;
+      const status = speed > 5 ? "active" : "stopped";
+      await storage.updateVehicle(vehicle.id, { status });
+
+      checkGeofences(location).catch(err => console.error("Geofence check error:", err));
+      checkSpeedViolation(location).catch(err => console.error("Speed check error:", err));
+      broadcastLocation(location);
+
+      res.status(201).json({ ok: true, vehicleId: vehicle.id, status });
+    } catch (error) {
+      console.error("Device location error:", error);
+      res.status(400).json({ error: "Invalid data", details: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   // Vehicles (protected routes)
   app.get("/api/vehicles", requireAuth, async (req, res) => {
     try {

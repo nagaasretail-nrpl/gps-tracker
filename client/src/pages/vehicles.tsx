@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Edit } from "lucide-react";
+import { Plus, Trash2, Copy, Check } from "lucide-react";
 import type { Vehicle, InsertVehicle } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -55,7 +55,18 @@ const iconColors = [
 
 export default function Vehicles() {
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const serverUrl = window.location.origin;
+
+  const copyUrl = (vehicleDeviceId: string, cardId: string) => {
+    const url = `${serverUrl}/api/device/location`;
+    navigator.clipboard.writeText(url);
+    setCopiedId(cardId);
+    toast({ description: "Endpoint URL copied to clipboard" });
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const { data: vehicles, isLoading } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
@@ -301,10 +312,29 @@ export default function Vehicles() {
                     <span className="text-muted-foreground">Type: </span>
                     <span className="font-medium capitalize">{vehicle.type}</span>
                   </div>
-                  <div className="flex gap-2 pt-2">
+
+                  <div className="pt-2 rounded-md bg-muted p-3 space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">GPS Device Setup</p>
+                    <p className="text-xs text-muted-foreground">Configure your tracker to POST to:</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs break-all flex-1">{serverUrl}/api/device/location</code>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => copyUrl(vehicle.deviceId, vehicle.id)}
+                        data-testid={`button-copy-url-${vehicle.id}`}
+                        title="Copy endpoint URL"
+                      >
+                        {copiedId === vehicle.id ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Body: <code className="text-xs">{"{ deviceId, latitude, longitude, speed }"}</code></p>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
                     <Button
                       variant="destructive"
-                      size="sm"
+                      size="icon"
                       onClick={() => deleteMutation.mutate(vehicle.id)}
                       disabled={deleteMutation.isPending}
                       data-testid={`button-delete-${vehicle.id}`}
