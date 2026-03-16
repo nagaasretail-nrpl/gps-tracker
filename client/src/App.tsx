@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route } from "wouter";
 import { useState, useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -55,7 +55,6 @@ function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean;
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [location] = useLocation();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -72,7 +71,7 @@ function App() {
     };
 
     checkAuth();
-  }, [location]);
+  }, []);
 
   if (isLoading) {
     return (

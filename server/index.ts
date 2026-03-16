@@ -1,13 +1,17 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
+import pg from "pg";
 import { registerRoutes } from "./routes";
 import { setupAuth, hashPassword } from "./auth";
 import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
 
 const app = express();
-const MemoryStore = createMemoryStore(session);
+app.set("trust proxy", 1);
+
+const PgSession = connectPgSimple(session);
+const pgPool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 declare module 'http' {
   interface IncomingMessage {
@@ -31,9 +35,11 @@ app.use(
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     },
-    store: new MemoryStore({
-      checkPeriod: 86400000, // prune expired entries every 24h
+    store: new PgSession({
+      pool: pgPool,
+      createTableIfMissing: true,
     }),
   })
 );
