@@ -5,7 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { MapPin } from "lucide-react";
 
-export default function Login() {
+interface LoginProps {
+  onLoginSuccess: () => void;
+}
+
+export default function Login({ onLoginSuccess }: LoginProps) {
   const [email, setEmail] = useState("admin@gps.com");
   const [password, setPassword] = useState("admin123");
   const [isLoading, setIsLoading] = useState(false);
@@ -34,7 +38,7 @@ export default function Login() {
 
       if (res.ok) {
         toast({ description: "Logged in successfully!" });
-        window.location.href = "/";
+        onLoginSuccess();
       } else {
         const err = await res.json();
         toast({ 

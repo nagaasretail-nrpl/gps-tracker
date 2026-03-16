@@ -26,9 +26,9 @@ import Profile from "@/pages/profile";
 import AdminUsers from "@/pages/admin-users";
 import NotFound from "@/pages/not-found";
 
-function Router({ isAuthenticated }: { isAuthenticated: boolean }) {
+function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean; onLoginSuccess: () => void }) {
   if (!isAuthenticated) {
-    return <Login />;
+    return <Login onLoginSuccess={onLoginSuccess} />;
   }
 
   return (
@@ -121,13 +121,16 @@ function App() {
                     </div>
                   </header>
                   <main className="flex-1 overflow-auto">
-                    <Router isAuthenticated={isAuthenticated} />
+                    <Router isAuthenticated={isAuthenticated} onLoginSuccess={() => setIsAuthenticated(true)} />
                   </main>
                 </div>
               </div>
             </SidebarProvider>
           ) : (
-            <Router isAuthenticated={isAuthenticated} />
+            <Router isAuthenticated={isAuthenticated} onLoginSuccess={() => {
+              queryClient.invalidateQueries();
+              setIsAuthenticated(true);
+            }} />
           )}
           <Toaster />
         </ThemeProvider>
