@@ -37,13 +37,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
-waitForPort = 3000
-
-[workflows.workflow.metadata]
-outputType = "webview"
+waitForPort = 5000
 
 [agent]
 integrations = ["javascript_websocket:1.0.0", "javascript_mem_db:1.0.0"]
@@ -51,4 +51,4 @@ integrations = ["javascript_websocket:1.0.0", "javascript_mem_db:1.0.0"]
 [userenv]
 
 [userenv.shared]
-PORT = "3000"
+PORT = "5000"
