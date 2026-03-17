@@ -22,9 +22,17 @@ import {
   type User,
 } from "@shared/schema";
 
+// In-memory log of unrecognised device IDs (last 20 attempts)
+const unknownDeviceLog: { deviceId: string; lat: number; lng: number; speed: number; seenAt: string }[] = [];
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes (public)
   app.use("/api/auth", authRoutes);
+
+  // Return recent unknown device IDs — useful for diagnosing IMEI mismatches
+  app.get("/api/device/unknown", requireAuth, (_req, res) => {
+    res.json(unknownDeviceLog);
+  });
 
   // Public device data ingestion endpoint (no session auth — uses deviceId as identifier)
   app.post("/api/device/location", async (req, res) => {
@@ -40,10 +48,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const data = schema.parse(req.body);
+      console.log(`[device] Incoming location — deviceId: "${data.deviceId}", lat: ${data.latitude}, lng: ${data.longitude}, speed: ${data.speed}`);
       const vehicle = await storage.getVehicleByDeviceId(data.deviceId);
 
       if (!vehicle) {
-        return res.status(404).json({ error: "Device not registered. Add the vehicle in the app first." });
+        console.log(`[device] No vehicle found with deviceId: "${data.deviceId}"`);
+        // Record for diagnostic display in the UI
+        const existing = unknownDeviceLog.findIndex(e => e.deviceId === data.deviceId);
+        const entry = { deviceId: data.deviceId, lat: data.latitude, lng: data.longitude, speed: data.speed ?? 0, seenAt: new Date().toISOString() };
+        if (existing >= 0) unknownDeviceLog[existing] = entry;
+        else unknownDeviceLog.unshift(entry);
+        if (unknownDeviceLog.length > 20) unknownDeviceLog.pop();
+        return res.status(404).json({ error: "Device not registered. Add the vehicle in the app first.", receivedDeviceId: data.deviceId });
       }
 
       const location = await storage.createDeviceLocation(

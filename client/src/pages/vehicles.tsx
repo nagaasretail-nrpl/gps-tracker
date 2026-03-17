@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Copy, Check, Radio, Globe } from "lucide-react";
+import { Plus, Trash2, Copy, Check, Radio, Globe, Signal, AlertCircle, Pencil } from "lucide-react";
 import type { Vehicle, InsertVehicle } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +55,9 @@ const iconColors = [
 
 export default function Vehicles() {
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDeviceId, setEditDeviceId] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedGt06Id, setCopiedGt06Id] = useState<string | null>(null);
   const { toast } = useToast();
@@ -81,6 +84,12 @@ export default function Vehicles() {
 
   const { data: vehicles, isLoading } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
+  });
+
+  type UnknownDevice = { deviceId: string; lat: number; lng: number; speed: number; seenAt: string };
+  const { data: unknownDevices } = useQuery<UnknownDevice[]>({
+    queryKey: ["/api/device/unknown"],
+    refetchInterval: 10_000,
   });
 
   const form = useForm<InsertVehicle>({
@@ -136,6 +145,26 @@ export default function Vehicles() {
     },
   });
 
+  const editMutation = useMutation({
+    mutationFn: async ({ id, name, deviceId }: { id: string; name: string; deviceId: string }) => {
+      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
+      setEditingVehicle(null);
+      toast({ title: "Vehicle updated", description: "Device ID saved successfully." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update vehicle.", variant: "destructive" });
+    },
+  });
+
+  const openEdit = (v: Vehicle) => {
+    setEditingVehicle(v);
+    setEditName(v.name);
+    setEditDeviceId(v.deviceId);
+  };
+
   const onSubmit = (data: InsertVehicle) => {
     addMutation.mutate(data);
   };
@@ -151,6 +180,11 @@ export default function Vehicles() {
       default:
         return "outline";
     }
+  };
+
+  const useDeviceId = (deviceId: string) => {
+    form.setValue("deviceId", deviceId);
+    setIsAddOpen(true);
   };
 
   return (
@@ -289,6 +323,91 @@ export default function Vehicles() {
         </Dialog>
       </div>
 
+      {/* Edit Vehicle Dialog */}
+      <Dialog open={!!editingVehicle} onOpenChange={(open) => { if (!open) setEditingVehicle(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Vehicle</DialogTitle>
+            <DialogDescription>Update the vehicle name or Device ID (IMEI).</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <Label htmlFor="edit-name">Vehicle Name</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                data-testid="input-edit-vehicle-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-device-id">Device ID (IMEI)</Label>
+              <Input
+                id="edit-device-id"
+                value={editDeviceId}
+                onChange={e => setEditDeviceId(e.target.value)}
+                placeholder="15-digit IMEI"
+                data-testid="input-edit-device-id"
+              />
+              <p className="text-xs text-muted-foreground">Must exactly match the tracker's IMEI.</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditingVehicle(null)}>Cancel</Button>
+              <Button
+                disabled={editMutation.isPending || !editName.trim() || !editDeviceId.trim()}
+                onClick={() => editingVehicle && editMutation.mutate({ id: editingVehicle.id, name: editName.trim(), deviceId: editDeviceId.trim() })}
+                data-testid="button-save-edit-vehicle"
+              >
+                {editMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {unknownDevices && unknownDevices.length > 0 && (
+        <Card className="border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardHeader className="pb-2 flex flex-row items-center gap-2 flex-wrap">
+            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <CardTitle className="text-sm text-amber-700 dark:text-amber-400">
+              Unregistered device signals received
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-3">
+            <p>
+              The following Device IDs sent location data but could not be matched to any vehicle.
+              If one of these is your tracker's IMEI, update your vehicle's Device ID to match it exactly.
+            </p>
+            {unknownDevices.map((d) => (
+              <div
+                key={d.deviceId}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 bg-background"
+                data-testid={`row-unknown-device-${d.deviceId}`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Signal className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span className="font-mono font-semibold text-foreground" data-testid={`text-unknown-imei-${d.deviceId}`}>{d.deviceId}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-muted-foreground">
+                    {d.lat.toFixed(5)}, {d.lng.toFixed(5)} · {d.speed} km/h
+                  </span>
+                  <span className="text-muted-foreground">{new Date(d.seenAt).toLocaleTimeString()}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => useDeviceId(d.deviceId)}
+                    data-testid={`button-use-device-id-${d.deviceId}`}
+                  >
+                    Use this ID
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => (
@@ -376,6 +495,15 @@ export default function Vehicles() {
                   </div>
 
                   <div className="flex gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => openEdit(vehicle)}
+                      data-testid={`button-edit-${vehicle.id}`}
+                      title="Edit vehicle"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
                     <Button
                       variant="destructive"
                       size="icon"
