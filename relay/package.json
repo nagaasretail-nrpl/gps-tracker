@@ -1,0 +1,12 @@
+{
+  "name": "gt06n-relay",
+  "version": "1.0.0",
+  "description": "GT06N binary TCP relay — forwards location to GPS Fleet Tracker HTTP API",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
