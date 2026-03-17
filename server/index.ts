@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { setupAuth, hashPassword } from "./auth";
 import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
+import { startGT06Server } from "./gt06-server";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -78,6 +79,9 @@ app.use((req, res, next) => {
 
 (async () => {
   const server = await registerRoutes(app);
+
+  // Start GT06 binary TCP server (GT06N GPS tracker protocol)
+  startGT06Server();
 
   // Seed demo users if they don't exist
   try {

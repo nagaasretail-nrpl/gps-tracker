@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Copy, Check } from "lucide-react";
+import { Plus, Trash2, Copy, Check, Radio, Globe } from "lucide-react";
 import type { Vehicle, InsertVehicle } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -56,16 +56,27 @@ const iconColors = [
 export default function Vehicles() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedGt06Id, setCopiedGt06Id] = useState<string | null>(null);
   const { toast } = useToast();
 
   const serverUrl = window.location.origin;
+  const serverHost = window.location.hostname;
+  const gt06Port = 5023;
 
   const copyUrl = (vehicleDeviceId: string, cardId: string) => {
     const url = `${serverUrl}/api/device/location`;
     navigator.clipboard.writeText(url);
     setCopiedId(cardId);
-    toast({ description: "Endpoint URL copied to clipboard" });
+    toast({ description: "HTTP endpoint URL copied to clipboard" });
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const copyGt06Cmd = (vehicleDeviceId: string, cardId: string) => {
+    const cmd = `SERVER,1,${serverHost},${gt06Port}#`;
+    navigator.clipboard.writeText(cmd);
+    setCopiedGt06Id(cardId);
+    toast({ description: "GT06N SMS command copied to clipboard" });
+    setTimeout(() => setCopiedGt06Id(null), 2000);
   };
 
   const { data: vehicles, isLoading } = useQuery<Vehicle[]>({
@@ -313,22 +324,55 @@ export default function Vehicles() {
                     <span className="font-medium capitalize">{vehicle.type}</span>
                   </div>
 
-                  <div className="pt-2 rounded-md bg-muted p-3 space-y-1">
+                  <div className="pt-2 rounded-md bg-muted p-3 space-y-3">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">GPS Device Setup</p>
-                    <p className="text-xs text-muted-foreground">Configure your tracker to POST to:</p>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs break-all flex-1">{serverUrl}/api/device/location</code>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => copyUrl(vehicle.deviceId, vehicle.id)}
-                        data-testid={`button-copy-url-${vehicle.id}`}
-                        title="Copy endpoint URL"
-                      >
-                        {copiedId === vehicle.id ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                      </Button>
+
+                    {/* GT06N / Binary TCP section */}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Radio className="h-3 w-3 text-muted-foreground" />
+                        <p className="text-xs font-medium">GT06N (Binary TCP)</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Set IMEI = <code className="text-xs">{vehicle.deviceId}</code> in fleet, then send this SMS to your device:
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs break-all flex-1 bg-background rounded px-1.5 py-0.5">SERVER,1,{serverHost},{gt06Port}#</code>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => copyGt06Cmd(vehicle.deviceId, vehicle.id)}
+                          data-testid={`button-copy-gt06-${vehicle.id}`}
+                          title="Copy GT06N SMS command"
+                        >
+                          {copiedGt06Id === vehicle.id ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        TCP port <strong>{gt06Port}</strong> · Device IMEI must match the Device ID above
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Body: <code className="text-xs">{"{ deviceId, latitude, longitude, speed }"}</code></p>
+
+                    {/* HTTP section */}
+                    <div className="space-y-1 border-t pt-2">
+                      <div className="flex items-center gap-1.5">
+                        <Globe className="h-3 w-3 text-muted-foreground" />
+                        <p className="text-xs font-medium">HTTP JSON (other trackers)</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs break-all flex-1 bg-background rounded px-1.5 py-0.5">{serverUrl}/api/device/location</code>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => copyUrl(vehicle.deviceId, vehicle.id)}
+                          data-testid={`button-copy-url-${vehicle.id}`}
+                          title="Copy HTTP endpoint URL"
+                        >
+                          {copiedId === vehicle.id ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">POST · Body: <code className="text-xs">{"{ deviceId, latitude, longitude, speed }"}</code></p>
+                    </div>
                   </div>
 
                   <div className="flex gap-2 pt-1">

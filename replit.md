@@ -20,7 +20,8 @@ A **GPS fleet management web application** for real-time vehicle tracking, geofe
 - **ORM:** Drizzle ORM with drizzle-zod validation
 - **Real-time:** WebSocket server (ws) broadcasting location updates
 - **Auth:** Session-based auth with `express-session` + `connect-pg-simple`
-- **Port:** 5000
+- **HTTP Port:** 5000
+- **GT06N TCP Port:** 5023 (GT06 binary protocol — for GT06N/Concox GPS trackers)
 
 ### Shared Types
 - `shared/schema.ts` — Drizzle table definitions + Zod insert schemas + TypeScript types
@@ -36,7 +37,30 @@ A **GPS fleet management web application** for real-time vehicle tracking, geofe
 
 ## Device Data Ingestion
 
-GPS hardware devices can send location data directly to the app **without session auth** using the device's ID (IMEI):
+### GT06N / Concox Binary TCP Protocol (port 5023)
+
+The GT06N GPS tracker uses the **GT06 binary TCP protocol**. The server listens on **TCP port 5023**.
+
+**Setup steps:**
+1. Register the vehicle in the fleet with the GT06N's **IMEI** as the Device ID.
+2. Send this SMS to the GT06N to point it at the server:
+   ```
+   SERVER,1,<your-server-hostname>,5023#
+   ```
+3. Set the APN for your SIM card: `APN,<apn-name>#`
+4. The Vehicles page shows a pre-built SMS command with the current server host.
+
+**Protocol summary (server/gt06-server.ts):**
+- `0x01` Login packet → server ACKs and maps IMEI → vehicle
+- `0x12` Location packet → stores lat/lng/speed, broadcasts WebSocket update
+- `0x13` Heartbeat → server ACKs
+- `0x16` Alarm → server ACKs and logs
+
+The GT06 port can be overridden with the `GT06_PORT` environment variable.
+
+### HTTP JSON Endpoint (other trackers)
+
+GPS hardware devices can also send location data directly via HTTP:
 
 ```
 POST /api/device/location
@@ -55,6 +79,7 @@ Content-Type: application/json
 
 - Vehicle status updates to `"active"` when speed > 5 km/h, `"stopped"` when speed ≤ 5
 - Returns 404 if the `deviceId` doesn't match any registered vehicle
+- **Note:** Standard Replit deployments only expose HTTP (port 5000). For the GT06N TCP server (port 5023) to be reachable from the internet, the app must be deployed on infrastructure that exposes arbitrary TCP ports (e.g., a VPS or Replit custom deployment).
 
 ## Demo Credentials
 - Admin: `admin@gps.com` / `admin123`
@@ -73,12 +98,14 @@ Content-Type: application/json
 │   └── public/sw.js          # Service worker (PWA caching)
 │
 ├── server/                   # Express backend
-│   ├── index.ts              # Express setup, session, WebSocket
+│   ├── index.ts              # Express setup, session, starts GT06 TCP server
 │   ├── routes.ts             # All API routes (+ public device endpoint)
 │   ├── auth-routes.ts        # Login/logout/register
 │   ├── auth.ts               # requireAuth / requireAdmin middleware
 │   ├── storage.ts            # IStorage interface + DbStorage (Drizzle)
 │   ├── db.ts                 # Neon + Drizzle client
+│   ├── gt06-server.ts        # GT06N binary TCP server (port 5023)
+│   ├── broadcaster.ts        # Shared WebSocket broadcast helper (GT06 → WS clients)
 │   └── geofence-monitor.ts   # Geofence entry/exit detection
 │
 └── shared/
