@@ -45,16 +45,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Device not registered. Add the vehicle in the app first." });
       }
 
-      const location = await storage.createLocation({
-        vehicleId: vehicle.id,
-        latitude: String(data.latitude),
-        longitude: String(data.longitude),
-        speed: String(data.speed ?? 0),
-        altitude: data.altitude != null ? String(data.altitude) : null,
-        accuracy: data.accuracy != null ? String(data.accuracy) : null,
-        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
-        activityId: null,
-      });
+      const location = await storage.createDeviceLocation(
+        vehicle.id,
+        data.latitude,
+        data.longitude,
+        data.speed ?? 0,
+        data.altitude ?? null,
+        data.accuracy ?? null,
+        data.timestamp ? new Date(data.timestamp) : new Date()
+      );
 
       const speed = data.speed ?? 0;
       const status = speed > 5 ? "active" : "stopped";

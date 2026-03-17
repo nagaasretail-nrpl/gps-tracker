@@ -28,7 +28,7 @@ import {
   activities,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
-import { db } from "./db";
+import { db, neonSql } from "./db";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
@@ -63,6 +63,7 @@ export interface IStorage {
   getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]>;
   getActivityLocationHistory(activityId: string): Promise<Location[]>;
   createLocation(location: InsertLocation): Promise<Location>;
+  createDeviceLocation(vehicleId: string, lat: number, lng: number, speed: number, altitude: number | null, accuracy: number | null, timestamp: Date): Promise<Location>;
 
   // Geofences
   getGeofences(): Promise<Geofence[]>;
@@ -196,8 +197,10 @@ export class DbStorage implements IStorage {
   }
 
   async getVehicleByDeviceId(deviceId: string): Promise<Vehicle | undefined> {
-    const result = await db.select().from(vehicles).where(eq(vehicles.deviceId, deviceId)).limit(1);
-    return result[0];
+    // Neon HTTP driver crashes on parameterized queries that return 0 rows.
+    // Fetch all vehicles (typically a small list) and filter in-memory instead.
+    const all = await db.select().from(vehicles);
+    return all.find(v => v.deviceId === deviceId);
   }
 
   async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> {
@@ -267,6 +270,37 @@ export class DbStorage implements IStorage {
     
     const result = await db.insert(locations).values(insertLocation).returning();
     return result[0];
+  }
+
+  async createDeviceLocation(vehicleId: string, lat: number, lng: number, speed: number, altitude: number | null, accuracy: number | null, timestamp: Date): Promise<Location> {
+    // Neon HTTP driver converts JS null to '' for numeric columns in parameterized queries.
+    // Use template literal form and only include optional columns when they have values.
+    // RETURNING also fails on Neon HTTP, so we construct the result from inputs.
+    const ts = timestamp.toISOString();
+
+    if (altitude !== null && accuracy !== null) {
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, accuracy, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${accuracy}, ${ts})`;
+    } else if (altitude !== null) {
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${ts})`;
+    } else if (accuracy !== null) {
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, accuracy, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${accuracy}, ${ts})`;
+    } else {
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${ts})`;
+    }
+
+    return {
+      id: "",
+      vehicleId,
+      activityId: null,
+      latitude: String(lat),
+      longitude: String(lng),
+      altitude: altitude !== null ? String(altitude) : null,
+      speed: String(speed),
+      heading: null,
+      address: null,
+      accuracy: accuracy !== null ? String(accuracy) : null,
+      timestamp,
+    } as Location;
   }
   
   async getActivityLocationHistory(activityId: string): Promise<Location[]> {
