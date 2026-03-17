@@ -33,10 +33,17 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      // COOKIE_SECURE=false lets the VPS serve over plain HTTP while still
+      // running NODE_ENV=production (so static files are served correctly).
+      // After adding HTTPS/certbot, set COOKIE_SECURE=true.
+      secure: process.env.COOKIE_SECURE === "false"
+        ? false
+        : process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      sameSite: (process.env.COOKIE_SECURE === "false" || process.env.NODE_ENV !== "production")
+        ? "lax"
+        : "none",
     },
     store: new PgSession({
       pool: pgPool,
