@@ -1,0 +1,156 @@
+Linux instance-20260317-174819 6.1.0-43-cloud-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.162-1 (2026-02-08) x86_64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Tue Mar 17 18:11:56 2026 from 35.235.244.32
+nagaasretail@instance-20260317-174819:~$ bash /opt/gps-tracker/deploy/deploy.sh
+=== GPS Fleet Tracker — Deploy ===
+
+Enter DATABASE_URL (Neon PostgreSQL connection string): postgresql://neondb_owner:npg_CTNyg8bwr2fm@ep-wild-dust-aheeqlmt.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require      
+Generating a random SESSION_SECRET...
+SESSION_SECRET = 614a743260022983496808d052142babe57e9b80580e1bf0ee2199896dc6ced1
+(Save this value — you will need it if you redeploy manually)
+[1/6] Pulling latest code...
+Already up to date.
+[2/6] Installing dependencies...
+npm WARN deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+npm WARN deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+
+added 489 packages, and audited 490 packages in 25s
+
+65 packages are looking for funding
+  run `npm fund` for details
+
+5 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+[3/6] Building application (frontend + backend)...
+
+> rest-express@1.0.0 build
+> vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+
+vite v5.4.21 building for production...
+transforming (4) src/App.tsx^C
+nagaasretail@instance-20260317-174819:~$ bash /opt/gps-tracker/deploy/deploy.sh
+=== GPS Fleet Tracker — Deploy ===
+
+Enter DATABASE_URL (Neon PostgreSQL connection string): postgresql://neondb_owner:npg_CTNyg8bwr2fm@ep-wild-dust-aheeqlmt.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require
+Generating a random SESSION_SECRET...
+SESSION_SECRET = 092ea2605d0cca747fde549bab77ef85cdf0efd87c222b26258aad0363881a55
+(Save this value — you will need it if you redeploy manually)
+[1/6] Pulling latest code...
+Already up to date.
+[2/6] Installing dependencies...
+npm WARN deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+npm WARN deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+
+added 489 packages, and audited 490 packages in 3m
+
+65 packages are looking for funding
+  run `npm fund` for details
+
+5 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+[3/6] Building application (frontend + backend)...
+
+> rest-express@1.0.0 build
+> vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+
+vite v5.4.21 building for production...
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 3479 modules transformed.
+../dist/public/assets/manifest-_qTNIP1g.json      1.89 kB │ gzip:   0.56 kB
+../dist/public/index.html                         3.48 kB │ gzip:   1.29 kB
+../dist/public/assets/index-CwM0rv3s.css         75.04 kB │ gzip:  12.30 kB
+../dist/public/assets/index-BtNHGzX_.js       1,029.87 kB │ gzip: 292.97 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 10m 6s
+
+  dist/index.js  59.1kb
+
+⚡ Done in 268ms
+[4/6] Writing .env file...
+.env written to /opt/gps-tracker/.env
+[5/6] Starting application with PM2...
+
+                        -------------
+
+__/\\\\\\\\\\\\\____/\\\\____________/\\\\____/\\\\\\\\\_____
+ _\/\\\/////////\\\_\/\\\\\\________/\\\\\\__/\\\///////\\\___
+  _\/\\\_______\/\\\_\/\\\//\\\____/\\\//\\\_\///______\//\\\__
+   _\/\\\\\\\\\\\\\/__\/\\\\///\\\/\\\/_\/\\\___________/\\\/___
+    _\/\\\/////////____\/\\\__\///\\\/___\/\\\________/\\\//_____
+     _\/\\\_____________\/\\\____\///_____\/\\\_____/\\\//________
+      _\/\\\_____________\/\\\_____________\/\\\___/\\\/___________
+       _\/\\\_____________\/\\\_____________\/\\\__/\\\\\\\\\\\\\\\_
+        _\///______________\///______________\///__\///////////////__
+
+
+                          Runtime Edition
+
+        PM2 is a Production Process Manager for Node.js applications
+                     with a built-in Load Balancer.
+
+                Start and Daemonize any application:
+                $ pm2 start app.js
+
+                Load Balance 4 instances of api.js:
+                $ pm2 start api.js -i 4
+
+                Monitor in production:
+                $ pm2 monitor
+
+                Make pm2 auto-boot at server restart:
+                $ pm2 startup
+
+                To go further checkout:
+                http://pm2.io/
+
+
+                        -------------
+
+[PM2] Spawning PM2 daemon with pm2_home=/home/nagaasretail/.pm2
+[PM2] PM2 Successfully daemonized
+[PM2][WARN] Applications gps-tracker not running, starting...
+[PM2] App [gps-tracker] launched (1 instances)
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ gps-tracker    │ default     │ 1.0.0   │ cluster │ 112680   │ 3s     │ 0    │ online    │ 0%       │ 48.6mb   │ nag… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /home/nagaasretail/.pm2/dump.pm2
+[6/6] Configuring PM2 to restart on system reboot...
+nagaasretail@instance-20260317-174819:~$ ^C
+nagaasretail@instance-20260317-174819:~$ sudo bash /opt/gps-tracker/deploy/nginx-install.sh
+Installing nginx configuration...
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+
+✅ Nginx configured!
+Web app: http://136.113.191.205
+
+To add HTTPS (free SSL certificate):
+  sudo apt-get install -y certbot python3-certbot-nginx
+  sudo certbot --nginx -d yourdomain.com
+
+After HTTPS is set up, edit /opt/gps-tracker/.env and set:
+  COOKIE_SECURE=true
+Then restart: pm2 restart gps-tracker
+nagaasretail@instance-20260317-174819:~$ 
