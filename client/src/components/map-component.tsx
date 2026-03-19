@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type { Vehicle, Location, Geofence, Route as RouteType, Poi } from "@shared/schema";
 import { Button } from "@/components/ui/button";
-import { ZoomIn, ZoomOut, Locate, Layers } from "lucide-react";
+import { ZoomIn, ZoomOut, Locate, Layers, MapPinOff } from "lucide-react";
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface RoutePolyline {
   vehicleId: string;
@@ -25,7 +27,12 @@ interface MapComponentProps {
   focusVehicleId?: string | null;
 }
 
-function computeBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function computeBearing(
+  lat1: number, lon1: number,
+  lat2: number, lon2: number
+): number {
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const lat1Rad = (lat1 * Math.PI) / 180;
   const lat2Rad = (lat2 * Math.PI) / 180;
@@ -35,6 +42,42 @@ function computeBearing(lat1: number, lon1: number, lat2: number, lon2: number):
     Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
+
+// ── Script loader (singleton, works even if component remounts) ────────────
+
+let _loadPromise: Promise<void> | null = null;
+let _loadedKey: string | null = null;
+
+function loadGoogleMapsScript(apiKey: string): Promise<void> {
+  const g = (window as any).google;
+  if (g?.maps?.Map) return Promise.resolve();
+
+  // If already loading with same key, reuse
+  if (_loadPromise && _loadedKey === apiKey) return _loadPromise;
+
+  _loadedKey = apiKey;
+  _loadPromise = new Promise<void>((resolve, reject) => {
+    const callbackName = `__gmaps_${Date.now()}`;
+    (window as any)[callbackName] = () => {
+      delete (window as any)[callbackName];
+      resolve();
+    };
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=${callbackName}`;
+    script.async = true;
+    script.onerror = () => {
+      _loadPromise = null;
+      reject(new Error("Failed to load Google Maps script"));
+    };
+    document.head.appendChild(script);
+  });
+
+  return _loadPromise;
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
+
+type MapStatus = "loading" | "no-key" | "ready" | "error";
 
 export function MapComponent({
   vehicles = [],
@@ -53,56 +96,135 @@ export function MapComponent({
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
+  const overlaysRef = useRef<any[]>([]);
+  const openInfoWindowRef = useRef<any>(null);
+  const clickListenerRef = useRef<any>(null);
   const hasFittedRef = useRef(false);
+  const [status, setStatus] = useState<MapStatus>("loading");
   const [mapType, setMapType] = useState<"streets" | "satellite">("streets");
 
+  // ── 1. Load Google Maps API key and initialize map ──────────────────────
+
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
-    const L = (window as any).L;
-    if (!L) return;
+    let cancelled = false;
 
-    const map = L.map(mapRef.current).setView(center, zoom);
+    async function init() {
+      try {
+        // Fetch API key from backend settings
+        const res = await fetch("/api/settings/public");
+        if (!res.ok) throw new Error("Failed to fetch settings");
+        const settings = await res.json() as { googleMapsKey?: string };
+        const apiKey = settings.googleMapsKey;
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
-      maxZoom: 19,
-    }).addTo(map);
+        if (!apiKey || apiKey.trim() === "") {
+          if (!cancelled) setStatus("no-key");
+          return;
+        }
+
+        await loadGoogleMapsScript(apiKey);
+        if (cancelled || !mapRef.current) return;
+
+        const google = (window as any).google;
+
+        const map = new google.maps.Map(mapRef.current, {
+          center: { lat: center[0], lng: center[1] },
+          zoom,
+          mapTypeId: "roadmap",
+          disableDefaultUI: true, // we use our own controls
+          gestureHandling: "greedy",
+          styles: [
+            // Subtle style tweaks — keep it clean
+            { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+          ],
+        });
+
+        mapInstanceRef.current = map;
+
+        if (!cancelled) setStatus("ready");
+
+        return () => {
+          // cleanup handled by mapInstanceRef
+        };
+      } catch (err) {
+        if (!cancelled) setStatus("error");
+      }
+    }
+
+    init();
+
+    return () => {
+      cancelled = true;
+      // Remove map instance on unmount
+      mapInstanceRef.current = null;
+      hasFittedRef.current = false;
+    };
+  }, []); // only run once on mount
+
+  // ── 2. Attach/detach map click listener when onMapClick changes ─────────
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || status !== "ready") return;
+    const google = (window as any).google;
+
+    // Remove old listener
+    if (clickListenerRef.current) {
+      google.maps.event.removeListener(clickListenerRef.current);
+      clickListenerRef.current = null;
+    }
 
     if (onMapClick) {
-      map.on("click", (e: any) => {
-        onMapClick(e.latlng.lat, e.latlng.lng);
+      clickListenerRef.current = map.addListener("click", (e: any) => {
+        onMapClick(e.latLng.lat(), e.latLng.lng());
       });
     }
 
-    mapInstanceRef.current = map;
-
     return () => {
-      map.remove();
-      mapInstanceRef.current = null;
+      if (clickListenerRef.current) {
+        google.maps.event.removeListener(clickListenerRef.current);
+        clickListenerRef.current = null;
+      }
     };
-  }, []);
+  }, [onMapClick, status]);
 
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    const L = (window as any).L;
-    if (!L) return;
+  // ── 3. Render all overlays (markers, polylines, polygons) ───────────────
 
-    markersRef.current.forEach((layer) => layer.remove());
-    markersRef.current = [];
+  const renderOverlays = useCallback(() => {
+    const map = mapInstanceRef.current;
+    if (!map || status !== "ready") return;
+    const google = (window as any).google;
+
+    // Clear previous overlays
+    overlaysRef.current.forEach((o) => {
+      if (typeof o.setMap === "function") o.setMap(null);
+      if (typeof o.close === "function") o.close();
+    });
+    overlaysRef.current = [];
+
+    if (openInfoWindowRef.current) {
+      openInfoWindowRef.current.close();
+      openInfoWindowRef.current = null;
+    }
 
     const vehicleMarkers: any[] = [];
+    const boundsForFit = new google.maps.LatLngBounds();
+    let hasBoundsPoints = false;
 
-    routePolylines.forEach(({ vehicleId, coords, color }) => {
+    // ── Route polylines (vehicle history trails) ──────────────────────────
+    routePolylines.forEach(({ coords, color }) => {
       if (coords.length < 2) return;
-      const polyline = L.polyline(coords, {
-        color: color || "#3b82f6",
-        weight: 3,
-        opacity: 0.75,
-      }).addTo(mapInstanceRef.current);
-      markersRef.current.push(polyline);
+      const path = coords.map(([lat, lng]) => ({ lat, lng }));
+      const poly = new google.maps.Polyline({
+        path,
+        map,
+        strokeColor: color ?? "#3b82f6",
+        strokeWeight: 3,
+        strokeOpacity: 0.75,
+      });
+      overlaysRef.current.push(poly);
     });
 
+    // ── Vehicle location markers ──────────────────────────────────────────
     locations.forEach((location) => {
       const vehicle = vehicles.find((v) => v.id === location.vehicleId);
       if (!vehicle) return;
@@ -111,11 +233,11 @@ export function MapComponent({
       const lng = parseFloat(String(location.longitude));
       if (isNaN(lat) || isNaN(lng)) return;
 
-      const speed = parseFloat(String(location.speed || "0"));
+      const speed = parseFloat(String(location.speed ?? "0"));
       const isMoving = speed > 2;
+      const markerColor = isMoving ? "#22c55e" : (vehicle.iconColor ?? "#2563eb");
 
-      let heading = parseFloat(String(location.heading || "0")) || 0;
-
+      let heading = parseFloat(String(location.heading ?? "0")) || 0;
       if (!heading) {
         const bCoords = location.vehicleId ? bearingData[location.vehicleId] : undefined;
         if (bCoords && bCoords.length >= 2) {
@@ -132,179 +254,331 @@ export function MapComponent({
         }
       }
 
-      const icon = L.divIcon({
-        className: "custom-vehicle-marker",
-        html: `
-          <div style="transform: rotate(${heading}deg); display:flex; align-items:center; justify-content:center; width:32px; height:32px;">
-            <svg width="28" height="28" viewBox="0 0 32 32" fill="${isMoving ? "#22c55e" : vehicle.iconColor || "#2563eb"}">
-              <path d="M16 2 L10 28 L16 22 L22 28 Z" stroke="white" stroke-width="1.5"/>
-            </svg>
-          </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+      const marker = new google.maps.Marker({
+        position: { lat, lng },
+        map,
+        title: vehicle.name,
+        icon: {
+          // Arrow SVG encoded as data URL
+          url: `data:image/svg+xml,${encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+              <g transform="rotate(${heading}, 16, 16)">
+                <path d="M16 2 L10 28 L16 22 L22 28 Z" fill="${markerColor}" stroke="white" stroke-width="1.5"/>
+              </g>
+            </svg>`
+          )}`,
+          anchor: new google.maps.Point(16, 16),
+          size: new google.maps.Size(32, 32),
+          scaledSize: new google.maps.Size(32, 32),
+        },
       });
 
-      const marker = L.marker([lat, lng], { icon })
-        .addTo(mapInstanceRef.current)
-        .bindPopup(`
-          <div style="min-width: 200px;">
-            <h3 style="font-weight: 600; margin-bottom: 8px;">${vehicle.name}</h3>
-            <p style="margin: 4px 0;"><strong>Speed:</strong> ${speed.toFixed(0)} km/h</p>
-            <p style="margin: 4px 0;"><strong>Status:</strong> ${vehicle.status}</p>
-            <p style="margin: 4px 0;"><strong>Coords:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
-            <p style="margin: 4px 0;"><strong>Heading:</strong> ${heading.toFixed(0)}&deg;</p>
-            <p style="margin: 4px 0;"><strong>Location:</strong> ${location.address || "Unknown"}</p>
-            <p style="margin: 4px 0; font-size: 12px; color: #666;">Last update: ${new Date(location.timestamp).toLocaleString()}</p>
-          </div>
-        `);
+      const infoContent = `
+        <div style="min-width:200px;font-family:sans-serif;font-size:13px;">
+          <p style="font-weight:600;margin:0 0 6px">${vehicle.name}</p>
+          <p style="margin:3px 0"><b>Speed:</b> ${speed.toFixed(0)} km/h</p>
+          <p style="margin:3px 0"><b>Status:</b> ${vehicle.status}</p>
+          <p style="margin:3px 0"><b>Coords:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
+          <p style="margin:3px 0"><b>Heading:</b> ${heading.toFixed(0)}&deg;</p>
+          <p style="margin:3px 0"><b>Location:</b> ${location.address ?? "Unknown"}</p>
+          <p style="margin:3px 0;font-size:11px;color:#666;">Last update: ${new Date(location.timestamp).toLocaleString()}</p>
+        </div>
+      `;
+      const infoWindow = new google.maps.InfoWindow({ content: infoContent });
 
-      if (onVehicleClick) {
-        marker.on("click", () => onVehicleClick(vehicle.id));
-      }
+      marker.addListener("click", () => {
+        if (openInfoWindowRef.current) openInfoWindowRef.current.close();
+        infoWindow.open(map, marker);
+        openInfoWindowRef.current = infoWindow;
+        if (onVehicleClick) onVehicleClick(vehicle.id);
+      });
 
-      markersRef.current.push(marker);
+      overlaysRef.current.push(marker);
+      overlaysRef.current.push(infoWindow);
       vehicleMarkers.push(marker);
+
+      boundsForFit.extend({ lat, lng });
+      hasBoundsPoints = true;
     });
 
+    // Initial fit to vehicle markers (only once)
     if (vehicleMarkers.length > 0 && !hasFittedRef.current) {
-      const group = L.featureGroup(vehicleMarkers);
-      mapInstanceRef.current.fitBounds(group.getBounds(), {
-        padding: [60, 60],
-        maxZoom: 14,
-      });
+      if (vehicleMarkers.length === 1) {
+        map.setCenter(boundsForFit.getCenter());
+        map.setZoom(14);
+      } else {
+        map.fitBounds(boundsForFit);
+        // Don't zoom in too much
+        const listener = map.addListener("idle", () => {
+          if (map.getZoom() > 15) map.setZoom(15);
+          google.maps.event.removeListener(listener);
+        });
+      }
       hasFittedRef.current = true;
     }
 
+    // ── Geofence polygons ─────────────────────────────────────────────────
     geofences.forEach((geofence) => {
       if (geofence.type === "polygon") {
-        const coords = geofence.coordinates as any;
-        if (Array.isArray(coords)) {
-          const polygon = L.polygon(coords, {
-            color: geofence.color || "#10b981",
-            fillOpacity: 0.2,
-          })
-            .addTo(mapInstanceRef.current)
-            .bindPopup(`
-              <div>
-                <h3 style="font-weight: 600;">${geofence.name}</h3>
-                <p>${geofence.description || ""}</p>
-              </div>
-            `);
-          markersRef.current.push(polygon);
-        }
-      }
-    });
+        const coords = geofence.coordinates as unknown as [number, number][];
+        if (!Array.isArray(coords) || coords.length < 3) return;
 
-    routes.forEach((route) => {
-      const coords = route.coordinates as any;
-      if (Array.isArray(coords)) {
-        const polyline = L.polyline(coords, {
-          color: route.color || "#3b82f6",
-          weight: 3,
-        })
-          .addTo(mapInstanceRef.current)
-          .bindPopup(`
-            <div>
-              <h3 style="font-weight: 600;">${route.name}</h3>
-              <p>${route.description || ""}</p>
-            </div>
-          `);
-        markersRef.current.push(polyline);
-      }
-    });
+        const path = coords.map(([lat, lng]) => ({ lat, lng }));
+        const color = geofence.color ?? "#10b981";
 
-    pois.forEach((poi) => {
-      const marker = L.marker([parseFloat(poi.latitude), parseFloat(poi.longitude)])
-        .addTo(mapInstanceRef.current)
-        .bindPopup(`
-          <div>
-            <h3 style="font-weight: 600;">${poi.name}</h3>
-            <p>${poi.description || ""}</p>
-            ${poi.category ? `<p><strong>Category:</strong> ${poi.category}</p>` : ""}
+        const polygon = new google.maps.Polygon({
+          paths: path,
+          map,
+          strokeColor: color,
+          strokeWeight: 2,
+          strokeOpacity: 0.8,
+          fillColor: color,
+          fillOpacity: 0.2,
+        });
+
+        const centroid = {
+          lat: coords.reduce((s, c) => s + c[0], 0) / coords.length,
+          lng: coords.reduce((s, c) => s + c[1], 0) / coords.length,
+        };
+
+        const infoContent = `
+          <div style="font-family:sans-serif;font-size:13px;">
+            <p style="font-weight:600;margin:0 0 4px">${geofence.name}</p>
+            ${geofence.description ? `<p style="margin:0;color:#666;">${geofence.description}</p>` : ""}
           </div>
-        `);
-      markersRef.current.push(marker);
+        `;
+        const infoWindow = new google.maps.InfoWindow({ content: infoContent, position: centroid });
+
+        polygon.addListener("click", () => {
+          if (openInfoWindowRef.current) openInfoWindowRef.current.close();
+          infoWindow.open(map);
+          openInfoWindowRef.current = infoWindow;
+        });
+
+        overlaysRef.current.push(polygon);
+        overlaysRef.current.push(infoWindow);
+      }
     });
-  }, [vehicles, locations, geofences, routes, pois, routePolylines, bearingData]);
+
+    // ── Route polylines (named routes, not vehicle history) ───────────────
+    routes.forEach((route) => {
+      const coords = route.coordinates as unknown as [number, number][];
+      if (!Array.isArray(coords) || coords.length < 2) return;
+
+      const path = coords.map(([lat, lng]) => ({ lat, lng }));
+      const color = route.color ?? "#3b82f6";
+
+      const poly = new google.maps.Polyline({
+        path,
+        map,
+        strokeColor: color,
+        strokeWeight: 3,
+        strokeOpacity: 0.85,
+      });
+
+      const infoContent = `
+        <div style="font-family:sans-serif;font-size:13px;">
+          <p style="font-weight:600;margin:0 0 4px">${route.name}</p>
+          ${route.description ? `<p style="margin:0;color:#666;">${route.description}</p>` : ""}
+        </div>
+      `;
+      const infoWindow = new google.maps.InfoWindow({ content: infoContent });
+
+      poly.addListener("click", (e: any) => {
+        if (openInfoWindowRef.current) openInfoWindowRef.current.close();
+        infoWindow.setPosition(e.latLng);
+        infoWindow.open(map);
+        openInfoWindowRef.current = infoWindow;
+      });
+
+      overlaysRef.current.push(poly);
+      overlaysRef.current.push(infoWindow);
+    });
+
+    // ── POI markers ───────────────────────────────────────────────────────
+    pois.forEach((poi) => {
+      const lat = parseFloat(poi.latitude);
+      const lng = parseFloat(poi.longitude);
+      if (isNaN(lat) || isNaN(lng)) return;
+
+      const marker = new google.maps.Marker({
+        position: { lat, lng },
+        map,
+        title: poi.name,
+        icon: {
+          url: `data:image/svg+xml,${encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24">
+              <circle cx="12" cy="10" r="5" fill="#f59e0b" stroke="white" stroke-width="1.5"/>
+              <path d="M12 24 L7 14 Q12 16 17 14 Z" fill="#f59e0b" stroke="white" stroke-width="1"/>
+            </svg>`
+          )}`,
+          anchor: new google.maps.Point(14, 24),
+          size: new google.maps.Size(28, 28),
+          scaledSize: new google.maps.Size(28, 28),
+        },
+      });
+
+      const infoContent = `
+        <div style="font-family:sans-serif;font-size:13px;">
+          <p style="font-weight:600;margin:0 0 4px">${poi.name}</p>
+          ${poi.description ? `<p style="margin:3px 0;color:#666;">${poi.description}</p>` : ""}
+          ${poi.category ? `<p style="margin:3px 0;"><b>Category:</b> ${poi.category}</p>` : ""}
+        </div>
+      `;
+      const infoWindow = new google.maps.InfoWindow({ content: infoContent });
+
+      marker.addListener("click", () => {
+        if (openInfoWindowRef.current) openInfoWindowRef.current.close();
+        infoWindow.open(map, marker);
+        openInfoWindowRef.current = infoWindow;
+      });
+
+      overlaysRef.current.push(marker);
+      overlaysRef.current.push(infoWindow);
+    });
+  }, [
+    status, vehicles, locations, geofences, routes, pois,
+    routePolylines, bearingData, onVehicleClick,
+  ]);
+
+  // Render overlays whenever data changes
+  useEffect(() => {
+    renderOverlays();
+  }, [renderOverlays]);
+
+  // ── 4. Focus vehicle (pan + zoom) ────────────────────────────────────────
 
   useEffect(() => {
-    if (!focusVehicleId || !mapInstanceRef.current) return;
+    if (!focusVehicleId || !mapInstanceRef.current || status !== "ready") return;
     const loc = locations.find((l) => l.vehicleId === focusVehicleId);
     if (!loc) return;
     const lat = parseFloat(String(loc.latitude));
     const lng = parseFloat(String(loc.longitude));
     if (!isNaN(lat) && !isNaN(lng)) {
-      mapInstanceRef.current.setView([lat, lng], 15, { animate: true });
+      mapInstanceRef.current.panTo({ lat, lng });
+      if (mapInstanceRef.current.getZoom() < 15) {
+        mapInstanceRef.current.setZoom(15);
+      }
     }
-  }, [focusVehicleId, locations]);
+  }, [focusVehicleId, locations, status]);
+
+  // ── 5. Fit bounds to route polylines (history) ───────────────────────────
 
   useEffect(() => {
-    if (!mapInstanceRef.current || focusVehicleId) return;
-    const L = (window as any).L;
-    if (!L) return;
+    if (!mapInstanceRef.current || focusVehicleId || status !== "ready") return;
+    const google = (window as any).google;
+    if (!google?.maps) return;
+
     const allCoords = routePolylines.flatMap((r) => r.coords);
     if (allCoords.length < 2) return;
-    try {
-      const bounds = L.latLngBounds(allCoords);
-      if (bounds.isValid()) {
-        mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true });
-      }
-    } catch (_) {}
-  }, [routePolylines]);
+
+    const bounds = new google.maps.LatLngBounds();
+    allCoords.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+    if (!bounds.isEmpty()) {
+      mapInstanceRef.current.fitBounds(bounds);
+    }
+  }, [routePolylines, focusVehicleId, status]);
+
+  // ── Control handlers ─────────────────────────────────────────────────────
 
   const handleZoomIn = () => {
-    if (mapInstanceRef.current) mapInstanceRef.current.zoomIn();
+    const map = mapInstanceRef.current;
+    if (map) map.setZoom((map.getZoom() ?? 10) + 1);
   };
 
   const handleZoomOut = () => {
-    if (mapInstanceRef.current) mapInstanceRef.current.zoomOut();
+    const map = mapInstanceRef.current;
+    if (map) map.setZoom(Math.max(1, (map.getZoom() ?? 10) - 1));
   };
 
   const handleRecenter = () => {
-    if (mapInstanceRef.current) mapInstanceRef.current.setView(center, zoom);
+    const map = mapInstanceRef.current;
+    if (map) {
+      map.setCenter({ lat: center[0], lng: center[1] });
+      map.setZoom(zoom);
+    }
   };
 
   const toggleMapType = () => {
-    const L = (window as any).L;
-    if (!L || !mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+    if (!map) return;
     setMapType((prev) => {
       const next = prev === "streets" ? "satellite" : "streets";
-      mapInstanceRef.current.eachLayer((layer: any) => {
-        if (layer._url) mapInstanceRef.current.removeLayer(layer);
-      });
-      if (next === "satellite") {
-        L.tileLayer(
-          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-          { attribution: "© Esri", maxZoom: 19 }
-        ).addTo(mapInstanceRef.current);
-      } else {
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: "© OpenStreetMap contributors",
-          maxZoom: 19,
-        }).addTo(mapInstanceRef.current);
-      }
+      map.setMapTypeId(next === "satellite" ? "satellite" : "roadmap");
       return next;
     });
   };
 
+  // ── Render ───────────────────────────────────────────────────────────────
+
   return (
     <div className={`relative ${className}`}>
-      <div ref={mapRef} className="w-full h-full rounded-md" />
-      <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-[1000]">
-        <Button size="icon" variant="secondary" onClick={handleZoomIn} data-testid="button-zoom-in">
-          <ZoomIn className="h-4 w-4" />
-        </Button>
-        <Button size="icon" variant="secondary" onClick={handleZoomOut} data-testid="button-zoom-out">
-          <ZoomOut className="h-4 w-4" />
-        </Button>
-        <Button size="icon" variant="secondary" onClick={handleRecenter} data-testid="button-recenter">
-          <Locate className="h-4 w-4" />
-        </Button>
-        <Button size="icon" variant="secondary" onClick={toggleMapType} data-testid="button-toggle-layer">
-          <Layers className="h-4 w-4" />
-        </Button>
-      </div>
+      {/* Map container — always rendered so ref is attached */}
+      <div
+        ref={mapRef}
+        className="w-full h-full rounded-md"
+        style={{ display: status === "ready" ? "block" : "none" }}
+      />
+
+      {/* Loading state */}
+      {status === "loading" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-md">
+          <div className="text-center">
+            <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Loading map…</p>
+          </div>
+        </div>
+      )}
+
+      {/* No API key */}
+      {status === "no-key" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-md">
+          <div className="text-center max-w-xs px-6">
+            <MapPinOff className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
+            <p className="text-sm font-medium text-foreground mb-1">Google Maps API key not configured</p>
+            <p className="text-xs text-muted-foreground">
+              Go to <span className="font-medium">Admin &rarr; Settings</span> and enter your Google Maps API key to enable the map.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Error state */}
+      {status === "error" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-md">
+          <div className="text-center max-w-xs px-6">
+            <MapPinOff className="h-10 w-10 mx-auto text-destructive/60 mb-3" />
+            <p className="text-sm font-medium text-foreground mb-1">Map failed to load</p>
+            <p className="text-xs text-muted-foreground">
+              Check that your Google Maps API key is valid and has the Maps JavaScript API enabled.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Controls — shown only when map is ready */}
+      {status === "ready" && (
+        <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-[1000]">
+          <Button size="icon" variant="secondary" onClick={handleZoomIn} data-testid="button-zoom-in">
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="secondary" onClick={handleZoomOut} data-testid="button-zoom-out">
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="secondary" onClick={handleRecenter} data-testid="button-recenter">
+            <Locate className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant={mapType === "satellite" ? "default" : "secondary"}
+            onClick={toggleMapType}
+            data-testid="button-toggle-layer"
+            title={mapType === "satellite" ? "Switch to Street view" : "Switch to Satellite view"}
+          >
+            <Layers className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
