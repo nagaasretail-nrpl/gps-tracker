@@ -46,11 +46,9 @@ const vehicleTypes = [
 ];
 
 const iconColors = [
-  { value: "#2563eb", label: "Blue" },
-  { value: "#dc2626", label: "Red" },
-  { value: "#16a34a", label: "Green" },
-  { value: "#ea580c", label: "Orange" },
-  { value: "#9333ea", label: "Purple" },
+  "#2563eb", "#dc2626", "#16a34a", "#ea580c", "#9333ea",
+  "#0891b2", "#db2777", "#ca8a04", "#0d9488", "#64748b",
+  "#f97316", "#7c3aed", "#059669", "#b91c1c", "#1d4ed8",
 ];
 
 export default function Vehicles() {
@@ -58,6 +56,8 @@ export default function Vehicles() {
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [editName, setEditName] = useState("");
   const [editDeviceId, setEditDeviceId] = useState("");
+  const [editIconColor, setEditIconColor] = useState("#2563eb");
+  const [editType, setEditType] = useState("car");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedGt06Id, setCopiedGt06Id] = useState<string | null>(null);
   const { toast } = useToast();
@@ -146,13 +146,13 @@ export default function Vehicles() {
   });
 
   const editMutation = useMutation({
-    mutationFn: async ({ id, name, deviceId }: { id: string; name: string; deviceId: string }) => {
-      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId });
+    mutationFn: async ({ id, name, deviceId, iconColor, type }: { id: string; name: string; deviceId: string; iconColor: string; type: string }) => {
+      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId, iconColor, type });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
       setEditingVehicle(null);
-      toast({ title: "Vehicle updated", description: "Device ID saved successfully." });
+      toast({ title: "Vehicle updated", description: "Changes saved successfully." });
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to update vehicle.", variant: "destructive" });
@@ -163,6 +163,8 @@ export default function Vehicles() {
     setEditingVehicle(v);
     setEditName(v.name);
     setEditDeviceId(v.deviceId);
+    setEditIconColor(v.iconColor || "#2563eb");
+    setEditType(v.type || "car");
   };
 
   const onSubmit = (data: InsertVehicle) => {
@@ -279,26 +281,48 @@ export default function Vehicles() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Icon Color</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-icon-color">
-                            <SelectValue placeholder="Select color" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {iconColors.map((color) => (
-                            <SelectItem key={color.value} value={color.value}>
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-4 h-4 rounded-full"
-                                  style={{ backgroundColor: color.value }}
-                                />
-                                {color.label}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-2">
+                            {iconColors.map((color) => (
+                              <button
+                                key={color}
+                                type="button"
+                                className="w-7 h-7 rounded-full border-2 transition-transform focus:outline-none"
+                                style={{
+                                  backgroundColor: color,
+                                  borderColor: field.value === color ? "white" : "transparent",
+                                  outline: field.value === color ? `2px solid ${color}` : "none",
+                                  transform: field.value === color ? "scale(1.2)" : "scale(1)",
+                                }}
+                                onClick={() => field.onChange(color)}
+                                title={color}
+                                data-testid={`button-add-color-${color.replace("#", "")}`}
+                              />
+                            ))}
+                            <label
+                              className="flex items-center justify-center w-7 h-7 rounded-full border-2 border-dashed border-muted-foreground/50 cursor-pointer hover:border-foreground transition-colors"
+                              title="Custom color"
+                            >
+                              <span className="text-[10px] text-muted-foreground font-bold">+</span>
+                              <input
+                                type="color"
+                                className="sr-only"
+                                value={field.value ?? "#2563eb"}
+                                onChange={e => field.onChange(e.target.value)}
+                                data-testid="input-add-custom-color"
+                              />
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-4 h-4 rounded-full border border-border/50"
+                              style={{ backgroundColor: field.value ?? "#2563eb" }}
+                            />
+                            <span className="text-xs text-muted-foreground font-mono">{field.value}</span>
+                          </div>
+                        </div>
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -328,7 +352,7 @@ export default function Vehicles() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Vehicle</DialogTitle>
-            <DialogDescription>Update the vehicle name or Device ID (IMEI).</DialogDescription>
+            <DialogDescription>Update vehicle details, icon color, and type.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1">
@@ -351,11 +375,76 @@ export default function Vehicles() {
               />
               <p className="text-xs text-muted-foreground">Must exactly match the tracker's IMEI.</p>
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="space-y-2">
+              <Label>Vehicle Type</Label>
+              <div className="flex flex-wrap gap-2">
+                {vehicleTypes.map(vt => (
+                  <Button
+                    key={vt.value}
+                    type="button"
+                    variant={editType === vt.value ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setEditType(vt.value)}
+                    data-testid={`button-edit-type-${vt.value}`}
+                  >
+                    {vt.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Icon Color</Label>
+              <div className="flex flex-wrap gap-2">
+                {iconColors.map(color => (
+                  <button
+                    key={color}
+                    type="button"
+                    className="w-7 h-7 rounded-full border-2 transition-transform focus:outline-none"
+                    style={{
+                      backgroundColor: color,
+                      borderColor: editIconColor === color ? "white" : "transparent",
+                      outline: editIconColor === color ? `2px solid ${color}` : "none",
+                      transform: editIconColor === color ? "scale(1.2)" : "scale(1)",
+                    }}
+                    onClick={() => setEditIconColor(color)}
+                    title={color}
+                    data-testid={`button-edit-color-${color.replace("#", "")}`}
+                  />
+                ))}
+                <label
+                  className="flex items-center justify-center w-7 h-7 rounded-full border-2 border-dashed border-muted-foreground/50 cursor-pointer hover:border-foreground transition-colors"
+                  title="Custom color"
+                  data-testid="label-custom-color"
+                >
+                  <span className="text-[10px] text-muted-foreground font-bold">+</span>
+                  <input
+                    type="color"
+                    className="sr-only"
+                    value={editIconColor}
+                    onChange={e => setEditIconColor(e.target.value)}
+                    data-testid="input-custom-color"
+                  />
+                </label>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <div
+                  className="w-5 h-5 rounded-full border border-border"
+                  style={{ backgroundColor: editIconColor }}
+                />
+                <span className="text-xs text-muted-foreground font-mono">{editIconColor}</span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setEditingVehicle(null)}>Cancel</Button>
               <Button
                 disabled={editMutation.isPending || !editName.trim() || !editDeviceId.trim()}
-                onClick={() => editingVehicle && editMutation.mutate({ id: editingVehicle.id, name: editName.trim(), deviceId: editDeviceId.trim() })}
+                onClick={() => editingVehicle && editMutation.mutate({
+                  id: editingVehicle.id,
+                  name: editName.trim(),
+                  deviceId: editDeviceId.trim(),
+                  iconColor: editIconColor,
+                  type: editType,
+                })}
                 data-testid="button-save-edit-vehicle"
               >
                 {editMutation.isPending ? "Saving…" : "Save"}
@@ -422,7 +511,7 @@ export default function Vehicles() {
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div
-                      className="w-3 h-3 rounded-full"
+                      className="w-5 h-5 rounded-full border border-border/50 shrink-0"
                       style={{ backgroundColor: vehicle.iconColor || "#2563eb" }}
                     />
                     <CardTitle className="text-base">{vehicle.name}</CardTitle>
