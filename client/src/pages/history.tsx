@@ -20,7 +20,9 @@ import {
   SkipBack,
   History as HistoryIcon,
   MapPin,
+  ChevronDown,
   ChevronRight,
+  Navigation,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import type { Vehicle, Location } from "@shared/schema";
@@ -36,6 +38,7 @@ export default function History() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
 
   const { data: vehicles } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
@@ -85,10 +88,12 @@ export default function History() {
   );
 
   useEffect(() => {
-    if (sortedDates.length > 0 && !selectedDate) {
-      setSelectedDate(sortedDates[0]);
+    if (sortedDates.length > 0) {
+      const firstKey = sortedDates[0];
+      setSelectedDate(firstKey);
+      setExpandedDates({ [firstKey]: true });
     }
-  }, [sortedDates]);
+  }, [sortedDates.join(",")]);
 
   useEffect(() => {
     setCurrentIndex(0);
@@ -132,6 +137,17 @@ export default function History() {
     }
   };
 
+  const toggleExpand = (key: string) => {
+    setExpandedDates((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSelectForMap = (key: string) => {
+    setSelectedDate(key);
+    if (!expandedDates[key]) {
+      setExpandedDates((prev) => ({ ...prev, [key]: true }));
+    }
+  };
+
   const canLoad = !!selectedVehicle && !!startDate && !!endDate;
 
   return (
@@ -140,7 +156,14 @@ export default function History() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[160px]">
             <Label htmlFor="vehicle" className="text-xs mb-1 block">Vehicle</Label>
-            <Select value={selectedVehicle} onValueChange={(v) => { setSelectedVehicle(v); setSelectedDate(null); }}>
+            <Select
+              value={selectedVehicle}
+              onValueChange={(v) => {
+                setSelectedVehicle(v);
+                setSelectedDate(null);
+                setExpandedDates({});
+              }}
+            >
               <SelectTrigger id="vehicle" data-testid="select-vehicle" className="h-8 text-sm">
                 <SelectValue placeholder="Select vehicle" />
               </SelectTrigger>
@@ -194,7 +217,11 @@ export default function History() {
 
           <Button
             disabled={!canLoad}
-            onClick={() => { setSelectedDate(null); refetch(); }}
+            onClick={() => {
+              setSelectedDate(null);
+              setExpandedDates({});
+              refetch();
+            }}
             data-testid="button-load-history"
             className="text-sm"
           >
@@ -205,51 +232,82 @@ export default function History() {
 
       <div className="flex flex-1 min-h-0">
         {sortedDates.length > 0 && (
-          <div className="w-56 flex-shrink-0 border-r bg-card flex flex-col">
-            <div className="p-3 border-b">
+          <div className="w-60 flex-shrink-0 border-r bg-card flex flex-col">
+            <div className="px-3 py-2 border-b">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                {sortedDates.length} date{sortedDates.length !== 1 ? "s" : ""}
+                {sortedDates.length} date{sortedDates.length !== 1 ? "s" : ""} found
               </p>
             </div>
             <ScrollArea className="flex-1">
               <div className="p-2 space-y-1">
                 {sortedDates.map((key) => {
                   const group = dateGroups[key];
-                  const isSelected = selectedDate === key;
+                  const isExpanded = !!expandedDates[key];
+                  const isActive = selectedDate === key;
                   return (
-                    <button
+                    <div
                       key={key}
-                      onClick={() => setSelectedDate(key)}
-                      data-testid={`date-group-${key}`}
-                      className={`w-full text-left rounded-md p-2.5 transition-colors hover-elevate ${
-                        isSelected
-                          ? "bg-primary/10 border border-primary/20"
-                          : "border border-transparent"
+                      className={`rounded-md border overflow-hidden ${
+                        isActive ? "border-primary/40" : "border-border"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <CalendarIcon className={`h-3.5 w-3.5 flex-shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
-                          <span className={`text-sm font-medium truncate ${isSelected ? "text-primary" : "text-foreground"}`}>
-                            {formatDateKey(key)}
-                          </span>
+                      <button
+                        onClick={() => toggleExpand(key)}
+                        data-testid={`date-toggle-${key}`}
+                        className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 ${
+                          isActive ? "bg-primary/5" : "bg-card hover-elevate"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <CalendarIcon
+                            className={`h-3.5 w-3.5 flex-shrink-0 ${
+                              isActive ? "text-primary" : "text-muted-foreground"
+                            }`}
+                          />
+                          <div className="min-w-0">
+                            <p
+                              className={`text-sm font-medium truncate ${
+                                isActive ? "text-primary" : "text-foreground"
+                              }`}
+                            >
+                              {formatDateKey(key)}
+                            </p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <MapPin className="h-2.5 w-2.5" />
+                              {group.length} points
+                            </p>
+                          </div>
                         </div>
-                        <ChevronRight className={`h-3 w-3 flex-shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
-                      </div>
-                      <div className="flex items-center gap-1 mt-1">
-                        <MapPin className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">
-                          {group.length} point{group.length !== 1 ? "s" : ""}
-                        </span>
-                        {group.length > 0 && (
-                          <Badge variant="outline" className="text-xs ml-auto">
-                            {format(new Date(group[0].timestamp), "HH:mm")}
-                            {" — "}
-                            {format(new Date(group[group.length - 1].timestamp), "HH:mm")}
-                          </Badge>
+                        {isExpanded ? (
+                          <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                         )}
-                      </div>
-                    </button>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="px-3 pb-3 pt-1 bg-card space-y-2 border-t border-border">
+                          {group.length > 0 && (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <Badge variant="outline" className="text-xs font-normal">
+                                {format(new Date(group[0].timestamp), "HH:mm")}
+                                {" — "}
+                                {format(new Date(group[group.length - 1].timestamp), "HH:mm")}
+                              </Badge>
+                            </div>
+                          )}
+                          <Button
+                            variant={isActive ? "default" : "outline"}
+                            className="w-full text-xs"
+                            onClick={() => handleSelectForMap(key)}
+                            data-testid={`date-view-map-${key}`}
+                          >
+                            <Navigation className="h-3.5 w-3.5 mr-1.5" />
+                            {isActive ? "Viewing Route" : "View Route on Map"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -313,7 +371,10 @@ export default function History() {
                       value={[currentIndex]}
                       max={activeDateLocations.length - 1}
                       step={1}
-                      onValueChange={(value) => { setCurrentIndex(value[0]); setIsPlaying(false); }}
+                      onValueChange={(value) => {
+                        setCurrentIndex(value[0]);
+                        setIsPlaying(false);
+                      }}
                       data-testid="slider-timeline"
                     />
                   </div>
@@ -325,7 +386,9 @@ export default function History() {
                   <div className="grid grid-cols-3 gap-3 text-sm">
                     <div>
                       <p className="text-xs text-muted-foreground">Speed</p>
-                      <p className="font-medium">{parseFloat(String(currentLocation.speed || "0")).toFixed(0)} km/h</p>
+                      <p className="font-medium">
+                        {parseFloat(String(currentLocation.speed || "0")).toFixed(0)} km/h
+                      </p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Time</p>

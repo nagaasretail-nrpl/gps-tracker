@@ -21,6 +21,7 @@ interface MapComponentProps {
   onMapClick?: (lat: number, lng: number) => void;
   className?: string;
   routePolylines?: RoutePolyline[];
+  bearingData?: Record<string, [number, number][]>;
   focusVehicleId?: string | null;
 }
 
@@ -47,6 +48,7 @@ export function MapComponent({
   onMapClick,
   className = "",
   routePolylines = [],
+  bearingData = {},
   focusVehicleId,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -57,7 +59,6 @@ export function MapComponent({
 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
-
     const L = (window as any).L;
     if (!L) return;
 
@@ -115,12 +116,19 @@ export function MapComponent({
 
       let heading = parseFloat(String(location.heading || "0")) || 0;
 
-      if (!heading || heading === 0) {
-        const vehicleRoute = routePolylines.find((r) => r.vehicleId === location.vehicleId);
-        if (vehicleRoute && vehicleRoute.coords.length >= 2) {
-          const last = vehicleRoute.coords[vehicleRoute.coords.length - 1];
-          const prev = vehicleRoute.coords[vehicleRoute.coords.length - 2];
-          heading = computeBearing(prev[0], prev[1], last[0], last[1]);
+      if (!heading) {
+        const bCoords = location.vehicleId ? bearingData[location.vehicleId] : undefined;
+        if (bCoords && bCoords.length >= 2) {
+          const prev = bCoords[bCoords.length - 2];
+          const curr = bCoords[bCoords.length - 1];
+          heading = computeBearing(prev[0], prev[1], curr[0], curr[1]);
+        } else {
+          const vehicleRoute = routePolylines.find((r) => r.vehicleId === location.vehicleId);
+          if (vehicleRoute && vehicleRoute.coords.length >= 2) {
+            const last = vehicleRoute.coords[vehicleRoute.coords.length - 1];
+            const prev = vehicleRoute.coords[vehicleRoute.coords.length - 2];
+            heading = computeBearing(prev[0], prev[1], last[0], last[1]);
+          }
         }
       }
 
@@ -207,10 +215,7 @@ export function MapComponent({
     });
 
     pois.forEach((poi) => {
-      const marker = L.marker([
-        parseFloat(poi.latitude),
-        parseFloat(poi.longitude),
-      ])
+      const marker = L.marker([parseFloat(poi.latitude), parseFloat(poi.longitude)])
         .addTo(mapInstanceRef.current)
         .bindPopup(`
           <div>
@@ -221,7 +226,7 @@ export function MapComponent({
         `);
       markersRef.current.push(marker);
     });
-  }, [vehicles, locations, geofences, routes, pois, routePolylines]);
+  }, [vehicles, locations, geofences, routes, pois, routePolylines, bearingData]);
 
   useEffect(() => {
     if (!focusVehicleId || !mapInstanceRef.current) return;
@@ -272,38 +277,17 @@ export function MapComponent({
   return (
     <div className={`relative ${className}`}>
       <div ref={mapRef} className="w-full h-full rounded-md" />
-
       <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-[1000]">
-        <Button
-          size="icon"
-          variant="secondary"
-          onClick={handleZoomIn}
-          data-testid="button-zoom-in"
-        >
+        <Button size="icon" variant="secondary" onClick={handleZoomIn} data-testid="button-zoom-in">
           <ZoomIn className="h-4 w-4" />
         </Button>
-        <Button
-          size="icon"
-          variant="secondary"
-          onClick={handleZoomOut}
-          data-testid="button-zoom-out"
-        >
+        <Button size="icon" variant="secondary" onClick={handleZoomOut} data-testid="button-zoom-out">
           <ZoomOut className="h-4 w-4" />
         </Button>
-        <Button
-          size="icon"
-          variant="secondary"
-          onClick={handleRecenter}
-          data-testid="button-recenter"
-        >
+        <Button size="icon" variant="secondary" onClick={handleRecenter} data-testid="button-recenter">
           <Locate className="h-4 w-4" />
         </Button>
-        <Button
-          size="icon"
-          variant="secondary"
-          onClick={toggleMapType}
-          data-testid="button-toggle-layer"
-        >
+        <Button size="icon" variant="secondary" onClick={toggleMapType} data-testid="button-toggle-layer">
           <Layers className="h-4 w-4" />
         </Button>
       </div>

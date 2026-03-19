@@ -9,6 +9,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 
+function usePrevious<T>(value: T): T | undefined {
+  const ref = useRef<T | undefined>(undefined);
+  useEffect(() => {
+    ref.current = value;
+  });
+  return ref.current;
+}
+
 export default function Tracking() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
@@ -24,6 +32,28 @@ export default function Tracking() {
     queryKey: ["/api/locations/latest"],
     refetchInterval: 15000,
   });
+
+  const prevLocations = usePrevious(latestLocations);
+
+  const bearingData = useMemo<Record<string, [number, number][]>>(() => {
+    if (!latestLocations) return {};
+    const data: Record<string, [number, number][]> = {};
+    for (const loc of latestLocations) {
+      if (!loc.vehicleId) continue;
+      const lat = parseFloat(String(loc.latitude));
+      const lng = parseFloat(String(loc.longitude));
+      if (isNaN(lat) || isNaN(lng)) continue;
+      const prev = prevLocations?.find((l) => l.vehicleId === loc.vehicleId);
+      if (prev) {
+        const prevLat = parseFloat(String(prev.latitude));
+        const prevLng = parseFloat(String(prev.longitude));
+        if (!isNaN(prevLat) && !isNaN(prevLng)) {
+          data[loc.vehicleId] = [[prevLat, prevLng], [lat, lng]];
+        }
+      }
+    }
+    return data;
+  }, [latestLocations, prevLocations]);
 
   const { data: vehicleHistory } = useQuery<Location[]>({
     queryKey: ["/api/locations/history", selectedVehicle, "24h"],
@@ -45,9 +75,9 @@ export default function Tracking() {
 
   const routePolylines = useMemo(() => {
     if (!selectedVehicle || !vehicleHistory || vehicleHistory.length < 2) return [];
-    const sorted = [...vehicleHistory].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
+    const sorted = [...vehicleHistory]
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .slice(-30);
     const coords = sorted
       .map((l) => [parseFloat(String(l.latitude)), parseFloat(String(l.longitude))] as [number, number])
       .filter(([lat, lng]) => !isNaN(lat) && !isNaN(lng));
@@ -62,7 +92,6 @@ export default function Tracking() {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-
         if (msg.type === "location") {
           const newLoc: Location = msg.data;
           queryClient.setQueryData<Location[]>(["/api/locations/latest"], (prev) => {
@@ -71,7 +100,6 @@ export default function Tracking() {
             return [...filtered, newLoc];
           });
         }
-
         if (msg.type === "vehicle") {
           const updated: Vehicle = msg.data;
           queryClient.setQueryData<Vehicle[]>(["/api/vehicles"], (prev) => {
@@ -84,7 +112,6 @@ export default function Tracking() {
 
     ws.onerror = () => {};
     ws.onclose = () => {};
-
     return () => ws.close();
   }, [queryClient]);
 
@@ -133,10 +160,6 @@ export default function Tracking() {
     return [20.5937, 78.9629];
   })();
 
-  const handleVehicleClick = (vehicleId: string) => {
-    setSelectedVehicle(vehicleId === selectedVehicle ? vehicleId : vehicleId);
-  };
-
   return (
     <div className="flex h-full w-full" style={{ height: "calc(100vh - 3.5rem)" }}>
       <div className="w-72 flex-shrink-0 flex flex-col border-r bg-card">
@@ -176,7 +199,7 @@ export default function Tracking() {
                     className={`cursor-pointer hover-elevate ${
                       isSelected ? "border-primary bg-primary/5" : ""
                     }`}
-                    onClick={() => handleVehicleClick(vehicle.id)}
+                    onClick={() => setSelectedVehicle(isSelected ? null : vehicle.id)}
                     data-testid={`card-vehicle-${vehicle.id}`}
                   >
                     <CardContent className="p-3">
@@ -207,7 +230,7 @@ export default function Tracking() {
                           </p>
                           {isSelected && vehicleHistory && vehicleHistory.length > 0 && (
                             <p className="text-xs text-primary mt-1">
-                              {vehicleHistory.length} points today
+                              Route: last {Math.min(vehicleHistory.length, 30)} points
                             </p>
                           )}
                         </>
@@ -234,8 +257,9 @@ export default function Tracking() {
             center={mapCenter}
             zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
             className="h-full w-full"
-            onVehicleClick={handleVehicleClick}
+            onVehicleClick={(id) => setSelectedVehicle((prev) => (prev === id ? null : id))}
             routePolylines={routePolylines}
+            bearingData={bearingData}
             focusVehicleId={selectedVehicle}
           />
         )}
