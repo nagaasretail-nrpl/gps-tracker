@@ -31,10 +31,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 
+function todayStart(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function todayEnd(): Date {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
 export default function History() {
   const [selectedVehicle, setSelectedVehicle] = useState<string>("");
-  const [startDate, setStartDate] = useState<Date>();
-  const [endDate, setEndDate] = useState<Date>();
+  const [startDate, setStartDate] = useState<Date>(todayStart);
+  const [endDate, setEndDate] = useState<Date>(todayEnd);
+  const [loadTrigger, setLoadTrigger] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -44,15 +57,16 @@ export default function History() {
     queryKey: ["/api/vehicles"],
   });
 
-  const { data: locations, isLoading: locationsLoading, refetch } = useQuery<Location[]>({
+  const { data: locations, isLoading: locationsLoading } = useQuery<Location[]>({
     queryKey: [
       "/api/locations/history",
       selectedVehicle,
-      startDate?.toISOString(),
-      endDate?.toISOString(),
+      startDate.toISOString(),
+      endDate.toISOString(),
+      loadTrigger,
     ],
     queryFn: async () => {
-      if (!selectedVehicle || !startDate || !endDate) return [];
+      if (!selectedVehicle) return [];
       const params = new URLSearchParams({
         vehicleId: selectedVehicle,
         startDate: startDate.toISOString(),
@@ -62,7 +76,7 @@ export default function History() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!selectedVehicle && !!startDate && !!endDate,
+    enabled: loadTrigger > 0 && !!selectedVehicle,
   });
 
   const dateGroups = useMemo(() => {
@@ -148,7 +162,7 @@ export default function History() {
     }
   };
 
-  const canLoad = !!selectedVehicle && !!startDate && !!endDate;
+  const canLoad = !!selectedVehicle;
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
@@ -191,7 +205,16 @@ export default function History() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
-                <Calendar mode="single" selected={startDate} onSelect={setStartDate} />
+                <Calendar
+                  mode="single"
+                  selected={startDate}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    const s = new Date(d);
+                    s.setHours(0, 0, 0, 0);
+                    setStartDate(s);
+                  }}
+                />
               </PopoverContent>
             </Popover>
           </div>
@@ -210,7 +233,16 @@ export default function History() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
-                <Calendar mode="single" selected={endDate} onSelect={setEndDate} />
+                <Calendar
+                  mode="single"
+                  selected={endDate}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    const e = new Date(d);
+                    e.setHours(23, 59, 59, 999);
+                    setEndDate(e);
+                  }}
+                />
               </PopoverContent>
             </Popover>
           </div>
@@ -220,7 +252,7 @@ export default function History() {
             onClick={() => {
               setSelectedDate(null);
               setExpandedDates({});
-              refetch();
+              setLoadTrigger((n) => n + 1);
             }}
             data-testid="button-load-history"
             className="text-sm"
