@@ -39,7 +39,7 @@ function buildAck(proto: number, serial: number): Buffer {
   buf[3] = proto;
   buf[4] = (serial >> 8) & 0xff;
   buf[5] = serial & 0xff;
-  const crc = calcCRC(buf.slice(2, 6)); // length → serial
+  const crc = calcCRC(buf.slice(3, 6)); // proto → serial
   buf[6] = (crc >> 8) & 0xff;
   buf[7] = crc & 0xff;
   buf[8] = 0x0d; buf[9] = 0x0a;
@@ -136,7 +136,7 @@ function parsePacket(buf: Buffer): Packet | null {
   const crcGot  = buf.readUInt16BE(4 + dataLen + 2); // CRC after serial
 
   // CRC covers: [length byte] through [last serial byte] inclusive
-  const crcCalc = calcCRC(buf.slice(2, 4 + dataLen + 2));
+  const crcCalc = calcCRC(buf.slice(3, 4 + dataLen + 2));
   if (crcGot !== crcCalc) {
     console.warn(`[GT06] CRC mismatch: got 0x${crcGot.toString(16)}, expected 0x${crcCalc.toString(16)}`);
   }
