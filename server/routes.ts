@@ -428,14 +428,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (freshUser.role === "admin") {
         const validatedData = adminUpdateUserSchema.parse(req.body);
         
-        const updates: Partial<User> = { ...validatedData } as any;
-        if (updates.password) {
-          const bcrypt = await import("bcrypt");
-          updates.password = await bcrypt.hash(updates.password, 10);
+        // Build typed update object, converting string dates to Date objects
+        const updates: Partial<User> = {};
+        if (validatedData.name !== undefined) updates.name = validatedData.name;
+        if (validatedData.email !== undefined) updates.email = validatedData.email;
+        if (validatedData.role !== undefined) updates.role = validatedData.role;
+        if (validatedData.phone !== undefined) updates.phone = validatedData.phone;
+        if (validatedData.department !== undefined) updates.department = validatedData.department;
+        if (validatedData.status !== undefined) updates.status = validatedData.status;
+        if (validatedData.subscriptionType !== undefined) updates.subscriptionType = validatedData.subscriptionType;
+        if (validatedData.subscriptionExpiry !== undefined) {
+          updates.subscriptionExpiry = validatedData.subscriptionExpiry
+            ? new Date(validatedData.subscriptionExpiry)
+            : null;
         }
-        // Convert ISO string → Date for DB timestamp column
-        if ((validatedData as any).subscriptionExpiry) {
-          (updates as any).subscriptionExpiry = new Date((validatedData as any).subscriptionExpiry);
+        if (validatedData.allowedVehicleIds !== undefined) {
+          updates.allowedVehicleIds = validatedData.allowedVehicleIds;
+        }
+        if (validatedData.password) {
+          const bcrypt = await import("bcrypt");
+          updates.password = await bcrypt.hash(validatedData.password, 10);
         }
         
         const user = await storage.updateUser(targetUserId, updates);

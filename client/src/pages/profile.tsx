@@ -16,6 +16,12 @@ export default function Profile() {
 
   const { data: user, isLoading } = useQuery<Omit<User, "password">>({
     queryKey: ["/api/auth/me"],
+    // /api/auth/me returns { user: {...} } — extract the user object
+    select: (data: unknown) => {
+      const d = data as { user?: Omit<User, "password"> } | Omit<User, "password">;
+      if (d && "user" in d && d.user) return d.user;
+      return d as Omit<User, "password">;
+    },
   });
 
   const updateMutation = useMutation({
