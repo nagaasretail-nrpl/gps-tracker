@@ -642,13 +642,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...(currentLocation.address ? { address: currentLocation.address } : {}),
           accuracy: "5",
         });
-        
+
+        if (!newLocation) return;
+
         const status = newSpeed > 5 ? "active" : newSpeed < 1 ? "stopped" : "active";
         await storage.updateVehicle(demoVehicle.id, { status });
         
         // Check geofences and speed violations for simulated updates
-        checkGeofences(newLocation).catch(err => console.error("Geofence check error:", err));
-        checkSpeedViolation(newLocation).catch(err => console.error("Speed check error:", err));
+        checkGeofences(newLocation).catch(() => {});
+        checkSpeedViolation(newLocation).catch(() => {});
         
         broadcastLocation(newLocation);
       }
