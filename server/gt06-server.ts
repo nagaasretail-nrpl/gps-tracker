@@ -18,16 +18,17 @@ import { broadcastLocationUpdate } from "./broadcaster";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
 
-// ─── CRC-16/CCITT (XModem variant: init=0x0000, poly=0x1021) ─────────────
+// ─── CRC-16/X-25 (poly=0x1021 reflected=0x8408, init=0xFFFF, xorOut=0xFFFF)
+// This is the algorithm used by Traccar (the reference GT06 server implementation)
 function calcCRC(buf: Buffer): number {
-  let crc = 0x0000;
+  let crc = 0xffff;
   for (let i = 0; i < buf.length; i++) {
-    crc ^= buf[i] << 8;
+    crc ^= buf[i];
     for (let j = 0; j < 8; j++) {
-      crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+      crc = (crc & 1) ? ((crc >>> 1) ^ 0x8408) : (crc >>> 1);
     }
   }
-  return crc;
+  return (~crc) & 0xffff;
 }
 
 // ─── Build ACK Response ───────────────────────────────────────────────────
@@ -39,7 +40,7 @@ function buildAck(proto: number, serial: number): Buffer {
   buf[3] = proto;
   buf[4] = (serial >> 8) & 0xff;
   buf[5] = serial & 0xff;
-  const crc = calcCRC(buf.slice(3, 6)); // proto → serial
+  const crc = calcCRC(buf.slice(2, 6)); // length byte → serial
   buf[6] = (crc >> 8) & 0xff;
   buf[7] = crc & 0xff;
   buf[8] = 0x0d; buf[9] = 0x0a;
@@ -135,8 +136,8 @@ function parsePacket(buf: Buffer): Packet | null {
   const serial  = buf.readUInt16BE(4 + dataLen);     // serial after data
   const crcGot  = buf.readUInt16BE(4 + dataLen + 2); // CRC after serial
 
-  // CRC covers: [proto] through [last serial byte] inclusive
-  const crcCalc = calcCRC(buf.slice(3, 4 + dataLen + 2));
+  // CRC covers: [length byte] through [last serial byte] inclusive (Traccar convention)
+  const crcCalc = calcCRC(buf.slice(2, 4 + dataLen + 2));
   if (crcGot !== crcCalc) {
     console.warn(`[GT06] CRC mismatch: got 0x${crcGot.toString(16)}, expected 0x${crcCalc.toString(16)} | raw=${buf.toString("hex")}`);
   }
