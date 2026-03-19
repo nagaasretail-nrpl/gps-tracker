@@ -27,6 +27,21 @@ interface MapComponentProps {
   focusVehicleId?: string | null;
 }
 
+// Augment Window to include the optional google namespace and dynamic callbacks.
+declare global {
+  interface Window {
+    google?: typeof google;
+    [key: string]: unknown;
+  }
+}
+
+// Typed union of all overlay objects we push / clear.
+type MapOverlay =
+  | google.maps.Marker
+  | google.maps.Polyline
+  | google.maps.Polygon
+  | google.maps.InfoWindow;
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** Escape HTML special characters to prevent XSS in InfoWindow content */
@@ -60,17 +75,18 @@ let _loadPromise: Promise<void> | null = null;
 let _loadedKey: string | null = null;
 
 function loadGoogleMapsScript(apiKey: string): Promise<void> {
-  const g = (window as any).google;
-  if (g?.maps?.Map) return Promise.resolve();
+  // Check if the library is already available at runtime.
+  if (window.google?.maps?.Map) return Promise.resolve();
 
-  // If already loading with same key, reuse
+  // If already loading with same key, reuse the promise.
   if (_loadPromise && _loadedKey === apiKey) return _loadPromise;
 
   _loadedKey = apiKey;
   _loadPromise = new Promise<void>((resolve, reject) => {
     const callbackName = `__gmaps_${Date.now()}`;
-    (window as any)[callbackName] = () => {
-      delete (window as any)[callbackName];
+    // Use the Window index signature (declared above) for the dynamic callback.
+    window[callbackName] = () => {
+      delete window[callbackName];
       resolve();
     };
     const script = document.createElement("script");
@@ -106,10 +122,10 @@ export function MapComponent({
   focusVehicleId,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const overlaysRef = useRef<any[]>([]);
-  const openInfoWindowRef = useRef<any>(null);
-  const clickListenerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const overlaysRef = useRef<MapOverlay[]>([]);
+  const openInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const hasFittedRef = useRef(false);
   const [status, setStatus] = useState<MapStatus>("loading");
   const [mapType, setMapType] = useState<"streets" | "satellite">("streets");
@@ -121,7 +137,6 @@ export function MapComponent({
 
     async function init() {
       try {
-        // Fetch API key from backend settings
         const res = await fetch("/api/settings/public");
         if (!res.ok) throw new Error("Failed to fetch settings");
         const settings = await res.json() as { googleMapsKey?: string };
@@ -135,28 +150,20 @@ export function MapComponent({
         await loadGoogleMapsScript(apiKey);
         if (cancelled || !mapRef.current) return;
 
-        const google = (window as any).google;
-
         const map = new google.maps.Map(mapRef.current, {
           center: { lat: center[0], lng: center[1] },
           zoom,
           mapTypeId: "roadmap",
-          disableDefaultUI: true, // we use our own controls
+          disableDefaultUI: true,
           gestureHandling: "greedy",
           styles: [
-            // Subtle style tweaks — keep it clean
             { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
           ],
         });
 
         mapInstanceRef.current = map;
-
         if (!cancelled) setStatus("ready");
-
-        return () => {
-          // cleanup handled by mapInstanceRef
-        };
-      } catch (err) {
+      } catch (_err) {
         if (!cancelled) setStatus("error");
       }
     }
@@ -165,29 +172,29 @@ export function MapComponent({
 
     return () => {
       cancelled = true;
-      // Remove map instance on unmount
       mapInstanceRef.current = null;
       hasFittedRef.current = false;
     };
-  }, []); // only run once on mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 2. Attach/detach map click listener when onMapClick changes ─────────
 
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || status !== "ready") return;
-    const google = (window as any).google;
 
-    // Remove old listener
     if (clickListenerRef.current) {
       google.maps.event.removeListener(clickListenerRef.current);
       clickListenerRef.current = null;
     }
 
     if (onMapClick) {
-      clickListenerRef.current = map.addListener("click", (e: any) => {
-        onMapClick(e.latLng.lat(), e.latLng.lng());
-      });
+      clickListenerRef.current = map.addListener(
+        "click",
+        (e: google.maps.MapMouseEvent) => {
+          if (e.latLng) onMapClick(e.latLng.lat(), e.latLng.lng());
+        }
+      );
     }
 
     return () => {
@@ -203,12 +210,14 @@ export function MapComponent({
   const renderOverlays = useCallback(() => {
     const map = mapInstanceRef.current;
     if (!map || status !== "ready") return;
-    const google = (window as any).google;
 
     // Clear previous overlays
     overlaysRef.current.forEach((o) => {
-      if (typeof o.setMap === "function") o.setMap(null);
-      if (typeof o.close === "function") o.close();
+      if (o instanceof google.maps.InfoWindow) {
+        o.close();
+      } else {
+        o.setMap(null);
+      }
     });
     overlaysRef.current = [];
 
@@ -217,9 +226,8 @@ export function MapComponent({
       openInfoWindowRef.current = null;
     }
 
-    const vehicleMarkers: any[] = [];
+    const vehicleMarkers: google.maps.Marker[] = [];
     const boundsForFit = new google.maps.LatLngBounds();
-    let hasBoundsPoints = false;
 
     // ── Route polylines (vehicle history trails) ──────────────────────────
     routePolylines.forEach(({ coords, color }) => {
@@ -270,7 +278,6 @@ export function MapComponent({
         map,
         title: vehicle.name,
         icon: {
-          // Arrow SVG encoded as data URL
           url: `data:image/svg+xml,${encodeURIComponent(
             `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
               <g transform="rotate(${heading}, 16, 16)">
@@ -309,19 +316,17 @@ export function MapComponent({
       vehicleMarkers.push(marker);
 
       boundsForFit.extend({ lat, lng });
-      hasBoundsPoints = true;
     });
 
     // Initial fit to vehicle markers (only once)
     if (vehicleMarkers.length > 0 && !hasFittedRef.current) {
       if (vehicleMarkers.length === 1) {
-        map.setCenter(boundsForFit.getCenter());
+        map.setCenter(boundsForFit.getCenter()!);
         map.setZoom(14);
       } else {
         map.fitBounds(boundsForFit);
-        // Don't zoom in too much
         const listener = map.addListener("idle", () => {
-          if (map.getZoom() > 15) map.setZoom(15);
+          if ((map.getZoom() ?? 0) > 15) map.setZoom(15);
           google.maps.event.removeListener(listener);
         });
       }
@@ -371,7 +376,7 @@ export function MapComponent({
       }
     });
 
-    // ── Route polylines (named routes, not vehicle history) ───────────────
+    // ── Named route polylines ─────────────────────────────────────────────
     routes.forEach((route) => {
       const coords = route.coordinates as unknown as [number, number][];
       if (!Array.isArray(coords) || coords.length < 2) return;
@@ -395,9 +400,9 @@ export function MapComponent({
       `;
       const infoWindow = new google.maps.InfoWindow({ content: infoContent });
 
-      poly.addListener("click", (e: any) => {
+      poly.addListener("click", (e: google.maps.MapMouseEvent) => {
         if (openInfoWindowRef.current) openInfoWindowRef.current.close();
-        infoWindow.setPosition(e.latLng);
+        if (e.latLng) infoWindow.setPosition(e.latLng);
         infoWindow.open(map);
         openInfoWindowRef.current = infoWindow;
       });
@@ -467,7 +472,7 @@ export function MapComponent({
     const lng = parseFloat(String(loc.longitude));
     if (!isNaN(lat) && !isNaN(lng)) {
       mapInstanceRef.current.panTo({ lat, lng });
-      if (mapInstanceRef.current.getZoom() < 15) {
+      if ((mapInstanceRef.current.getZoom() ?? 0) < 15) {
         mapInstanceRef.current.setZoom(15);
       }
     }
@@ -477,8 +482,7 @@ export function MapComponent({
 
   useEffect(() => {
     if (!mapInstanceRef.current || focusVehicleId || status !== "ready") return;
-    const google = (window as any).google;
-    if (!google?.maps) return;
+    if (!window.google?.maps) return;
 
     const allCoords = routePolylines.flatMap((r) => r.coords);
     if (allCoords.length < 2) return;
