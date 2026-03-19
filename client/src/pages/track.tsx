@@ -165,12 +165,12 @@ export default function TrackActivity() {
   const mapCenter: [number, number] = currentPos ?? [20.5937, 78.9629];
   const mapZoom = currentPos ? 16 : 5;
 
-  const fakeRouteForMap = routePoints.length >= 2
-    ? [{ id: "live-route", name: "Current Route", coordinates: routePoints.map(([lat, lng]) => ({ lat, lng })), color: "#FF6B35" }]
+  const liveRoutePolylines = routePoints.length >= 2
+    ? [{ vehicleId: "live-route", coords: routePoints, color: "#FF6B35" }]
     : [];
 
   const fakePoisForMap = currentPos
-    ? [{ id: "me", name: "You", latitude: String(currentPos[0]), longitude: String(currentPos[1]), type: "current", description: `${currentSpeed.toFixed(1)} km/h` }]
+    ? [{ id: "me", name: "You", latitude: String(currentPos[0]), longitude: String(currentPos[1]), category: "custom", description: `${currentSpeed.toFixed(1)} km/h` }]
     : [];
 
   const showSummary = !isRecording && duration > 0 && !activitySaved;
@@ -266,7 +266,7 @@ export default function TrackActivity() {
             key={isRecording ? "recording" : "idle"}
             vehicles={[]}
             locations={[]}
-            routes={fakeRouteForMap as any}
+            routePolylines={liveRoutePolylines}
             pois={fakePoisForMap as any}
             center={mapCenter}
             zoom={mapZoom}
