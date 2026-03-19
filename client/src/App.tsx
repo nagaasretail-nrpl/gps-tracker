@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import Login from "@/pages/login";
 import Tracking from "@/pages/tracking";
+import Dashboard from "@/pages/dashboard";
 import History from "@/pages/history";
 import Geofences from "@/pages/geofences";
 import Routes from "@/pages/routes";
@@ -33,7 +34,7 @@ function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean;
 
   return (
     <Switch>
-      <Route path="/" component={Tracking} />
+      <Route path="/" component={Dashboard} />
       <Route path="/track" component={TrackActivity} />
       <Route path="/activities" component={Activities} />
       <Route path="/stats" component={Statistics} />
