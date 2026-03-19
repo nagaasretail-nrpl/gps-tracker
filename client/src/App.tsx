@@ -25,6 +25,7 @@ import Statistics from "@/pages/stats";
 import Trips from "@/pages/trips";
 import Profile from "@/pages/profile";
 import AdminUsers from "@/pages/admin-users";
+import AdminSettings from "@/pages/admin-settings";
 import NotFound from "@/pages/not-found";
 
 function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean; onLoginSuccess: () => void }) {
@@ -48,6 +49,7 @@ function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean;
       <Route path="/vehicles" component={Vehicles} />
       <Route path="/profile" component={Profile} />
       <Route path="/admin-users" component={AdminUsers} />
+      <Route path="/admin-settings" component={AdminSettings} />
       <Route component={NotFound} />
     </Switch>
   );

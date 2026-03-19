@@ -14,6 +14,7 @@ import {
   Navigation,
   User,
   Users,
+  Settings,
   LogOut
 } from "lucide-react";
 import {
@@ -100,6 +101,11 @@ const adminMenuItems = [
     title: "User Management",
     url: "/admin-users",
     icon: Users,
+  },
+  {
+    title: "Settings",
+    url: "/admin-settings",
+    icon: Settings,
   },
 ];
 

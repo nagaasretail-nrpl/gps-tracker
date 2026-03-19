@@ -428,10 +428,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (freshUser.role === "admin") {
         const validatedData = adminUpdateUserSchema.parse(req.body);
         
-        const updates: Partial<User> = { ...validatedData };
+        const updates: Partial<User> = { ...validatedData } as any;
         if (updates.password) {
           const bcrypt = await import("bcrypt");
           updates.password = await bcrypt.hash(updates.password, 10);
+        }
+        // Convert ISO string → Date for DB timestamp column
+        if ((validatedData as any).subscriptionExpiry) {
+          (updates as any).subscriptionExpiry = new Date((validatedData as any).subscriptionExpiry);
         }
         
         const user = await storage.updateUser(targetUserId, updates);
@@ -555,6 +559,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(locations);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch activity locations" });
+    }
+  });
+
+  // App Settings routes
+  // Public: returns only the Google Maps key (no auth required so the map can load)
+  app.get("/api/settings/public", async (_req, res) => {
+    try {
+      const setting = await storage.getSetting("google_maps_key");
+      res.json({ googleMapsKey: setting?.value || "" });
+    } catch (error) {
+      res.json({ googleMapsKey: "" });
+    }
+  });
+
+  // Admin: get all settings
+  app.get("/api/settings", requireAdmin, async (_req, res) => {
+    try {
+      const settings = await storage.getSettings();
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  // Admin: upsert a setting key/value
+  app.put("/api/settings", requireAdmin, async (req, res) => {
+    try {
+      const schema = z.object({ key: z.string().min(1), value: z.string() });
+      const { key, value } = schema.parse(req.body);
+      const setting = await storage.setSetting(key, value);
+      res.json(setting);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      res.status(500).json({ error: "Failed to save setting" });
     }
   });
 

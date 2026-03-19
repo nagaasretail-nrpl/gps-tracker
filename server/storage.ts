@@ -17,6 +17,7 @@ import {
   type InsertUser,
   type Activity,
   type InsertActivity,
+  type AppSetting,
   vehicles,
   locations,
   geofences,
@@ -26,6 +27,7 @@ import {
   trips,
   users,
   activities,
+  appSettings,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db, neonSql } from "./db";
@@ -91,6 +93,11 @@ export interface IStorage {
   getTrips(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Trip[]>;
   createTrip(trip: InsertTrip): Promise<Trip>;
   updateTrip(id: string, trip: Partial<Trip>): Promise<Trip | undefined>;
+
+  // App Settings
+  getSettings(): Promise<AppSetting[]>;
+  getSetting(key: string): Promise<AppSetting | undefined>;
+  setSetting(key: string, value: string): Promise<AppSetting>;
 }
 
 export class DbStorage implements IStorage {
@@ -434,6 +441,29 @@ export class DbStorage implements IStorage {
   async updateTrip(id: string, updates: Partial<Trip>): Promise<Trip | undefined> {
     const result = await db.update(trips).set(updates).where(eq(trips.id, id)).returning();
     return result[0];
+  }
+
+  async getSettings(): Promise<AppSetting[]> {
+    return await db.select().from(appSettings);
+  }
+
+  async getSetting(key: string): Promise<AppSetting | undefined> {
+    const result = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+    return result[0];
+  }
+
+  async setSetting(key: string, value: string): Promise<AppSetting> {
+    const existing = await this.getSetting(key);
+    if (existing) {
+      const result = await db.update(appSettings)
+        .set({ value, updatedAt: new Date() })
+        .where(eq(appSettings.key, key))
+        .returning();
+      return result[0];
+    } else {
+      const result = await db.insert(appSettings).values({ key, value }).returning();
+      return result[0];
+    }
   }
 }
 

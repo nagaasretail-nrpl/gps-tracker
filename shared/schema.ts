@@ -15,6 +15,12 @@ export const users = pgTable("users", {
   phone: text("phone"),
   department: text("department"),
   preferences: jsonb("preferences"), // units, map type, etc
+  // Subscription / validity fields
+  status: text("status").notNull().default("active"), // active, inactive, suspended
+  subscriptionType: text("subscription_type").default("basic"), // basic, pro, enterprise
+  subscriptionExpiry: timestamp("subscription_expiry"),
+  // Vehicle access control: list of vehicle IDs this user can see (null = all vehicles for admin)
+  allowedVehicleIds: text("allowed_vehicle_ids").array(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -43,6 +49,8 @@ export const loginSchema = z.object({
 export const updateProfileSchema = z.object({
   name: z.string().optional(),
   avatar: z.string().optional(),
+  phone: z.string().optional(),
+  department: z.string().optional(),
   preferences: z.any().optional(),
 });
 
@@ -50,9 +58,11 @@ export const updateProfileSchema = z.object({
 export const adminUpdateUserSchema = updateProfileSchema.extend({
   email: z.string().email().optional(),
   role: z.enum(["user", "admin", "subuser"]).optional(),
-  phone: z.string().optional(),
-  department: z.string().optional(),
   password: z.string().min(8, "Password must be at least 8 characters").optional(),
+  status: z.enum(["active", "inactive", "suspended"]).optional(),
+  subscriptionType: z.enum(["basic", "pro", "enterprise"]).optional(),
+  subscriptionExpiry: z.string().datetime().optional().nullable(),
+  allowedVehicleIds: z.array(z.string()).optional().nullable(),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -61,6 +71,17 @@ export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfile = z.infer<typeof updateProfileSchema>;
 export type AdminUpdateUser = z.infer<typeof adminUpdateUserSchema>;
+
+// App settings table (key/value store for system-wide config)
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertAppSettingSchema = createInsertSchema(appSettings);
+export type AppSetting = typeof appSettings.$inferSelect;
+export type InsertAppSetting = z.infer<typeof insertAppSettingSchema>;
 
 // Activities table (for personal tracking: hikes, runs, bike rides, etc.)
 export const activities = pgTable("activities", {

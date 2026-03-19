@@ -29,9 +29,10 @@ export default function Profile() {
       if (!response.ok) throw new Error("Failed to update profile");
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (updatedUser: any) => {
       toast({ description: "Profile updated successfully" });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       setIsEditing(false);
     },
     onError: () => {
