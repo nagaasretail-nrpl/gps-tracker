@@ -472,9 +472,7 @@ export function MapComponent({
     const lng = parseFloat(String(loc.longitude));
     if (!isNaN(lat) && !isNaN(lng)) {
       mapInstanceRef.current.panTo({ lat, lng });
-      if ((mapInstanceRef.current.getZoom() ?? 0) < 15) {
-        mapInstanceRef.current.setZoom(15);
-      }
+      mapInstanceRef.current.setZoom(15);
     }
   }, [focusVehicleId, locations, status]);
 
