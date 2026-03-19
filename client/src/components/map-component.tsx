@@ -69,15 +69,24 @@ export function MapComponent({
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
 
+    const vehicleMarkers: any[] = [];
+
     locations.forEach((location) => {
       const vehicle = vehicles.find(v => v.id === location.vehicleId);
       if (!vehicle) return;
+
+      const lat = parseFloat(String(location.latitude));
+      const lng = parseFloat(String(location.longitude));
+      if (isNaN(lat) || isNaN(lng)) return;
+
+      const speed = parseFloat(String(location.speed || "0"));
+      const isMoving = speed > 2;
 
       const icon = L.divIcon({
         className: 'custom-vehicle-marker',
         html: `
           <div style="transform: rotate(${location.heading || 0}deg);">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="${vehicle.iconColor || '#2563eb'}">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="${isMoving ? '#22c55e' : (vehicle.iconColor || '#2563eb')}">
               <path d="M16 2 L10 28 L16 22 L22 28 Z" stroke="white" stroke-width="1.5"/>
             </svg>
           </div>
@@ -86,13 +95,14 @@ export function MapComponent({
         iconAnchor: [16, 16],
       });
 
-      const marker = L.marker([parseFloat(location.latitude), parseFloat(location.longitude)], { icon })
+      const marker = L.marker([lat, lng], { icon })
         .addTo(mapInstanceRef.current)
         .bindPopup(`
           <div style="min-width: 200px;">
             <h3 style="font-weight: 600; margin-bottom: 8px;">${vehicle.name}</h3>
-            <p style="margin: 4px 0;"><strong>Speed:</strong> ${location.speed || 0} km/h</p>
+            <p style="margin: 4px 0;"><strong>Speed:</strong> ${speed.toFixed(0)} km/h</p>
             <p style="margin: 4px 0;"><strong>Status:</strong> ${vehicle.status}</p>
+            <p style="margin: 4px 0;"><strong>Coords:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
             <p style="margin: 4px 0;"><strong>Location:</strong> ${location.address || 'Unknown'}</p>
             <p style="margin: 4px 0; font-size: 12px; color: #666;">Last update: ${new Date(location.timestamp).toLocaleString()}</p>
           </div>
@@ -103,7 +113,14 @@ export function MapComponent({
       }
 
       markersRef.current.push(marker);
+      vehicleMarkers.push(marker);
     });
+
+    // Auto-fit map to show all vehicle markers
+    if (vehicleMarkers.length > 0) {
+      const group = L.featureGroup(vehicleMarkers);
+      mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 15 });
+    }
 
     geofences.forEach((geofence) => {
       if (geofence.type === 'polygon') {

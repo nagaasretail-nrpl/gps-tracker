@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
 import { MapComponent } from "@/components/map-component";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,16 +12,53 @@ import { Card, CardContent } from "@/components/ui/card";
 export default function Tracking() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const wsRef = useRef<WebSocket | null>(null);
 
   const { data: vehicles, isLoading: vehiclesLoading } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
-    refetchInterval: 10000,
+    refetchInterval: 15000,
   });
 
   const { data: latestLocations, isLoading: locationsLoading } = useQuery<Location[]>({
     queryKey: ["/api/locations/latest"],
-    refetchInterval: 10000,
+    refetchInterval: 15000,
   });
+
+  // WebSocket for real-time location + vehicle status updates
+  useEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === "location") {
+          const newLoc: Location = msg.data;
+          queryClient.setQueryData<Location[]>(["/api/locations/latest"], (prev) => {
+            if (!prev) return [newLoc];
+            const filtered = prev.filter((l) => l.vehicleId !== newLoc.vehicleId);
+            return [...filtered, newLoc];
+          });
+        }
+
+        if (msg.type === "vehicle") {
+          const updated: Vehicle = msg.data;
+          queryClient.setQueryData<Vehicle[]>(["/api/vehicles"], (prev) => {
+            if (!prev) return [updated];
+            return prev.map((v) => (v.id === updated.id ? updated : v));
+          });
+        }
+      } catch (_) {}
+    };
+
+    ws.onerror = () => {};
+    ws.onclose = () => {};
+
+    return () => ws.close();
+  }, [queryClient]);
 
   const filteredVehicles = vehicles?.filter(v =>
     v.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -55,6 +92,17 @@ export default function Tracking() {
     if (minutes < 60) return `${minutes}m ago`;
     return new Date(timestamp).toLocaleTimeString();
   };
+
+  // Compute map center from first available location, fallback to India
+  const mapCenter: [number, number] = (() => {
+    if (latestLocations && latestLocations.length > 0) {
+      const loc = latestLocations[0];
+      const lat = parseFloat(String(loc.latitude));
+      const lng = parseFloat(String(loc.longitude));
+      if (!isNaN(lat) && !isNaN(lng)) return [lat, lng];
+    }
+    return [20.5937, 78.9629]; // India
+  })();
 
   return (
     <div className="flex h-full w-full" style={{ height: "calc(100vh - 3.5rem)" }}>
@@ -110,11 +158,16 @@ export default function Tracking() {
                       </div>
                       {location ? (
                         <>
-                          <p className="text-xs text-muted-foreground">Speed: {location.speed || 0} km/h</p>
+                          <p className="text-xs text-muted-foreground">
+                            Speed: {parseFloat(String(location.speed || "0")).toFixed(0)} km/h
+                          </p>
                           <p className="text-xs text-muted-foreground">{formatTimestamp(location.timestamp)}</p>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {parseFloat(String(location.latitude)).toFixed(4)}, {parseFloat(String(location.longitude)).toFixed(4)}
+                          </p>
                         </>
                       ) : (
-                        <p className="text-xs text-muted-foreground">No location data</p>
+                        <p className="text-xs text-muted-foreground">Waiting for GPS...</p>
                       )}
                     </CardContent>
                   </Card>
@@ -133,6 +186,8 @@ export default function Tracking() {
           <MapComponent
             vehicles={vehicles}
             locations={latestLocations}
+            center={mapCenter}
+            zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
             className="h-full w-full"
             onVehicleClick={setSelectedVehicle}
           />

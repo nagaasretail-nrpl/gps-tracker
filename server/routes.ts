@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation, setEventBroadcaster } from "./geofence-monitor";
-import { setLocationBroadcaster } from "./broadcaster";
+import { setLocationBroadcaster, setVehicleBroadcaster } from "./broadcaster";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
 import { z } from "zod";
@@ -600,8 +600,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Set up event broadcasting for geofence monitor
   setEventBroadcaster(broadcastEvent);
 
+  function broadcastVehicle(vehicle: any) {
+    const message = JSON.stringify({ type: "vehicle", data: vehicle });
+    clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+
   // Set up location broadcasting for GT06 TCP server
   setLocationBroadcaster(broadcastLocation);
+  setVehicleBroadcaster(broadcastVehicle);
 
   // Simulate location updates for demo vehicle
   setInterval(async () => {

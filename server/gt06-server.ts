@@ -14,7 +14,7 @@
 import * as net from "net";
 import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation } from "./geofence-monitor";
-import { broadcastLocationUpdate } from "./broadcaster";
+import { broadcastLocationUpdate, broadcastVehicleUpdate } from "./broadcaster";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
 
@@ -269,12 +269,13 @@ async function handlePacket(
       );
 
       const status = loc.speed > 5 ? "active" : "stopped";
-      await storage.updateVehicle(vehicleId, { status });
+      const updatedVehicle = await storage.updateVehicle(vehicleId, { status });
 
       // Trigger geofence checks and broadcast to WebSocket clients
       checkGeofences(location).catch((e) => console.error("[GT06] Geofence error:", e));
       checkSpeedViolation(location).catch((e) => console.error("[GT06] Speed check error:", e));
-      broadcastLocationUpdate(location);
+      broadcastLocationUpdate({ ...location, vehicleId });
+      if (updatedVehicle) broadcastVehicleUpdate(updatedVehicle);
 
       socket.write(buildAck(0x12, pkt.serial));
       break;

@@ -245,7 +245,18 @@ export class DbStorage implements IStorage {
 
   async getLatestLocations(): Promise<Location[]> {
     const result = await db.execute(sql`
-      SELECT DISTINCT ON (vehicle_id) *
+      SELECT DISTINCT ON (vehicle_id)
+        id,
+        vehicle_id   AS "vehicleId",
+        activity_id  AS "activityId",
+        latitude,
+        longitude,
+        altitude,
+        speed,
+        heading,
+        accuracy,
+        address,
+        timestamp
       FROM locations
       ORDER BY vehicle_id, timestamp DESC
     `);
