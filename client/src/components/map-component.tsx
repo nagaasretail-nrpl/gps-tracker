@@ -279,9 +279,9 @@ export function MapComponent({
         title: vehicle.name,
         icon: {
           url: `data:image/svg+xml,${encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 32 32">
-              <g transform="rotate(${heading}, 16, 16)">
-                <path d="M16 2 L10 28 L16 22 L22 28 Z" fill="${markerColor}" stroke="white" stroke-width="1.5"/>
+            `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+              <g transform="rotate(${heading}, 24, 24)">
+                <path d="M24 3 L15 42 L24 33 L33 42 Z" fill="${markerColor}" stroke="white" stroke-width="2"/>
               </g>
             </svg>`
           )}`,
