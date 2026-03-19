@@ -7,6 +7,7 @@ import { Play, Square, Timer, TrendingUp, Mountain, Footprints, MapPin } from "l
 import { MapComponent } from "@/components/map-component";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Poi } from "@shared/schema";
 
 interface GeoPoint {
   lat: number;
@@ -169,8 +170,17 @@ export default function TrackActivity() {
     ? [{ vehicleId: "live-route", coords: routePoints, color: "#FF6B35" }]
     : [];
 
-  const fakePoisForMap = currentPos
-    ? [{ id: "me", name: "You", latitude: String(currentPos[0]), longitude: String(currentPos[1]), category: "custom", description: `${currentSpeed.toFixed(1)} km/h` }]
+  const currentPoiMarkers: Poi[] = currentPos
+    ? [{
+        id: "live-position",
+        name: "You",
+        latitude: String(currentPos[0]),
+        longitude: String(currentPos[1]),
+        category: "custom",
+        description: `${currentSpeed.toFixed(1)} km/h`,
+        icon: null,
+        createdAt: new Date(),
+      }]
     : [];
 
   const showSummary = !isRecording && duration > 0 && !activitySaved;
@@ -267,7 +277,7 @@ export default function TrackActivity() {
             vehicles={[]}
             locations={[]}
             routePolylines={liveRoutePolylines}
-            pois={fakePoisForMap as any}
+            pois={currentPoiMarkers}
             center={mapCenter}
             zoom={mapZoom}
             className="h-80 rounded-b-md"

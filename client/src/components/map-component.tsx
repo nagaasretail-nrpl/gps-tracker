@@ -29,6 +29,17 @@ interface MapComponentProps {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+/** Escape HTML special characters to prevent XSS in InfoWindow content */
+function esc(str: string | null | undefined): string {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function computeBearing(
   lat1: number, lon1: number,
   lat2: number, lon2: number
@@ -275,13 +286,13 @@ export function MapComponent({
 
       const infoContent = `
         <div style="min-width:200px;font-family:sans-serif;font-size:13px;">
-          <p style="font-weight:600;margin:0 0 6px">${vehicle.name}</p>
+          <p style="font-weight:600;margin:0 0 6px">${esc(vehicle.name)}</p>
           <p style="margin:3px 0"><b>Speed:</b> ${speed.toFixed(0)} km/h</p>
-          <p style="margin:3px 0"><b>Status:</b> ${vehicle.status}</p>
+          <p style="margin:3px 0"><b>Status:</b> ${esc(vehicle.status)}</p>
           <p style="margin:3px 0"><b>Coords:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
           <p style="margin:3px 0"><b>Heading:</b> ${heading.toFixed(0)}&deg;</p>
-          <p style="margin:3px 0"><b>Location:</b> ${location.address ?? "Unknown"}</p>
-          <p style="margin:3px 0;font-size:11px;color:#666;">Last update: ${new Date(location.timestamp).toLocaleString()}</p>
+          <p style="margin:3px 0"><b>Location:</b> ${esc(location.address) || "Unknown"}</p>
+          <p style="margin:3px 0;font-size:11px;color:#666;">Last update: ${esc(new Date(location.timestamp).toLocaleString())}</p>
         </div>
       `;
       const infoWindow = new google.maps.InfoWindow({ content: infoContent });
@@ -343,8 +354,8 @@ export function MapComponent({
 
         const infoContent = `
           <div style="font-family:sans-serif;font-size:13px;">
-            <p style="font-weight:600;margin:0 0 4px">${geofence.name}</p>
-            ${geofence.description ? `<p style="margin:0;color:#666;">${geofence.description}</p>` : ""}
+            <p style="font-weight:600;margin:0 0 4px">${esc(geofence.name)}</p>
+            ${geofence.description ? `<p style="margin:0;color:#666;">${esc(geofence.description)}</p>` : ""}
           </div>
         `;
         const infoWindow = new google.maps.InfoWindow({ content: infoContent, position: centroid });
@@ -378,8 +389,8 @@ export function MapComponent({
 
       const infoContent = `
         <div style="font-family:sans-serif;font-size:13px;">
-          <p style="font-weight:600;margin:0 0 4px">${route.name}</p>
-          ${route.description ? `<p style="margin:0;color:#666;">${route.description}</p>` : ""}
+          <p style="font-weight:600;margin:0 0 4px">${esc(route.name)}</p>
+          ${route.description ? `<p style="margin:0;color:#666;">${esc(route.description)}</p>` : ""}
         </div>
       `;
       const infoWindow = new google.maps.InfoWindow({ content: infoContent });
@@ -420,9 +431,9 @@ export function MapComponent({
 
       const infoContent = `
         <div style="font-family:sans-serif;font-size:13px;">
-          <p style="font-weight:600;margin:0 0 4px">${poi.name}</p>
-          ${poi.description ? `<p style="margin:3px 0;color:#666;">${poi.description}</p>` : ""}
-          ${poi.category ? `<p style="margin:3px 0;"><b>Category:</b> ${poi.category}</p>` : ""}
+          <p style="font-weight:600;margin:0 0 4px">${esc(poi.name)}</p>
+          ${poi.description ? `<p style="margin:3px 0;color:#666;">${esc(poi.description)}</p>` : ""}
+          ${poi.category ? `<p style="margin:3px 0;"><b>Category:</b> ${esc(poi.category)}</p>` : ""}
         </div>
       `;
       const infoWindow = new google.maps.InfoWindow({ content: infoContent });
