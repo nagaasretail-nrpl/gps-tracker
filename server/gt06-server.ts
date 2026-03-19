@@ -18,9 +18,9 @@ import { broadcastLocationUpdate } from "./broadcaster";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
 
-// ─── CRC-16/CCITT (CRC-ITU) ───────────────────────────────────────────────
+// ─── CRC-16/CCITT (XModem variant: init=0x0000, poly=0x1021) ─────────────
 function calcCRC(buf: Buffer): number {
-  let crc = 0xffff;
+  let crc = 0x0000;
   for (let i = 0; i < buf.length; i++) {
     crc ^= buf[i] << 8;
     for (let j = 0; j < 8; j++) {
@@ -135,10 +135,10 @@ function parsePacket(buf: Buffer): Packet | null {
   const serial  = buf.readUInt16BE(4 + dataLen);     // serial after data
   const crcGot  = buf.readUInt16BE(4 + dataLen + 2); // CRC after serial
 
-  // CRC covers: [length byte] through [last serial byte] inclusive
+  // CRC covers: [proto] through [last serial byte] inclusive
   const crcCalc = calcCRC(buf.slice(3, 4 + dataLen + 2));
   if (crcGot !== crcCalc) {
-    console.warn(`[GT06] CRC mismatch: got 0x${crcGot.toString(16)}, expected 0x${crcCalc.toString(16)}`);
+    console.warn(`[GT06] CRC mismatch: got 0x${crcGot.toString(16)}, expected 0x${crcCalc.toString(16)} | raw=${buf.toString("hex")}`);
   }
 
   return { length: pktLen, proto, data, serial, crc: crcGot };
