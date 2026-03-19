@@ -237,7 +237,21 @@ export function MapComponent({
     if (!isNaN(lat) && !isNaN(lng)) {
       mapInstanceRef.current.setView([lat, lng], 15, { animate: true });
     }
-  }, [focusVehicleId]);
+  }, [focusVehicleId, locations]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || focusVehicleId) return;
+    const L = (window as any).L;
+    if (!L) return;
+    const allCoords = routePolylines.flatMap((r) => r.coords);
+    if (allCoords.length < 2) return;
+    try {
+      const bounds = L.latLngBounds(allCoords);
+      if (bounds.isValid()) {
+        mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true });
+      }
+    } catch (_) {}
+  }, [routePolylines]);
 
   const handleZoomIn = () => {
     if (mapInstanceRef.current) mapInstanceRef.current.zoomIn();
