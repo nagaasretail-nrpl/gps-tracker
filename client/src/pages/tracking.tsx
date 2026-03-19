@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { MapComponent } from "@/components/map-component";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,35 @@ export default function Tracking() {
     refetchInterval: 15000,
   });
 
-  // WebSocket for real-time location + vehicle status updates
+  const { data: vehicleHistory } = useQuery<Location[]>({
+    queryKey: ["/api/locations/history", selectedVehicle, "24h"],
+    queryFn: async () => {
+      if (!selectedVehicle) return [];
+      const start = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const end = new Date().toISOString();
+      const res = await fetch(
+        `/api/locations/history?vehicleId=${encodeURIComponent(selectedVehicle)}&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedVehicle,
+    refetchInterval: 60000,
+    staleTime: 0,
+  });
+
+  const routePolylines = useMemo(() => {
+    if (!selectedVehicle || !vehicleHistory || vehicleHistory.length < 2) return [];
+    const sorted = [...vehicleHistory].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    const coords = sorted
+      .map((l) => [parseFloat(String(l.latitude)), parseFloat(String(l.longitude))] as [number, number])
+      .filter(([lat, lng]) => !isNaN(lat) && !isNaN(lng));
+    return [{ vehicleId: selectedVehicle, coords, color: "#3b82f6" }];
+  }, [selectedVehicle, vehicleHistory]);
+
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${proto}//${window.location.host}/ws`);
@@ -60,13 +88,12 @@ export default function Tracking() {
     return () => ws.close();
   }, [queryClient]);
 
-  const filteredVehicles = vehicles?.filter(v =>
+  const filteredVehicles = vehicles?.filter((v) =>
     v.name.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
-  const getVehicleLocation = (vehicleId: string) => {
-    return latestLocations?.find(l => l.vehicleId === vehicleId);
-  };
+  const getVehicleLocation = (vehicleId: string) =>
+    latestLocations?.find((l) => l.vehicleId === vehicleId);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -96,7 +123,6 @@ export default function Tracking() {
     return new Date(timestamp).toLocaleDateString();
   };
 
-  // Compute map center from first available location, fallback to India
   const mapCenter: [number, number] = (() => {
     if (latestLocations && latestLocations.length > 0) {
       const loc = latestLocations[0];
@@ -104,12 +130,15 @@ export default function Tracking() {
       const lng = parseFloat(String(loc.longitude));
       if (!isNaN(lat) && !isNaN(lng)) return [lat, lng];
     }
-    return [20.5937, 78.9629]; // India
+    return [20.5937, 78.9629];
   })();
+
+  const handleVehicleClick = (vehicleId: string) => {
+    setSelectedVehicle(vehicleId === selectedVehicle ? vehicleId : vehicleId);
+  };
 
   return (
     <div className="flex h-full w-full" style={{ height: "calc(100vh - 3.5rem)" }}>
-      {/* Vehicle List Panel */}
       <div className="w-72 flex-shrink-0 flex flex-col border-r bg-card">
         <div className="p-3 border-b">
           <h2 className="text-sm font-semibold mb-2">Vehicles</h2>
@@ -128,7 +157,7 @@ export default function Tracking() {
         <ScrollArea className="flex-1">
           {vehiclesLoading ? (
             <div className="p-3 space-y-2">
-              {[1, 2, 3].map(i => (
+              {[1, 2, 3].map((i) => (
                 <Skeleton key={i} className="h-16 w-full rounded-md" />
               ))}
             </div>
@@ -140,20 +169,25 @@ export default function Tracking() {
             <div className="p-2 space-y-1">
               {filteredVehicles.map((vehicle) => {
                 const location = getVehicleLocation(vehicle.id);
+                const isSelected = selectedVehicle === vehicle.id;
                 return (
                   <Card
                     key={vehicle.id}
                     className={`cursor-pointer hover-elevate ${
-                      selectedVehicle === vehicle.id ? "border-primary" : ""
+                      isSelected ? "border-primary bg-primary/5" : ""
                     }`}
-                    onClick={() => setSelectedVehicle(vehicle.id)}
+                    onClick={() => handleVehicleClick(vehicle.id)}
                     data-testid={`card-vehicle-${vehicle.id}`}
                   >
                     <CardContent className="p-3">
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-1.5">
-                          <Circle className={`h-2.5 w-2.5 fill-current ${getStatusColor(vehicle.status)}`} />
-                          <span className="text-sm font-medium truncate max-w-[120px]">{vehicle.name}</span>
+                          <Circle
+                            className={`h-2.5 w-2.5 fill-current ${getStatusColor(vehicle.status)}`}
+                          />
+                          <span className="text-sm font-medium truncate max-w-[120px]">
+                            {vehicle.name}
+                          </span>
                         </div>
                         <Badge variant={getStatusBadge(vehicle.status)} className="text-xs">
                           {vehicle.status}
@@ -164,10 +198,18 @@ export default function Tracking() {
                           <p className="text-xs text-muted-foreground">
                             Speed: {parseFloat(String(location.speed || "0")).toFixed(0)} km/h
                           </p>
-                          <p className="text-xs text-muted-foreground">{formatTimestamp(location.timestamp)}</p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {parseFloat(String(location.latitude)).toFixed(4)}, {parseFloat(String(location.longitude)).toFixed(4)}
+                          <p className="text-xs text-muted-foreground">
+                            {formatTimestamp(location.timestamp)}
                           </p>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {parseFloat(String(location.latitude)).toFixed(4)},{" "}
+                            {parseFloat(String(location.longitude)).toFixed(4)}
+                          </p>
+                          {isSelected && vehicleHistory && vehicleHistory.length > 0 && (
+                            <p className="text-xs text-primary mt-1">
+                              {vehicleHistory.length} points today
+                            </p>
+                          )}
                         </>
                       ) : (
                         <p className="text-xs text-muted-foreground">Waiting for GPS...</p>
@@ -181,7 +223,6 @@ export default function Tracking() {
         </ScrollArea>
       </div>
 
-      {/* Map */}
       <div className="flex-1 relative">
         {locationsLoading && !latestLocations ? (
           <Skeleton className="h-full w-full" />
@@ -193,7 +234,9 @@ export default function Tracking() {
             center={mapCenter}
             zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
             className="h-full w-full"
-            onVehicleClick={setSelectedVehicle}
+            onVehicleClick={handleVehicleClick}
+            routePolylines={routePolylines}
+            focusVehicleId={selectedVehicle}
           />
         )}
       </div>
