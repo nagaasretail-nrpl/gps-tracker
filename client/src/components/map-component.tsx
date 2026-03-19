@@ -279,15 +279,15 @@ export function MapComponent({
         title: vehicle.name,
         icon: {
           url: `data:image/svg+xml,${encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+            `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 32 32">
               <g transform="rotate(${heading}, 16, 16)">
                 <path d="M16 2 L10 28 L16 22 L22 28 Z" fill="${markerColor}" stroke="white" stroke-width="1.5"/>
               </g>
             </svg>`
           )}`,
-          anchor: new google.maps.Point(16, 16),
-          size: new google.maps.Size(32, 32),
-          scaledSize: new google.maps.Size(32, 32),
+          anchor: new google.maps.Point(24, 24),
+          size: new google.maps.Size(48, 48),
+          scaledSize: new google.maps.Size(48, 48),
         },
       });
 
