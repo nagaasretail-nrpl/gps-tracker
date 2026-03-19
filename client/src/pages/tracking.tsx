@@ -86,11 +86,14 @@ export default function Tracking() {
 
   const formatTimestamp = (timestamp: Date) => {
     const diff = Date.now() - new Date(timestamp).getTime();
+    if (diff < 0) return new Date(timestamp).toLocaleTimeString();
     const seconds = Math.floor(diff / 1000);
     const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
     if (seconds < 60) return `${seconds}s ago`;
     if (minutes < 60) return `${minutes}m ago`;
-    return new Date(timestamp).toLocaleTimeString();
+    if (hours < 24) return `${hours}h ago`;
+    return new Date(timestamp).toLocaleDateString();
   };
 
   // Compute map center from first available location, fallback to India
@@ -184,6 +187,7 @@ export default function Tracking() {
           <Skeleton className="h-full w-full" />
         ) : (
           <MapComponent
+            key={latestLocations && latestLocations.length > 0 ? "has-locations" : "no-locations"}
             vehicles={vehicles}
             locations={latestLocations}
             center={mapCenter}

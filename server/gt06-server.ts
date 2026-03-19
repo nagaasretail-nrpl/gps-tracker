@@ -106,7 +106,8 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   if (latSouth) lat = -lat;
   if (lonWest)  lng = -lng;
 
-  const timestamp = new Date(Date.UTC(year, month - 1, day, hour, min, sec));
+  // Use server receive time — GPS device time can have timezone/BCD issues
+  const timestamp = new Date();
 
   return { lat, lng, speed, course, timestamp, satellites };
 }

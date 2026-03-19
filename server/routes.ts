@@ -636,10 +636,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           vehicleId: demoVehicle.id,
           latitude: newLat.toFixed(7),
           longitude: newLng.toFixed(7),
-          altitude: currentLocation.altitude,
+          ...(currentLocation.altitude ? { altitude: currentLocation.altitude } : {}),
           speed: newSpeed.toFixed(2),
           heading: newHeading.toFixed(2),
-          address: currentLocation.address,
+          ...(currentLocation.address ? { address: currentLocation.address } : {}),
           accuracy: "5",
         });
         

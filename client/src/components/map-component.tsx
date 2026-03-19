@@ -23,8 +23,8 @@ export function MapComponent({
   geofences = [],
   routes = [],
   pois = [],
-  center = [40.7128, -74.0060],
-  zoom = 12,
+  center = [20.5937, 78.9629],
+  zoom = 5,
   onVehicleClick,
   onMapClick,
   className = "",
@@ -32,6 +32,7 @@ export function MapComponent({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const hasFittedRef = useRef(false);
   const [mapType, setMapType] = useState<"streets" | "satellite">("streets");
 
   useEffect(() => {
@@ -116,10 +117,11 @@ export function MapComponent({
       vehicleMarkers.push(marker);
     });
 
-    // Auto-fit map to show all vehicle markers
-    if (vehicleMarkers.length > 0) {
+    // Auto-fit to vehicle markers on first load only (so user can pan freely after)
+    if (vehicleMarkers.length > 0 && !hasFittedRef.current) {
       const group = L.featureGroup(vehicleMarkers);
-      mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 15 });
+      mapInstanceRef.current.fitBounds(group.getBounds(), { padding: [60, 60], maxZoom: 14 });
+      hasFittedRef.current = true;
     }
 
     geofences.forEach((geofence) => {
