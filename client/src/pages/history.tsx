@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import type { Vehicle, Location } from "@shared/schema";
+import { filterValidGpsCoords } from "@/lib/gpsUtils";
 import { MapComponent } from "@/components/map-component";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
@@ -119,36 +120,17 @@ export default function History() {
 
   const validActiveDateLocations = useMemo(() => {
     if (!activeDateLocations.length) return [];
-    const basic = activeDateLocations.filter((l) => {
+    const rawCoords: [number, number][] = activeDateLocations.map((l) => [
+      parseFloat(String(l.latitude)),
+      parseFloat(String(l.longitude)),
+    ]);
+    const validCoords = new Set(
+      filterValidGpsCoords(rawCoords).map(([lat, lng]) => `${lat},${lng}`)
+    );
+    return activeDateLocations.filter((l) => {
       const lat = parseFloat(String(l.latitude));
       const lng = parseFloat(String(l.longitude));
-      return (
-        !isNaN(lat) && !isNaN(lng) &&
-        lat >= -90 && lat <= 90 &&
-        lng >= -180 && lng <= 180 &&
-        !(lat === 0 && lng === 0)
-      );
-    });
-    if (basic.length < 2) return basic;
-    const lats = basic.map((l) => parseFloat(String(l.latitude))).sort((a, b) => a - b);
-    const lngs = basic.map((l) => parseFloat(String(l.longitude))).sort((a, b) => a - b);
-    const mid = Math.floor(basic.length / 2);
-    const medLat = lats[mid];
-    const medLng = lngs[mid];
-    const toRad = (d: number) => (d * Math.PI) / 180;
-    const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-      const R = 6371;
-      const dLat = toRad(lat2 - lat1);
-      const dLng = toRad(lng2 - lng1);
-      const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    };
-    return basic.filter((l) => {
-      const lat = parseFloat(String(l.latitude));
-      const lng = parseFloat(String(l.longitude));
-      return haversineKm(medLat, medLng, lat, lng) <= 1000;
+      return validCoords.has(`${lat},${lng}`);
     });
   }, [activeDateLocations]);
 

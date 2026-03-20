@@ -8,6 +8,7 @@ import type { Vehicle, Location } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
+import { filterValidGpsCoords } from "@/lib/gpsUtils";
 
 function usePrevious<T>(value: T): T | undefined {
   const ref = useRef<T | undefined>(undefined);
@@ -81,14 +82,10 @@ export default function Tracking() {
         .filter((l) => l.vehicleId === vehicle.id)
         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       if (pts.length < 2) return [];
-      const coords = pts
-        .map((l) => [parseFloat(String(l.latitude)), parseFloat(String(l.longitude))] as [number, number])
-        .filter(([lat, lng]) =>
-          !isNaN(lat) && !isNaN(lng) &&
-          lat >= -90 && lat <= 90 &&
-          lng >= -180 && lng <= 180 &&
-          !(lat === 0 && lng === 0)
-        );
+      const rawCoords = pts.map(
+        (l) => [parseFloat(String(l.latitude)), parseFloat(String(l.longitude))] as [number, number]
+      );
+      const coords = filterValidGpsCoords(rawCoords);
       if (coords.length < 2) return [];
       return [{ vehicleId: vehicle.id, coords, color: vehicle.iconColor ?? "#2563eb" }];
     });
