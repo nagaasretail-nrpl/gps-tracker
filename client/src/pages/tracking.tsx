@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { MapComponent } from "@/components/map-component";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Circle } from "lucide-react";
+import { Search, Circle, Wifi, WifiOff } from "lucide-react";
 import type { Vehicle, Location } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,6 +15,14 @@ function usePrevious<T>(value: T): T | undefined {
     ref.current = value;
   });
   return ref.current;
+}
+
+interface ActiveConnection {
+  imei: string;
+  remoteAddr: string;
+  connectedAt: string;
+  lastPacketAt: string;
+  packetCount: number;
 }
 
 export default function Tracking() {
@@ -31,6 +39,17 @@ export default function Tracking() {
   const { data: latestLocations, isLoading: locationsLoading } = useQuery<Location[]>({
     queryKey: ["/api/locations/latest"],
     refetchInterval: 15000,
+  });
+
+  const { data: trailLocations } = useQuery<Location[]>({
+    queryKey: ["/api/locations/trail"],
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+
+  const { data: activeConnections } = useQuery<ActiveConnection[]>({
+    queryKey: ["/api/device/connections"],
+    refetchInterval: 10000,
   });
 
   const prevLocations = usePrevious(latestLocations);
@@ -55,34 +74,20 @@ export default function Tracking() {
     return data;
   }, [latestLocations, prevLocations]);
 
-  const { data: vehicleHistory } = useQuery<Location[]>({
-    queryKey: ["/api/locations/history", selectedVehicle, "24h"],
-    queryFn: async () => {
-      if (!selectedVehicle) return [];
-      const start = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const end = new Date().toISOString();
-      const res = await fetch(
-        `/api/locations/history?vehicleId=${encodeURIComponent(selectedVehicle)}&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`,
-        { credentials: "include" }
-      );
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!selectedVehicle,
-    refetchInterval: 60000,
-    staleTime: 0,
-  });
-
   const routePolylines = useMemo(() => {
-    if (!selectedVehicle || !vehicleHistory || vehicleHistory.length < 2) return [];
-    const sorted = [...vehicleHistory]
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-      .slice(-30);
-    const coords = sorted
-      .map((l) => [parseFloat(String(l.latitude)), parseFloat(String(l.longitude))] as [number, number])
-      .filter(([lat, lng]) => !isNaN(lat) && !isNaN(lng));
-    return [{ vehicleId: selectedVehicle, coords, color: "#3b82f6" }];
-  }, [selectedVehicle, vehicleHistory]);
+    if (!vehicles || !trailLocations) return [];
+    return vehicles.flatMap((vehicle) => {
+      const pts = trailLocations
+        .filter((l) => l.vehicleId === vehicle.id)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      if (pts.length < 2) return [];
+      const coords = pts
+        .map((l) => [parseFloat(String(l.latitude)), parseFloat(String(l.longitude))] as [number, number])
+        .filter(([lat, lng]) => !isNaN(lat) && !isNaN(lng));
+      if (coords.length < 2) return [];
+      return [{ vehicleId: vehicle.id, coords, color: vehicle.iconColor ?? "#2563eb" }];
+    });
+  }, [vehicles, trailLocations]);
 
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -99,6 +104,7 @@ export default function Tracking() {
             const filtered = prev.filter((l) => l.vehicleId !== newLoc.vehicleId);
             return [...filtered, newLoc];
           });
+          queryClient.invalidateQueries({ queryKey: ["/api/locations/trail"] });
         }
         if (msg.type === "vehicle") {
           const updated: Vehicle = msg.data;
@@ -150,6 +156,14 @@ export default function Tracking() {
     return new Date(timestamp).toLocaleDateString();
   };
 
+  const isDeviceConnected = (vehicle: Vehicle) =>
+    (activeConnections ?? []).some((c) => c.imei === vehicle.deviceId);
+
+  const selectedTrailCount = useMemo(() => {
+    if (!selectedVehicle || !trailLocations) return 0;
+    return trailLocations.filter((l) => l.vehicleId === selectedVehicle).length;
+  }, [selectedVehicle, trailLocations]);
+
   const mapCenter: [number, number] = (() => {
     if (latestLocations && latestLocations.length > 0) {
       const loc = latestLocations[0];
@@ -193,6 +207,7 @@ export default function Tracking() {
               {filteredVehicles.map((vehicle) => {
                 const location = getVehicleLocation(vehicle.id);
                 const isSelected = selectedVehicle === vehicle.id;
+                const connected = isDeviceConnected(vehicle);
                 return (
                   <Card
                     key={vehicle.id}
@@ -208,13 +223,24 @@ export default function Tracking() {
                           <Circle
                             className={`h-2.5 w-2.5 fill-current ${getStatusColor(vehicle.status)}`}
                           />
-                          <span className="text-sm font-medium truncate max-w-[120px]">
+                          <span className="text-sm font-medium truncate max-w-[110px]">
                             {vehicle.name}
                           </span>
                         </div>
-                        <Badge variant={getStatusBadge(vehicle.status)} className="text-xs">
-                          {vehicle.status}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          {connected ? (
+                            <span title="Device TCP connected">
+                              <Wifi className="h-3 w-3 text-green-500" />
+                            </span>
+                          ) : (
+                            <span title="Device offline">
+                              <WifiOff className="h-3 w-3 text-muted-foreground/50" />
+                            </span>
+                          )}
+                          <Badge variant={getStatusBadge(vehicle.status)} className="text-xs">
+                            {vehicle.status}
+                          </Badge>
+                        </div>
                       </div>
                       {location ? (
                         <>
@@ -228,9 +254,9 @@ export default function Tracking() {
                             {parseFloat(String(location.latitude)).toFixed(4)},{" "}
                             {parseFloat(String(location.longitude)).toFixed(4)}
                           </p>
-                          {isSelected && vehicleHistory && vehicleHistory.length > 0 && (
-                            <p className="text-xs text-primary mt-1">
-                              Route: last {Math.min(vehicleHistory.length, 30)} points
+                          {isSelected && selectedTrailCount > 1 && (
+                            <p className="text-xs mt-1" style={{ color: vehicle.iconColor ?? "#2563eb" }}>
+                              Trail: {selectedTrailCount} points (6h)
                             </p>
                           )}
                         </>
@@ -244,6 +270,27 @@ export default function Tracking() {
             </div>
           )}
         </ScrollArea>
+
+        {activeConnections !== undefined && (
+          <div className="border-t p-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              Live Connections
+            </p>
+            {activeConnections.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No devices connected</p>
+            ) : (
+              <div className="space-y-1">
+                {activeConnections.map((conn) => (
+                  <div key={conn.imei} className="text-xs flex items-center gap-1.5" data-testid={`conn-${conn.imei}`}>
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                    <span className="font-mono truncate">{conn.imei}</span>
+                    <span className="text-muted-foreground ml-auto shrink-0">{conn.packetCount}p</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 relative">

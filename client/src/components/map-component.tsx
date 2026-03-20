@@ -230,17 +230,44 @@ export function MapComponent({
     const boundsForFit = new google.maps.LatLngBounds();
 
     // ── Route polylines (vehicle history trails) ──────────────────────────
-    routePolylines.forEach(({ coords, color }) => {
+    routePolylines.forEach(({ vehicleId: trailVehicleId, coords, color }) => {
       if (coords.length < 2) return;
+
+      const isSelected = focusVehicleId === trailVehicleId;
+      const lineColor = color ?? "#3b82f6";
+
       const path = coords.map(([lat, lng]) => ({ lat, lng }));
       const poly = new google.maps.Polyline({
         path,
         map,
-        strokeColor: color ?? "#3b82f6",
-        strokeWeight: 3,
-        strokeOpacity: 0.75,
+        strokeColor: lineColor,
+        strokeWeight: isSelected ? 4 : 2,
+        strokeOpacity: isSelected ? 0.85 : 0.35,
       });
       overlaysRef.current.push(poly);
+
+      // Draw small waypoint dots along the trail
+      if (isSelected) {
+        coords.forEach(([lat, lng], idx) => {
+          const isLast = idx === coords.length - 1;
+          if (isLast) return; // skip last — that's the vehicle marker itself
+          const dotMarker = new google.maps.Marker({
+            position: { lat, lng },
+            map,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              fillColor: lineColor,
+              fillOpacity: idx === 0 ? 0.3 : 0.6,
+              strokeColor: lineColor,
+              strokeWeight: 1,
+              strokeOpacity: 0.5,
+              scale: idx === 0 ? 3 : 4,
+            },
+            clickable: false,
+          });
+          overlaysRef.current.push(dotMarker);
+        });
+      }
     });
 
     // ── Vehicle location markers ──────────────────────────────────────────
@@ -454,7 +481,7 @@ export function MapComponent({
     });
   }, [
     status, vehicles, locations, geofences, routes, pois,
-    routePolylines, bearingData, onVehicleClick,
+    routePolylines, bearingData, onVehicleClick, focusVehicleId,
   ]);
 
   // Render overlays whenever data changes

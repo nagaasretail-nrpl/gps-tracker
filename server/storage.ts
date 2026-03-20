@@ -63,6 +63,7 @@ export interface IStorage {
   getLocations(vehicleId?: string, activityId?: string, startDate?: Date, endDate?: Date): Promise<Location[]>;
   getLatestLocations(): Promise<Location[]>;
   getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]>;
+  getLocationTrail(since: Date, perVehicleLimit: number): Promise<Location[]>;
   getActivityLocationHistory(activityId: string): Promise<Location[]>;
   createLocation(location: InsertLocation): Promise<Location>;
   createDeviceLocation(vehicleId: string, lat: number, lng: number, speed: number, altitude: number | null, accuracy: number | null, timestamp: Date): Promise<Location>;
@@ -278,6 +279,34 @@ export class DbStorage implements IStorage {
         lte(locations.timestamp, endDate)
       ))
       .orderBy(desc(locations.timestamp));
+  }
+
+  async getLocationTrail(since: Date, perVehicleLimit: number): Promise<Location[]> {
+    const result = await db.execute(sql`
+      SELECT * FROM (
+        SELECT
+          id, vehicle_id AS "vehicleId", activity_id AS "activityId",
+          latitude, longitude, altitude, speed, heading, accuracy, address, timestamp,
+          ROW_NUMBER() OVER (PARTITION BY vehicle_id ORDER BY timestamp DESC) AS rn
+        FROM locations
+        WHERE timestamp >= ${since}
+      ) ranked
+      WHERE rn <= ${perVehicleLimit}
+      ORDER BY "vehicleId", timestamp ASC
+    `);
+    return result.rows.map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      vehicleId: r.vehicleId as string,
+      activityId: r.activityId as string | null,
+      latitude: r.latitude as string,
+      longitude: r.longitude as string,
+      altitude: r.altitude as string | null,
+      speed: r.speed as string | null,
+      heading: r.heading as string | null,
+      accuracy: r.accuracy as string | null,
+      address: r.address as string | null,
+      timestamp: r.timestamp as Date,
+    }));
   }
 
   async createLocation(insertLocation: InsertLocation): Promise<Location> {

@@ -18,6 +18,21 @@ import { broadcastLocationUpdate, broadcastVehicleUpdate } from "./broadcaster";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
 
+// ─── Active connection registry ───────────────────────────────────────────
+interface ActiveConnection {
+  imei: string;
+  remoteAddr: string;
+  connectedAt: Date;
+  lastPacketAt: Date;
+  packetCount: number;
+}
+
+const activeConnections = new Map<string, ActiveConnection>();
+
+export function getActiveConnections(): ActiveConnection[] {
+  return Array.from(activeConnections.values());
+}
+
 // ─── CRC-16/X-25 (poly=0x1021 reflected=0x8408, init=0xFFFF, xorOut=0xFFFF)
 // This is the algorithm used by Traccar (the reference GT06 server implementation)
 function calcCRC(buf: Buffer): number {
@@ -153,6 +168,7 @@ export function startGT06Server() {
     let imei: string | null = null;
     let vehicleId: string | null = null;
     let rxBuf = Buffer.alloc(0);
+    const connKey = remoteAddr;
 
     console.log(`[GT06] New connection from ${remoteAddr}`);
 
@@ -194,7 +210,10 @@ export function startGT06Server() {
     });
 
     socket.on("error",  (err) => console.warn(`[GT06] Socket error ${remoteAddr}:`, err.message));
-    socket.on("close",  ()    => console.log(`[GT06] Connection closed ${remoteAddr} (IMEI: ${imei ?? "unknown"})`));
+    socket.on("close",  () => {
+      activeConnections.delete(connKey);
+      console.log(`[GT06] Connection closed ${remoteAddr} (IMEI: ${imei ?? "unknown"})`);
+    });
     socket.setTimeout(120_000, () => socket.destroy());
   });
 
@@ -227,6 +246,15 @@ async function handlePacket(
       setImei(deviceImei);
       console.log(`[GT06] Login from IMEI: ${deviceImei} (${remoteAddr})`);
 
+      // Register in active connections map
+      activeConnections.set(remoteAddr, {
+        imei: deviceImei,
+        remoteAddr,
+        connectedAt: new Date(),
+        lastPacketAt: new Date(),
+        packetCount: 1,
+      });
+
       // Look up the registered vehicle
       const vehicle = await storage.getVehicleByDeviceId(deviceImei);
       if (vehicle) {
@@ -254,6 +282,13 @@ async function handlePacket(
       if (!loc) {
         console.warn(`[GT06] Could not parse location packet from ${deviceImei}`);
         break;
+      }
+
+      // Update last-packet time and count in the registry
+      const conn = activeConnections.get(remoteAddr);
+      if (conn) {
+        conn.lastPacketAt = new Date();
+        conn.packetCount += 1;
       }
 
       console.log(`[GT06] Location ${deviceImei}: lat=${loc.lat.toFixed(6)}, lng=${loc.lng.toFixed(6)}, speed=${loc.speed} km/h, sats=${loc.satellites}`);

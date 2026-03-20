@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation, setEventBroadcaster } from "./geofence-monitor";
 import { setLocationBroadcaster, setVehicleBroadcaster } from "./broadcaster";
+import { getActiveConnections } from "./gt06-server";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
 import { z } from "zod";
@@ -208,6 +209,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(400).json({ error: "Invalid location data" });
     }
+  });
+
+  // Recent trail for all vehicles (last N points per vehicle)
+  app.get("/api/locations/trail", requireAuth, async (req, res) => {
+    try {
+      const hours = Math.min(parseInt((req.query.hours as string) || "6", 10), 48);
+      const limit = Math.min(parseInt((req.query.limit as string) || "50", 10), 200);
+      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+      const trail = await storage.getLocationTrail(since, limit);
+      res.json(trail);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch trail data" });
+    }
+  });
+
+  // Active GT06 device connections
+  app.get("/api/device/connections", requireAuth, async (_req, res) => {
+    res.json(getActiveConnections());
   });
 
   // Geofences (protected routes)
