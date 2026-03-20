@@ -308,7 +308,9 @@ async function handlePacket(
 
       const loc = parseLocation(pkt.data);
       if (!loc) {
-        console.warn(`[GT06] Could not parse location packet from ${deviceImei}`);
+        // Always ACK location packets even if discarded (prevents device retransmits).
+        // parseLocation() already logs a specific reason via console.warn.
+        socket.write(buildAck(0x12, pkt.serial));
         break;
       }
 
