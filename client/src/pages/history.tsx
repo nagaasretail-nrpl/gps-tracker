@@ -138,11 +138,13 @@ export default function History() {
 
   const historyBearingData = useMemo<Record<string, [number, number][]>>(() => {
     if (!selectedVehicle || validActiveDateLocations.length < 2) return {};
-    const idx = currentIndex;
+    const maxIdx = validActiveDateLocations.length - 1;
+    const idx = Math.min(Math.max(0, currentIndex), maxIdx);
     const prevIdx = idx > 0 ? idx - 1 : 0;
     const nextIdx = idx > 0 ? idx : 1;
     const prev = validActiveDateLocations[prevIdx];
     const curr = validActiveDateLocations[nextIdx];
+    if (!prev || !curr) return {};
     return {
       [selectedVehicle]: [
         [parseFloat(String(prev.latitude)), parseFloat(String(prev.longitude))],
