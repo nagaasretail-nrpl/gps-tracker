@@ -136,6 +136,21 @@ export default function History() {
 
   const currentLocation = validActiveDateLocations.length > 0 ? validActiveDateLocations[currentIndex] : undefined;
 
+  const historyBearingData = useMemo<Record<string, [number, number][]>>(() => {
+    if (!selectedVehicle || validActiveDateLocations.length < 2) return {};
+    const idx = currentIndex;
+    const prevIdx = idx > 0 ? idx - 1 : 0;
+    const nextIdx = idx > 0 ? idx : 1;
+    const prev = validActiveDateLocations[prevIdx];
+    const curr = validActiveDateLocations[nextIdx];
+    return {
+      [selectedVehicle]: [
+        [parseFloat(String(prev.latitude)), parseFloat(String(prev.longitude))],
+        [parseFloat(String(curr.latitude)), parseFloat(String(curr.longitude))],
+      ],
+    };
+  }, [selectedVehicle, validActiveDateLocations, currentIndex]);
+
   const dayRoutePolylines = useMemo(() => {
     if (!selectedVehicle || validActiveDateLocations.length < 2) return [];
     const coords = validActiveDateLocations.map(
@@ -371,6 +386,8 @@ export default function History() {
               vehicles={[selectedVehicleData]}
               locations={[currentLocation]}
               routePolylines={dayRoutePolylines}
+              bearingData={historyBearingData}
+              focusVehicleId={selectedVehicle}
               className="h-full"
             />
           ) : (

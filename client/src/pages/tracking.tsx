@@ -8,7 +8,7 @@ import type { Vehicle, Location } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
-import { filterValidGpsCoords } from "@/lib/gpsUtils";
+import { filterValidGpsCoords, isBasicValidCoord } from "@/lib/gpsUtils";
 
 function usePrevious<T>(value: T): T | undefined {
   const ref = useRef<T | undefined>(undefined);
@@ -54,6 +54,15 @@ export default function Tracking() {
   });
 
   const prevLocations = usePrevious(latestLocations);
+
+  const validLatestLocations = useMemo(() => {
+    if (!latestLocations) return undefined;
+    return latestLocations.filter((l) => {
+      const lat = parseFloat(String(l.latitude));
+      const lng = parseFloat(String(l.longitude));
+      return isBasicValidCoord(lat, lng);
+    });
+  }, [latestLocations]);
 
   const bearingData = useMemo<Record<string, [number, number][]>>(() => {
     if (!latestLocations) return {};
@@ -300,9 +309,9 @@ export default function Tracking() {
           <Skeleton className="h-full w-full" />
         ) : (
           <MapComponent
-            key={latestLocations && latestLocations.length > 0 ? "has-locations" : "no-locations"}
+            key={validLatestLocations && validLatestLocations.length > 0 ? "has-locations" : "no-locations"}
             vehicles={vehicles}
-            locations={latestLocations}
+            locations={validLatestLocations}
             center={mapCenter}
             zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
             className="h-full w-full"

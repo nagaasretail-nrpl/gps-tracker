@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { Vehicle, Location, Geofence, Route as RouteType, Poi } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { ZoomIn, ZoomOut, Locate, Layers, MapPinOff } from "lucide-react";
+import { getMarkerSvg, getIconAnchor } from "@/lib/vehicleIcons";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -300,21 +301,17 @@ export function MapComponent({
         }
       }
 
+      const iconType = vehicle.type ?? "car";
+      const [anchorX, anchorY] = getIconAnchor(iconType);
       const marker = new google.maps.Marker({
         position: { lat, lng },
         map,
         title: vehicle.name,
         icon: {
-          url: `data:image/svg+xml,${encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-              <g transform="rotate(${heading}, 32, 32)">
-                <path d="M32 4 L20 56 L32 44 L44 56 Z" fill="${markerColor}" stroke="white" stroke-width="2.5"/>
-              </g>
-            </svg>`
-          )}`,
-          anchor: new google.maps.Point(32, 32),
-          size: new google.maps.Size(64, 64),
-          scaledSize: new google.maps.Size(64, 64),
+          url: `data:image/svg+xml,${encodeURIComponent(getMarkerSvg(iconType, markerColor, heading))}`,
+          anchor: new google.maps.Point(anchorX, anchorY),
+          size: new google.maps.Size(40, 40),
+          scaledSize: new google.maps.Size(40, 40),
         },
       });
 

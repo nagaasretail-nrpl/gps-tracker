@@ -12,13 +12,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Plus, Trash2, Copy, Check, Radio, Globe, Signal, AlertCircle, Pencil } from "lucide-react";
 import type { Vehicle, InsertVehicle } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
@@ -36,14 +29,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-
-const vehicleTypes = [
-  { value: "car", label: "Car" },
-  { value: "truck", label: "Truck" },
-  { value: "motorcycle", label: "Motorcycle" },
-  { value: "van", label: "Van" },
-  { value: "bus", label: "Bus" },
-];
+import { VEHICLE_TYPE_OPTIONS, getMarkerSvg } from "@/lib/vehicleIcons";
 
 const iconColors = [
   "#2563eb", "#dc2626", "#16a34a", "#ea580c", "#9333ea",
@@ -253,26 +239,34 @@ export default function Vehicles() {
                 <FormField
                   control={form.control}
                   name="type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Vehicle Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  render={({ field }) => {
+                    const currentColor = form.watch("iconColor") ?? "#2563eb";
+                    return (
+                      <FormItem>
+                        <FormLabel>Icon Type</FormLabel>
                         <FormControl>
-                          <SelectTrigger data-testid="select-vehicle-type">
-                            <SelectValue placeholder="Select type" />
-                          </SelectTrigger>
+                          <div className="grid grid-cols-4 gap-2">
+                            {VEHICLE_TYPE_OPTIONS.map((vt) => (
+                              <button
+                                key={vt.value}
+                                type="button"
+                                onClick={() => field.onChange(vt.value)}
+                                data-testid={`button-add-type-${vt.value}`}
+                                className={`flex flex-col items-center gap-1 p-2 rounded-md border-2 transition-colors ${field.value === vt.value ? "border-primary bg-primary/10" : "border-border hover:border-muted-foreground/40"}`}
+                              >
+                                <span
+                                  dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, currentColor, 0) }}
+                                  className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
+                                />
+                                <span className="text-[10px] text-muted-foreground leading-none">{vt.label}</span>
+                              </button>
+                            ))}
+                          </div>
                         </FormControl>
-                        <SelectContent>
-                          {vehicleTypes.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                              {type.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
 
                 <FormField
@@ -376,19 +370,22 @@ export default function Vehicles() {
               <p className="text-xs text-muted-foreground">Must exactly match the tracker's IMEI.</p>
             </div>
             <div className="space-y-2">
-              <Label>Vehicle Type</Label>
-              <div className="flex flex-wrap gap-2">
-                {vehicleTypes.map(vt => (
-                  <Button
+              <Label>Icon Type</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {VEHICLE_TYPE_OPTIONS.map(vt => (
+                  <button
                     key={vt.value}
                     type="button"
-                    variant={editType === vt.value ? "default" : "outline"}
-                    size="sm"
                     onClick={() => setEditType(vt.value)}
                     data-testid={`button-edit-type-${vt.value}`}
+                    className={`flex flex-col items-center gap-1 p-2 rounded-md border-2 transition-colors ${editType === vt.value ? "border-primary bg-primary/10" : "border-border hover:border-muted-foreground/40"}`}
                   >
-                    {vt.label}
-                  </Button>
+                    <span
+                      dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, editIconColor, 0) }}
+                      className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
+                    />
+                    <span className="text-[10px] text-muted-foreground leading-none">{vt.label}</span>
+                  </button>
                 ))}
               </div>
             </div>
