@@ -91,6 +91,8 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   // [11..14]= Longitude (uint32 BE, degrees × 1,800,000)
   // [15]    = Speed (km/h, uint8)
   // [16..17]= Course + Status (uint16 BE)
+  //   High byte: bits[7:2]=course, bit[1]=W/E, bit[0]=S/N
+  //   Low byte (status): bit[4]=GPS data valid, bit[0]=GPS tracking active
   if (data.length < 18) return null;
 
   const year  = 2000 + data[0];
@@ -107,11 +109,25 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   const lngRaw = data.readUInt32BE(11);
   const speed  = data[15];
 
+  const statusWord = data.readUInt16BE(16);
+  const highByte   = (statusWord >> 8) & 0xff;
+  const lowByte    = statusWord & 0xff;
+
+  // GPS validity flags from low byte:
+  //   bit 4 (0x10) = GPS data valid
+  //   bit 0 (0x01) = GPS tracking active / real-time
+  const gpsValid = Boolean(lowByte & 0x10);
+
+  // Reject packets with no valid GPS fix
+  if (!gpsValid) {
+    console.warn(`[GT06] Discarding location: GPS fix not valid (status=0x${lowByte.toString(16)}, sats=${satellites})`);
+    return null;
+  }
+
   // Course/Status high byte encodes direction flags:
   //   bits [7:2] = course heading (0-63, × 5.625° = actual degrees)
   //   bit  [1]   = longitude W flag (0=East, 1=West)
   //   bit  [0]   = latitude S flag  (0=North, 1=South)
-  const highByte = (data.readUInt16BE(16) >> 8) & 0xff;
   const latSouth = Boolean(highByte & 0x01);
   const lonWest  = Boolean(highByte & 0x02);
   const course   = ((highByte >> 2) & 0x3f) * 5.625; // degrees
@@ -120,6 +136,18 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   let lng = lngRaw / 1800000.0;
   if (latSouth) lat = -lat;
   if (lonWest)  lng = -lng;
+
+  // Reject null-island (device not locked yet)
+  if (lat === 0 && lng === 0) {
+    console.warn(`[GT06] Discarding location: null-island coords (0,0)`);
+    return null;
+  }
+
+  // Reject if not enough satellites for a reliable fix
+  if (satellites < 3) {
+    console.warn(`[GT06] Discarding location: only ${satellites} satellites (need ≥3)`);
+    return null;
+  }
 
   // Use server receive time — GPS device time can have timezone/BCD issues
   const timestamp = new Date();

@@ -83,7 +83,12 @@ export default function Tracking() {
       if (pts.length < 2) return [];
       const coords = pts
         .map((l) => [parseFloat(String(l.latitude)), parseFloat(String(l.longitude))] as [number, number])
-        .filter(([lat, lng]) => !isNaN(lat) && !isNaN(lng));
+        .filter(([lat, lng]) =>
+          !isNaN(lat) && !isNaN(lng) &&
+          lat >= -90 && lat <= 90 &&
+          lng >= -180 && lng <= 180 &&
+          !(lat === 0 && lng === 0)
+        );
       if (coords.length < 2) return [];
       return [{ vehicleId: vehicle.id, coords, color: vehicle.iconColor ?? "#2563eb" }];
     });
