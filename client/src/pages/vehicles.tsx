@@ -85,14 +85,17 @@ const EXCEL_COLUMNS = [
   { key: "Tank Capacity (L)", required: false },
 ];
 
+type VehicleType = "car" | "truck" | "bus" | "motorbike" | "van";
+type FuelTypeEnum = "petrol" | "diesel" | "cng" | "electric";
+
 type ImportRow = {
   name: string;
   deviceId: string;
   devicePhone?: string;
-  type?: string;
+  type?: VehicleType;
   driverName?: string;
   licensePlate?: string;
-  fuelType?: string;
+  fuelType?: FuelTypeEnum;
   fuelEfficiency?: number;
   fuelRatePerLiter?: number;
   fuelTankCapacity?: number;
@@ -108,12 +111,12 @@ function parseImportRow(raw: Record<string, unknown>, idx: number): ImportRow {
   if (!imei) return { name, deviceId: imei, _valid: false, _error: `Row ${idx + 1}: IMEI is required` };
 
   const typeRaw = String(raw["Type"] ?? "").trim().toLowerCase();
-  const validTypes = ["car", "truck", "bus", "motorbike", "van"];
-  const type = validTypes.includes(typeRaw) ? typeRaw : "car";
+  const validTypes: VehicleType[] = ["car", "truck", "bus", "motorbike", "van"];
+  const type: VehicleType = validTypes.includes(typeRaw as VehicleType) ? (typeRaw as VehicleType) : "car";
 
   const fuelTypeRaw = String(raw["Fuel Type"] ?? "").trim().toLowerCase();
-  const validFuelTypes = ["petrol", "diesel", "cng", "electric"];
-  const fuelType = validFuelTypes.includes(fuelTypeRaw) ? fuelTypeRaw : undefined;
+  const validFuelTypes: FuelTypeEnum[] = ["petrol", "diesel", "cng", "electric"];
+  const fuelType: FuelTypeEnum | undefined = validFuelTypes.includes(fuelTypeRaw as FuelTypeEnum) ? (fuelTypeRaw as FuelTypeEnum) : undefined;
 
   const parseFuel = (v: unknown) => {
     const n = parseFloat(String(v ?? ""));
