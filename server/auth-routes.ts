@@ -83,12 +83,31 @@ authRoutes.post("/logout", (req, res, next) => {
   });
 });
 
-authRoutes.get("/me", (req, res) => {
+authRoutes.get("/me", async (req, res) => {
   if (!req.isAuthenticated()) {
     return res.status(401).json({ error: "Not authenticated" });
   }
 
-  const user = req.user as User;
-  const { password, ...userWithoutPassword } = user;
+  const sessionUser = req.user as User;
+
+  // Fetch fresh user from DB so status/expiry changes are immediately reflected
+  const freshUser = await storage.getUserById(sessionUser.id);
+  if (!freshUser) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  // Auto-mark expired non-admin users as inactive
+  if (freshUser.role !== "admin" && freshUser.subscriptionExpiry) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiry = new Date(freshUser.subscriptionExpiry);
+    expiry.setHours(0, 0, 0, 0);
+    if (expiry < today && freshUser.status !== "inactive") {
+      await storage.updateUser(freshUser.id, { status: "inactive" });
+      freshUser.status = "inactive";
+    }
+  }
+
+  const { password, ...userWithoutPassword } = freshUser;
   res.json({ user: userWithoutPassword });
 });

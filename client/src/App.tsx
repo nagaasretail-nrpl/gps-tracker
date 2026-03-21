@@ -103,6 +103,16 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
       <Route path="/profile" component={guard("/profile", Profile)} />
       <Route path="/admin-users" component={AdminUsers} />
       <Route path="/admin-settings" component={AdminSettings} />
+      <Route path="/renew" component={() =>
+        currentUser ? (
+          <Renew
+            user={currentUser}
+            onRenewed={() => {
+              queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+            }}
+          />
+        ) : null
+      } />
       <Route component={NotFound} />
     </Switch>
   );

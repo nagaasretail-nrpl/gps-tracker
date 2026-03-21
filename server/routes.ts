@@ -29,6 +29,9 @@ import {
 // In-memory log of unrecognised device IDs (last 20 attempts)
 const unknownDeviceLog: { deviceId: string; lat: number; lng: number; speed: number; seenAt: string }[] = [];
 
+// In-memory idempotency set for processed Razorpay payment IDs (prevents replay)
+const usedPaymentIds = new Set<string>();
+
 // Auto-expiry middleware: after requireAuth, auto-set non-admin users to inactive
 // when their subscriptionExpiry has passed. Skip for /api/auth/* and /api/payments/*.
 async function checkSubscriptionExpiry(req: Request, res: Response, next: NextFunction) {
@@ -101,11 +104,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = schema.parse(req.body);
 
+      // Idempotency: reject already-processed payment IDs
+      if (usedPaymentIds.has(razorpayPaymentId)) {
+        return res.status(409).json({ error: "Payment already processed" });
+      }
+
+      const keyId = (await storage.getSetting("razorpay_key_id"))?.value || "";
       const keySecret = (await storage.getSetting("razorpay_key_secret"))?.value || "";
-      if (!keySecret) {
+      if (!keyId || !keySecret) {
         return res.status(503).json({ error: "Payment gateway not configured." });
       }
 
+      // Step 1: HMAC-SHA256 signature verification
       const expectedSignature = crypto
         .createHmac("sha256", keySecret)
         .update(`${razorpayOrderId}|${razorpayPaymentId}`)
@@ -114,6 +124,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (expectedSignature !== razorpaySignature) {
         return res.status(400).json({ error: "Payment signature verification failed" });
       }
+
+      // Step 2: Fetch payment from Razorpay API to confirm captured status & amount
+      const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const payment = await razorpay.payments.fetch(razorpayPaymentId);
+
+      if (payment.status !== "captured") {
+        return res.status(400).json({ error: "Payment not captured. Please try again." });
+      }
+
+      // Step 3: Verify the order ID on the payment matches what we created
+      if (payment.order_id !== razorpayOrderId) {
+        return res.status(400).json({ error: "Order ID mismatch. Payment rejected." });
+      }
+
+      // Step 4: Verify amount matches configured renewal amount
+      const amountSetting = (await storage.getSetting("renewal_amount"))?.value || "";
+      const expectedAmount = parseInt(amountSetting, 10) * 100; // paise
+      if (isNaN(expectedAmount) || Number(payment.amount) !== expectedAmount) {
+        console.error(`[payments] Amount mismatch: expected ${expectedAmount}, got ${payment.amount}`);
+        return res.status(400).json({ error: "Payment amount mismatch. Please contact support." });
+      }
+
+      // Mark payment ID as used before updating DB (prevents TOCTOU replay)
+      usedPaymentIds.add(razorpayPaymentId);
 
       const userId = (req.user as { id: string }).id;
       const newExpiry = new Date();

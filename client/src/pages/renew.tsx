@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { CreditCard, RefreshCw, Phone, AlertCircle } from "lucide-react";
+import { CreditCard, RefreshCw, Phone, AlertCircle, XCircle } from "lucide-react";
 import type { User } from "@shared/schema";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -58,8 +59,10 @@ function loadRazorpayScript(): Promise<boolean> {
 
 export default function Renew({ user, onRenewed }: RenewProps) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [isPaying, setIsPaying] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
+  const [paymentCancelled, setPaymentCancelled] = useState(false);
 
   const expiryDate = user.subscriptionExpiry
     ? new Date(user.subscriptionExpiry).toLocaleDateString("en-IN", {
@@ -71,6 +74,7 @@ export default function Renew({ user, onRenewed }: RenewProps) {
 
   const handlePayNow = async () => {
     setIsPaying(true);
+    setPaymentCancelled(false);
     try {
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
@@ -128,19 +132,23 @@ export default function Renew({ user, onRenewed }: RenewProps) {
             if (!verifyRes.ok) {
               const err = await verifyRes.json();
               toast({ variant: "destructive", description: err.error || "Payment verification failed" });
+              setIsPaying(false);
               return;
             }
 
             toast({ description: "Payment successful! Your subscription has been renewed." });
             await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
             onRenewed();
+            navigate("/");
           } catch {
             toast({ variant: "destructive", description: "Payment verification failed. Please contact support." });
+            setIsPaying(false);
           }
         },
         modal: {
           ondismiss: () => {
             setIsPaying(false);
+            setPaymentCancelled(true);
           },
         },
       };
@@ -188,6 +196,15 @@ export default function Renew({ user, onRenewed }: RenewProps) {
             </div>
           ) : (
             <div className="space-y-4">
+              {paymentCancelled && (
+                <div className="rounded-md bg-muted p-3 flex items-start gap-2 text-sm" data-testid="status-payment-cancelled">
+                  <XCircle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <span className="text-muted-foreground">
+                    Payment was cancelled. You can try again whenever you are ready.
+                  </span>
+                </div>
+              )}
+
               <div className="rounded-md bg-muted p-3 text-sm space-y-1">
                 <p className="font-medium">What you get with renewal:</p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
@@ -212,7 +229,7 @@ export default function Renew({ user, onRenewed }: RenewProps) {
                 ) : (
                   <>
                     <CreditCard className="h-4 w-4 mr-2" />
-                    Pay Now
+                    {paymentCancelled ? "Try Again" : "Pay Now"}
                   </>
                 )}
               </Button>
