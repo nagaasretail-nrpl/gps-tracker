@@ -133,7 +133,10 @@ export class DbStorage implements IStorage {
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
-    if (Object.keys(updates).length === 0) return undefined;
+    if (Object.keys(updates).length === 0) {
+      const rows = await db.select().from(users).where(eq(users.id, id));
+      return rows[0];
+    }
     const set: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(updates)) {
       if (val === null) {
