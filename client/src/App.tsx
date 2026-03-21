@@ -136,7 +136,12 @@ function ExpiryAlertDialog({ user, onDismiss }: { user: UserWithoutPassword; onD
     ? Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null;
   const expiryStr = expiry
-    ? expiry.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+    ? (() => {
+        const dd = String(expiry.getDate()).padStart(2, "0");
+        const mmm = expiry.toLocaleDateString("en-US", { month: "short" });
+        const yyyy = expiry.getFullYear();
+        return `${dd}-${mmm}-${yyyy}`;
+      })()
     : null;
 
   return (
