@@ -7,7 +7,6 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Car,
   Clock,
@@ -19,6 +18,7 @@ import {
   ParkingCircle,
   ChevronDown,
   ChevronRight,
+  Timer,
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import type { Vehicle } from "@shared/schema";
@@ -118,7 +118,7 @@ export default function Trips() {
 
   const totalTrips = segments?.length ?? 0;
   const totalDistance = segments?.reduce((s, t) => s + t.distanceKm, 0) ?? 0;
-  const totalDuration = segments?.reduce((s, t) => s + t.durationSec, 0) ?? 0;
+  const totalDuration = segments?.reduce((s, t) => s + Math.max(0, t.durationSec - t.idleTimeSec), 0) ?? 0;
   const avgSpeed = segments && segments.length > 0
     ? segments.reduce((s, t) => s + t.avgSpeedKmh, 0) / segments.length
     : 0;
@@ -317,12 +317,19 @@ export default function Trips() {
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t">
+                                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t">
                                     <div className="flex items-center gap-1.5">
                                       <Navigation className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                                       <div>
                                         <p className="text-xs text-muted-foreground">Distance</p>
                                         <p className="text-sm font-semibold" data-testid={`text-trip-distance-${vid}-${day}-${idx}`}>{formatDistance(seg.distanceKm)}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <Timer className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                      <div>
+                                        <p className="text-xs text-muted-foreground">Moving</p>
+                                        <p className="text-sm font-semibold" data-testid={`text-trip-moving-${vid}-${day}-${idx}`}>{formatDuration(Math.max(0, seg.durationSec - seg.idleTimeSec))}</p>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-1.5">
