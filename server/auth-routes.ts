@@ -11,16 +11,17 @@ authRoutes.post("/signup", async (req, res, next) => {
   try {
     const validatedData = signupSchema.parse(req.body);
 
-    const existingUser = await storage.getUserByEmail(validatedData.email);
+    const existingUser = await storage.getUserByPhone(validatedData.phone!);
     if (existingUser) {
-      return res.status(400).json({ error: "Email already registered" });
+      return res.status(400).json({ error: "Mobile number already registered" });
     }
 
     const hashedPassword = await hashPassword(validatedData.password);
 
     const newUser = await storage.createUser({
       name: validatedData.name,
-      email: validatedData.email,
+      phone: validatedData.phone,
+      email: validatedData.email ?? null,
       password: hashedPassword,
       role: "user", // Always create as regular user - admins must be promoted by existing admin
       avatar: validatedData.avatar,

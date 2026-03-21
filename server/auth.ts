@@ -22,21 +22,21 @@ export function setupAuth(app: Express) {
   passport.use(
     new LocalStrategy(
       {
-        usernameField: "email",
+        usernameField: "phone",
         passwordField: "password",
       },
-      async (email, password, done) => {
+      async (phone, password, done) => {
         try {
-          const user = await storage.getUserByEmail(email);
+          const user = await storage.getUserByPhone(phone);
           
           if (!user) {
-            return done(null, false, { message: "Invalid email or password" });
+            return done(null, false, { message: "Invalid mobile number or password" });
           }
 
           const isValid = await comparePassword(password, user.password);
           
           if (!isValid) {
-            return done(null, false, { message: "Invalid email or password" });
+            return done(null, false, { message: "Invalid mobile number or password" });
           }
 
           return done(null, user);

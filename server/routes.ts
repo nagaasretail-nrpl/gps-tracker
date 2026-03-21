@@ -594,6 +594,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/users", requireAdmin, async (req, res) => {
     try {
       const validatedData = insertUserSchema.parse(req.body);
+
+      const existingByPhone = await storage.getUserByPhone(validatedData.phone!);
+      if (existingByPhone) {
+        return res.status(400).json({ error: "Mobile number already registered" });
+      }
       
       const bcrypt = await import("bcrypt");
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);

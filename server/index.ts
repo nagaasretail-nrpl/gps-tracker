@@ -95,30 +95,39 @@ app.use((req, res, next) => {
   try {
     log("Seeding demo users...");
     const demoUsers = [
-      { email: "admin@gps.com", password: "admin123", name: "Admin User", role: "admin" as const },
-      { email: "user@gps.com", password: "user123", name: "Regular User", role: "user" as const },
-      { email: "test@example.com", password: "password123", name: "Test User", role: "user" as const },
+      { phone: "9000000001", email: "admin@gps.com", password: "admin123", name: "Admin User", role: "admin" as const },
+      { phone: "9000000002", email: "user@gps.com", password: "user123", name: "Regular User", role: "user" as const },
+      { phone: "9000000003", email: "test@example.com", password: "password123", name: "Test User", role: "user" as const },
     ];
 
     for (const demoUser of demoUsers) {
       try {
-        const existing = await storage.getUserByEmail(demoUser.email);
+        const existingByPhone = await storage.getUserByPhone(demoUser.phone);
+        const existingByEmail = await storage.getUserByEmail(demoUser.email);
+        const existing = existingByPhone || existingByEmail;
         if (!existing) {
           const hashedPassword = await hashPassword(demoUser.password);
           await storage.createUser({
             name: demoUser.name,
+            phone: demoUser.phone,
             email: demoUser.email,
             password: hashedPassword,
             role: demoUser.role,
             avatar: null,
             preferences: {},
           });
-          log(`✓ Created: ${demoUser.email} / ${demoUser.password}`);
+          log(`✓ Created: ${demoUser.phone} / ${demoUser.password}`);
         } else {
-          log(`✓ Already exists: ${demoUser.email}`);
+          // Ensure existing demo users have their phone number set
+          if (!existing.phone) {
+            await storage.updateUser(existing.id, { phone: demoUser.phone });
+            log(`✓ Updated phone for existing user: ${demoUser.email} → ${demoUser.phone}`);
+          } else {
+            log(`✓ Already exists: ${demoUser.phone}`);
+          }
         }
       } catch (userError) {
-        log(`✗ Failed to create ${demoUser.email}: ${userError instanceof Error ? userError.message : "Unknown error"}`);
+        log(`✗ Failed to seed ${demoUser.phone}: ${userError instanceof Error ? userError.message : "Unknown error"}`);
       }
     }
   } catch (error) {

@@ -10,7 +10,7 @@ interface LoginProps {
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
-  const [email, setEmail] = useState("admin@gps.com");
+  const [phone, setPhone] = useState("9000000001");
   const [password, setPassword] = useState("admin123");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -18,10 +18,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email.trim() || !password.trim()) {
+    if (!phone.trim() || !password.trim()) {
       toast({ 
         variant: "destructive",
-        description: "Email and password are required" 
+        description: "Mobile number and password are required" 
       });
       return;
     }
@@ -33,7 +33,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password: password.trim() }),
+        body: JSON.stringify({ phone: phone.trim(), password: password.trim() }),
       });
 
       if (res.ok) {
@@ -72,14 +72,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="text-sm font-medium mb-1 block">Email</label>
+              <label className="text-sm font-medium mb-1 block">Mobile Number</label>
               <Input
-                type="email"
-                placeholder="user@gps.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="tel"
+                placeholder="Enter mobile number"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 disabled={isLoading}
-                data-testid="input-email"
+                data-testid="input-phone"
               />
             </div>
             <div>
@@ -106,8 +106,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950 rounded-md">
             <p className="text-sm font-medium mb-2">Demo Credentials:</p>
             <div className="space-y-1 text-xs text-muted-foreground">
-              <p><strong>Admin:</strong> admin@gps.com / admin123</p>
-              <p><strong>User:</strong> user@gps.com / user123</p>
+              <p><strong>Admin:</strong> 9000000001 / admin123</p>
+              <p><strong>User:</strong> 9000000002 / user123</p>
             </div>
           </div>
         </CardContent>

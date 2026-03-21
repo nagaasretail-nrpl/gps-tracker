@@ -61,7 +61,7 @@ export default function AdminUsers() {
   const [showForm, setShowForm] = useState(false);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [editStates, setEditStates] = useState<Record<string, EditState>>({});
-  const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "user" });
+  const [newUser, setNewUser] = useState({ name: "", phone: "", password: "", role: "user" });
 
   const { data: users = [], isLoading } = useQuery<UserWithoutPassword[]>({
     queryKey: ["/api/users"],
@@ -112,7 +112,7 @@ export default function AdminUsers() {
     onSuccess: () => {
       toast({ description: "User created successfully" });
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      setNewUser({ name: "", email: "", password: "", role: "user" });
+      setNewUser({ name: "", phone: "", password: "", role: "user" });
       setShowForm(false);
     },
     onError: (err: Error) => {
@@ -221,11 +221,11 @@ export default function AdminUsers() {
                 data-testid="input-new-user-name"
               />
               <Input
-                type="email"
-                placeholder="Email"
-                value={newUser.email}
-                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                data-testid="input-new-user-email"
+                type="tel"
+                placeholder="Mobile Number"
+                value={newUser.phone}
+                onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+                data-testid="input-new-user-phone"
               />
               <Input
                 type="password"
@@ -248,7 +248,7 @@ export default function AdminUsers() {
             <div className="flex gap-2">
               <Button
                 onClick={() => createMutation.mutate(newUser)}
-                disabled={createMutation.isPending || !newUser.name || !newUser.email || !newUser.password}
+                disabled={createMutation.isPending || !newUser.name || !newUser.phone || !newUser.password}
                 data-testid="button-save-new-user"
               >
                 {createMutation.isPending ? "Creating..." : "Create"}
@@ -289,7 +289,7 @@ export default function AdminUsers() {
                           {getRoleBadge(user.role)}
                           {getStatusSpan(user.status ?? "active")}
                         </div>
-                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                        <p className="text-sm text-muted-foreground">{user.phone ?? user.email ?? "—"}</p>
                         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                           <span className="text-xs text-muted-foreground">
                             Plan: <span className="font-medium">{SUBSCRIPTION_LABELS[user.subscriptionType ?? "basic"] ?? user.subscriptionType}</span>

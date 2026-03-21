@@ -49,7 +49,7 @@ export default function Profile() {
   if (isLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!user) return <div className="p-8 text-center">User not found</div>;
 
-  const displayName = user.name || user.email;
+  const displayName = user.name || user.phone || user.email || "User";
   const initials = displayName.split(" ").map(n => n[0]).join("").toUpperCase();
 
   return (

@@ -7,12 +7,12 @@ import { z } from "zod";
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
-  email: text("email").unique().notNull(),
+  email: text("email"),
   password: text("password").notNull(), // bcrypt hashed password
   role: text("role").notNull().default("user"), // user, admin, subuser
   parentUserId: varchar("parent_user_id"), // for subusers - links to parent user
   avatar: text("avatar"),
-  phone: text("phone"),
+  phone: text("phone").unique(),
   department: text("department"),
   preferences: jsonb("preferences"), // units, map type, etc
   // Subscription / validity fields
@@ -28,6 +28,8 @@ export const users = pgTable("users", {
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+}).extend({
+  phone: z.string().min(10, "Mobile number must be at least 10 digits"),
 });
 
 // Schema for signup requests (includes plain password before hashing)
@@ -41,7 +43,7 @@ export const signupSchema = insertUserSchema.omit({
 
 // Schema for login requests
 export const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  phone: z.string().min(1, "Mobile number is required"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -56,7 +58,7 @@ export const updateProfileSchema = z.object({
 
 // Schema for admin updating any user (includes sensitive fields)
 export const adminUpdateUserSchema = updateProfileSchema.extend({
-  email: z.string().email().optional(),
+  email: z.string().email().optional().nullable(),
   role: z.enum(["user", "admin", "subuser"]).optional(),
   password: z.string().min(8, "Password must be at least 8 characters").optional(),
   status: z.enum(["active", "inactive", "suspended"]).optional(),

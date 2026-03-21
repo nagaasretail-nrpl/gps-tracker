@@ -39,6 +39,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserById(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByPhone(phone: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<User>): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
@@ -121,14 +122,34 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const result = await db.insert(users).values(insertUser).returning();
+  async getUserByPhone(phone: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.phone, phone)).limit(1);
     return result[0];
   }
 
+  async createUser(insertUser: InsertUser): Promise<User> {
+    await db.insert(users).values(insertUser);
+    const rows = await db.select().from(users).where(
+      insertUser.phone
+        ? eq(users.phone, insertUser.phone)
+        : eq(users.email!, insertUser.email!)
+    );
+    return rows[0];
+  }
+
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
-    const result = await db.update(users).set(updates).where(eq(users.id, id)).returning();
-    return result[0];
+    if (Object.keys(updates).length === 0) return undefined;
+    const set: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      if (val === null) {
+        set[key] = sql`NULL`;
+      } else {
+        set[key] = val;
+      }
+    }
+    await db.update(users).set(set).where(eq(users.id, id));
+    const rows = await db.select().from(users).where(eq(users.id, id));
+    return rows[0];
   }
 
   async deleteUser(id: string): Promise<boolean> {
