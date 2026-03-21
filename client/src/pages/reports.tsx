@@ -30,7 +30,6 @@ import {
   Car,
   CalendarDays,
   Gauge,
-  Fuel,
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import type { Vehicle } from "@shared/schema";
@@ -82,7 +81,6 @@ function downloadCSV(headers: string[], rows: (string | number)[][], filename: s
   window.URL.revokeObjectURL(url);
 }
 
-// ─── Mileage View ────────────────────────────────────────────────────────────
 
 interface MileageRow {
   vehicleId: string;
@@ -92,7 +90,6 @@ interface MileageRow {
   movingSec: number;
   idleSec: number;
   avgSpeedKmh: number;
-  fuelEfficiency: number | null;
 }
 
 interface MileageViewProps {
@@ -115,7 +112,6 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
           movingSec: 0,
           idleSec: 0,
           avgSpeedKmh: 0,
-          fuelEfficiency: (v as any)?.fuelEfficiency ?? null,
         });
       }
       const row = map.get(seg.vehicleId)!;
@@ -138,18 +134,15 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
 
   const exportCSV = () => {
     const headers = ["Vehicle", "Trips", "Distance (km)", "Moving Time", "Idle Time", "Avg Speed (km/h)", "Est. Fuel (L)"];
-    const csvRows = rows.map(r => {
-      const fuel = r.fuelEfficiency ? (r.totalKm / r.fuelEfficiency).toFixed(1) : "—";
-      return [
-        r.name,
-        r.tripCount,
-        r.totalKm.toFixed(2),
-        formatDuration(r.movingSec),
-        formatDuration(r.idleSec),
-        r.avgSpeedKmh.toFixed(1),
-        fuel,
-      ];
-    });
+    const csvRows = rows.map(r => [
+      r.name,
+      r.tripCount,
+      r.totalKm.toFixed(2),
+      formatDuration(r.movingSec),
+      formatDuration(r.idleSec),
+      r.avgSpeedKmh.toFixed(1),
+      "—",
+    ]);
     downloadCSV(headers, csvRows, `mileage-report-${format(new Date(), "yyyy-MM-dd")}.csv`);
   };
 
@@ -234,9 +227,6 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
                 </TableHeader>
                 <TableBody>
                   {rows.map((r, i) => {
-                    const fuel = r.fuelEfficiency
-                      ? `${(r.totalKm / r.fuelEfficiency).toFixed(1)} L`
-                      : "—";
                     return (
                       <TableRow key={r.vehicleId} data-testid={`row-mileage-${i}`}>
                         <TableCell className="font-medium whitespace-nowrap">{r.name}</TableCell>
@@ -245,7 +235,7 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
                         <TableCell className="whitespace-nowrap">{formatDuration(r.movingSec)}</TableCell>
                         <TableCell className="whitespace-nowrap text-muted-foreground">{formatDuration(r.idleSec)}</TableCell>
                         <TableCell className="whitespace-nowrap">{r.avgSpeedKmh.toFixed(1)} km/h</TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">{fuel}</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">—</TableCell>
                       </TableRow>
                     );
                   })}
@@ -261,7 +251,6 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
   );
 }
 
-// ─── Activity View ────────────────────────────────────────────────────────────
 
 interface ActivityRow {
   date: string;
@@ -444,7 +433,6 @@ function ActivityView({ segments, isLoading }: ActivityViewProps) {
   );
 }
 
-// ─── Trip View (unchanged) ────────────────────────────────────────────────────
 
 interface TripViewProps {
   segments: TripSegment[];
@@ -624,7 +612,6 @@ function TripView({ segments, vehicles, isLoading }: TripViewProps) {
   );
 }
 
-// ─── Shared empty state ───────────────────────────────────────────────────────
 
 function EmptyState() {
   return (
@@ -636,7 +623,6 @@ function EmptyState() {
   );
 }
 
-// ─── Main Reports page ────────────────────────────────────────────────────────
 
 export default function Reports() {
   const [selectedVehicle, setSelectedVehicle] = useState<string>("all");
