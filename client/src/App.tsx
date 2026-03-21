@@ -1,7 +1,7 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -10,6 +10,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
+import type { User } from "@shared/schema";
 import Login from "@/pages/login";
 import Tracking from "@/pages/tracking";
 import Dashboard from "@/pages/dashboard";
@@ -28,25 +29,75 @@ import AdminUsers from "@/pages/admin-users";
 import AdminSettings from "@/pages/admin-settings";
 import NotFound from "@/pages/not-found";
 
+type UserWithoutPassword = Omit<User, "password">;
+
+const PROTECTED_ROUTES: Record<string, string[]> = {
+  "/track": ["/track"],
+  "/activities": ["/activities"],
+  "/stats": ["/stats"],
+  "/": ["/"],
+  "/tracking": ["/tracking"],
+  "/vehicles": ["/vehicles"],
+  "/trips": ["/trips"],
+  "/history": ["/history"],
+  "/geofences": ["/geofences"],
+  "/routes": ["/routes"],
+  "/pois": ["/pois"],
+  "/reports": ["/reports"],
+  "/profile": ["/profile"],
+};
+
+function RouteGuard({ user, path, component: Component }: {
+  user: UserWithoutPassword | null;
+  path: string;
+  component: React.ComponentType;
+}) {
+  const [, navigate] = useLocation();
+
+  if (!user || user.role === "admin") {
+    return <Component />;
+  }
+
+  const allowedMenus = user.allowedMenus;
+  if (allowedMenus == null) {
+    return <Component />;
+  }
+
+  const requiredMenu = PROTECTED_ROUTES[path];
+  if (requiredMenu && !requiredMenu.some((r) => allowedMenus.includes(r))) {
+    navigate("/profile");
+    return null;
+  }
+
+  return <Component />;
+}
+
 function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean; onLoginSuccess: () => void }) {
+  const { data: authData } = useQuery<{ user: UserWithoutPassword }>({
+    queryKey: ["/api/auth/me"],
+    enabled: isAuthenticated,
+  });
+
+  const currentUser = authData?.user ?? null;
+
   if (!isAuthenticated) {
     return <Login onLoginSuccess={onLoginSuccess} />;
   }
 
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/track" component={TrackActivity} />
-      <Route path="/activities" component={Activities} />
-      <Route path="/stats" component={Statistics} />
-      <Route path="/tracking" component={Tracking} />
-      <Route path="/trips" component={Trips} />
-      <Route path="/history" component={History} />
-      <Route path="/geofences" component={Geofences} />
-      <Route path="/routes" component={Routes} />
-      <Route path="/pois" component={Pois} />
-      <Route path="/reports" component={Reports} />
-      <Route path="/vehicles" component={Vehicles} />
+      <Route path="/" component={() => <RouteGuard user={currentUser} path="/" component={Dashboard} />} />
+      <Route path="/track" component={() => <RouteGuard user={currentUser} path="/track" component={TrackActivity} />} />
+      <Route path="/activities" component={() => <RouteGuard user={currentUser} path="/activities" component={Activities} />} />
+      <Route path="/stats" component={() => <RouteGuard user={currentUser} path="/stats" component={Statistics} />} />
+      <Route path="/tracking" component={() => <RouteGuard user={currentUser} path="/tracking" component={Tracking} />} />
+      <Route path="/trips" component={() => <RouteGuard user={currentUser} path="/trips" component={Trips} />} />
+      <Route path="/history" component={() => <RouteGuard user={currentUser} path="/history" component={History} />} />
+      <Route path="/geofences" component={() => <RouteGuard user={currentUser} path="/geofences" component={Geofences} />} />
+      <Route path="/routes" component={() => <RouteGuard user={currentUser} path="/routes" component={Routes} />} />
+      <Route path="/pois" component={() => <RouteGuard user={currentUser} path="/pois" component={Pois} />} />
+      <Route path="/reports" component={() => <RouteGuard user={currentUser} path="/reports" component={Reports} />} />
+      <Route path="/vehicles" component={() => <RouteGuard user={currentUser} path="/vehicles" component={Vehicles} />} />
       <Route path="/profile" component={Profile} />
       <Route path="/admin-users" component={AdminUsers} />
       <Route path="/admin-settings" component={AdminSettings} />

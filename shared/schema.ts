@@ -21,6 +21,8 @@ export const users = pgTable("users", {
   subscriptionExpiry: timestamp("subscription_expiry"),
   // Vehicle access control: list of vehicle IDs this user can see (null = all vehicles for admin)
   allowedVehicleIds: text("allowed_vehicle_ids").array(),
+  // Menu access control: list of route URLs this user can see (null = all menus allowed)
+  allowedMenus: text("allowed_menus").array(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -65,6 +67,7 @@ export const adminUpdateUserSchema = updateProfileSchema.extend({
   subscriptionType: z.enum(["basic", "pro", "enterprise"]).optional(),
   subscriptionExpiry: z.string().datetime().optional().nullable(),
   allowedVehicleIds: z.array(z.string()).optional().nullable(),
+  allowedMenus: z.array(z.string()).optional().nullable(),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;

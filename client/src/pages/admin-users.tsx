@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Plus, User as UserIcon, ChevronDown, ChevronUp, Car } from "lucide-react";
+import { Trash2, Plus, User as UserIcon, ChevronDown, ChevronUp, ChevronRight, Car, Menu } from "lucide-react";
 import type { User, Vehicle } from "@shared/schema";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -32,11 +32,51 @@ const SUBSCRIPTION_LABELS: Record<string, string> = {
   enterprise: "Enterprise",
 };
 
+const ASSIGNABLE_MENU_GROUPS = [
+  {
+    label: "Personal Tracking",
+    items: [
+      { title: "Track Activity", url: "/track" },
+      { title: "My Activities", url: "/activities" },
+      { title: "Statistics", url: "/stats" },
+    ],
+  },
+  {
+    label: "Fleet Management",
+    items: [
+      { title: "Fleet Dashboard", url: "/" },
+      { title: "Live Tracking", url: "/tracking" },
+      { title: "Vehicles", url: "/vehicles" },
+      { title: "Trips", url: "/trips" },
+      { title: "Location History", url: "/history" },
+      { title: "Geofences", url: "/geofences" },
+      { title: "Routes", url: "/routes" },
+      { title: "Points of Interest", url: "/pois" },
+      { title: "Reports", url: "/reports" },
+    ],
+  },
+  {
+    label: "Account",
+    items: [
+      { title: "My Profile", url: "/profile" },
+    ],
+  },
+];
+
+const ALL_MENU_URLS = ASSIGNABLE_MENU_GROUPS.flatMap((g) => g.items.map((i) => i.url));
+
+function oneYearFromNow(): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().split("T")[0];
+}
+
 interface EditState {
   status: string;
   subscriptionType: string;
   subscriptionExpiry: string;
   allowedVehicleIds: string[];
+  allowedMenus: string[] | null;
   role: string;
   phone: string;
   email: string;
@@ -51,6 +91,7 @@ function buildEditState(user: UserWithoutPassword): EditState {
       ? new Date(user.subscriptionExpiry).toISOString().split("T")[0]
       : "",
     allowedVehicleIds: user.allowedVehicleIds ?? [],
+    allowedMenus: user.allowedMenus ?? null,
     role: user.role,
     phone: user.phone ?? "",
     email: user.email ?? "",
@@ -64,6 +105,7 @@ export default function AdminUsers() {
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [editStates, setEditStates] = useState<Record<string, EditState>>({});
   const [newUser, setNewUser] = useState({ name: "", phone: "", password: "", role: "user" });
+  const [openMenuPanels, setOpenMenuPanels] = useState<Record<string, boolean>>({});
 
   const { data: users = [], isLoading } = useQuery<UserWithoutPassword[]>({
     queryKey: ["/api/users"],
@@ -78,7 +120,6 @@ export default function AdminUsers() {
       setExpandedUserId(null);
     } else {
       setExpandedUserId(user.id);
-      // Initialize edit state for this user if not set
       if (!editStates[user.id]) {
         setEditStates((prev) => ({ ...prev, [user.id]: buildEditState(user) }));
       }
@@ -95,6 +136,45 @@ export default function AdminUsers() {
       ? current.filter((id) => id !== vehicleId)
       : [...current, vehicleId];
     updateEditState(userId, { allowedVehicleIds: next });
+  };
+
+  const isMenuAllowed = (userId: string, menuUrl: string): boolean => {
+    const state = editStates[userId];
+    if (!state) return true;
+    if (state.allowedMenus === null) return true;
+    return state.allowedMenus.includes(menuUrl);
+  };
+
+  const toggleMenu = (userId: string, menuUrl: string) => {
+    const state = editStates[userId];
+    if (!state) return;
+    const current = state.allowedMenus;
+    if (current === null) {
+      updateEditState(userId, { allowedMenus: ALL_MENU_URLS.filter((u) => u !== menuUrl) });
+    } else if (current.includes(menuUrl)) {
+      const next = current.filter((u) => u !== menuUrl);
+      updateEditState(userId, { allowedMenus: next });
+    } else {
+      const next = [...current, menuUrl];
+      updateEditState(userId, { allowedMenus: next.length >= ALL_MENU_URLS.length ? null : next });
+    }
+  };
+
+  const toggleAllMenus = (userId: string, checkAll: boolean) => {
+    updateEditState(userId, { allowedMenus: checkAll ? null : [] });
+  };
+
+  const handleStatusChange = (userId: string, newStatus: string) => {
+    const state = editStates[userId];
+    const updates: Partial<EditState> = { status: newStatus };
+    if (newStatus === "active") {
+      const currentExpiry = state?.subscriptionExpiry ?? "";
+      const isBlankOrPast = !currentExpiry || new Date(currentExpiry) < new Date();
+      if (isBlankOrPast) {
+        updates.subscriptionExpiry = oneYearFromNow();
+      }
+    }
+    updateEditState(userId, updates);
   };
 
   const createMutation = useMutation({
@@ -139,8 +219,8 @@ export default function AdminUsers() {
     onSuccess: (_, variables) => {
       toast({ description: "User updated successfully" });
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       setExpandedUserId(null);
-      // Clear cached edit state so it's rebuilt from fresh server data next time
       setEditStates((prev) => {
         const next = { ...prev };
         delete next[variables.id];
@@ -180,6 +260,7 @@ export default function AdminUsers() {
       email: state.email || null,
       department: state.department,
       allowedVehicleIds: state.allowedVehicleIds.length > 0 ? state.allowedVehicleIds : null,
+      allowedMenus: state.allowedMenus,
       subscriptionExpiry: state.subscriptionExpiry
         ? new Date(state.subscriptionExpiry).toISOString()
         : null,
@@ -278,10 +359,11 @@ export default function AdminUsers() {
             const isExpired = expiry !== null && expiry < new Date();
             const assignedCount = user.allowedVehicleIds?.length ?? 0;
             const isSaving = updateMutation.isPending && updateMutation.variables?.id === user.id;
+            const menuPanelOpen = openMenuPanels[user.id] ?? false;
+            const restrictedMenuCount = user.allowedMenus?.length ?? null;
 
             return (
               <Card key={user.id} data-testid={`card-user-${user.id}`}>
-                {/* Row header — always visible */}
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -304,7 +386,11 @@ export default function AdminUsers() {
                           )}
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Car className="h-3 w-3" />
-                            {assignedCount > 0 ? `${assignedCount} vehicle${assignedCount !== 1 ? "s" : ""} assigned` : "All vehicles"}
+                            {assignedCount > 0 ? `${assignedCount} vehicle${assignedCount !== 1 ? "s" : ""}` : "All vehicles"}
+                          </span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Menu className="h-3 w-3" />
+                            {restrictedMenuCount !== null ? `${restrictedMenuCount} menu${restrictedMenuCount !== 1 ? "s" : ""}` : "All menus"}
                           </span>
                         </div>
                       </div>
@@ -349,7 +435,7 @@ export default function AdminUsers() {
                           />
                         </div>
 
-                        {/* Email (optional contact info) */}
+                        {/* Email */}
                         <div className="space-y-1">
                           <Label htmlFor={`email-${user.id}`}>Email (optional)</Label>
                           <Input
@@ -389,10 +475,13 @@ export default function AdminUsers() {
                           </Select>
                         </div>
 
-                        {/* Status */}
+                        {/* Status — auto-fills expiry on Active */}
                         <div className="space-y-1">
                           <Label>Account Status</Label>
-                          <Select value={state.status} onValueChange={(v) => updateEditState(user.id, { status: v })}>
+                          <Select
+                            value={state.status}
+                            onValueChange={(v) => handleStatusChange(user.id, v)}
+                          >
                             <SelectTrigger data-testid={`select-status-${user.id}`}>
                               <SelectValue />
                             </SelectTrigger>
@@ -421,7 +510,10 @@ export default function AdminUsers() {
 
                         {/* Subscription expiry */}
                         <div className="space-y-1">
-                          <Label htmlFor={`expiry-${user.id}`}>Expiry Date</Label>
+                          <Label htmlFor={`expiry-${user.id}`}>
+                            Validity Expiry Date
+                            <span className="text-xs text-muted-foreground font-normal ml-1">(auto-set 1 yr on Active)</span>
+                          </Label>
                           <Input
                             id={`expiry-${user.id}`}
                             type="date"
@@ -436,9 +528,7 @@ export default function AdminUsers() {
                       <div className="space-y-2">
                         <Label>
                           Vehicle Access
-                          <span className="text-xs text-muted-foreground ml-2">
-                            (unchecked = access to all vehicles)
-                          </span>
+                          <span className="text-xs text-muted-foreground ml-2">(unchecked = all vehicles)</span>
                         </Label>
                         <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto">
                           {vehicles.length === 0 ? (
@@ -465,6 +555,76 @@ export default function AdminUsers() {
                             ))
                           )}
                         </div>
+                      </div>
+
+                      {/* Menu access — collapsible */}
+                      <div className="border rounded-md overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setOpenMenuPanels((prev) => ({ ...prev, [user.id]: !prev[user.id] }))}
+                          className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium bg-muted/50 hover:bg-muted transition-colors"
+                          data-testid={`button-toggle-menu-access-${user.id}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Menu className="h-3.5 w-3.5 text-muted-foreground" />
+                            Menu Access
+                            <span className="text-xs text-muted-foreground font-normal">
+                              ({state.allowedMenus === null ? "All menus allowed" : `${state.allowedMenus.length} menu${state.allowedMenus.length !== 1 ? "s" : ""} allowed`})
+                            </span>
+                          </span>
+                          {menuPanelOpen
+                            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          }
+                        </button>
+
+                        {menuPanelOpen && (
+                          <div className="px-3 py-3 bg-background space-y-3">
+                            {/* Select all / clear all */}
+                            <div className="flex items-center gap-3 pb-1 border-b">
+                              <button
+                                type="button"
+                                className="text-xs text-primary underline-offset-2 hover:underline"
+                                onClick={() => toggleAllMenus(user.id, true)}
+                                data-testid={`button-menu-select-all-${user.id}`}
+                              >
+                                Select all
+                              </button>
+                              <button
+                                type="button"
+                                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                                onClick={() => toggleAllMenus(user.id, false)}
+                                data-testid={`button-menu-clear-all-${user.id}`}
+                              >
+                                Clear all
+                              </button>
+                            </div>
+
+                            {ASSIGNABLE_MENU_GROUPS.map((group) => (
+                              <div key={group.label} className="space-y-1.5">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{group.label}</p>
+                                <div className="space-y-1">
+                                  {group.items.map((item) => (
+                                    <div key={item.url} className="flex items-center gap-2">
+                                      <Checkbox
+                                        id={`menu-${user.id}-${item.url}`}
+                                        checked={isMenuAllowed(user.id, item.url)}
+                                        onCheckedChange={() => toggleMenu(user.id, item.url)}
+                                        data-testid={`checkbox-menu-${user.id}-${item.url.replace(/\//g, "-")}`}
+                                      />
+                                      <label
+                                        htmlFor={`menu-${user.id}-${item.url}`}
+                                        className="text-sm cursor-pointer"
+                                      >
+                                        {item.title}
+                                      </label>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* Actions */}

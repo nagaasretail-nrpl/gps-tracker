@@ -648,6 +648,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (validatedData.allowedVehicleIds !== undefined) {
           updates.allowedVehicleIds = validatedData.allowedVehicleIds;
         }
+        if (validatedData.allowedMenus !== undefined) {
+          updates.allowedMenus = validatedData.allowedMenus;
+        }
         if (validatedData.password) {
           const bcrypt = await import("bcrypt");
           updates.password = await bcrypt.hash(validatedData.password, 10);
