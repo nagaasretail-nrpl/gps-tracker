@@ -23,6 +23,7 @@ import {
 import {
   CalendarIcon,
   Download,
+  FileSpreadsheet,
   FileText,
   TrendingUp,
   Navigation,
@@ -30,6 +31,9 @@ import {
   Car,
   CalendarDays,
   Gauge,
+  Fuel,
+  Banknote,
+  Activity,
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import type { Vehicle } from "@shared/schema";
@@ -43,6 +47,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import * as XLSX from "xlsx";
 
 interface TripSegment {
   vehicleId: string;
@@ -81,6 +86,14 @@ function downloadCSV(headers: string[], rows: (string | number)[][], filename: s
   window.URL.revokeObjectURL(url);
 }
 
+function downloadExcel(headers: string[], rows: (string | number)[][], filename: string) {
+  const wsData = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Report");
+  XLSX.writeFile(wb, filename);
+}
+
 
 interface MileageRow {
   vehicleId: string;
@@ -91,6 +104,8 @@ interface MileageRow {
   idleSec: number;
   avgSpeedKmh: number;
   fuelEfficiency: number | null;
+  fuelRatePerLiter: number | null;
+  fuelTankCapacity: number | null;
 }
 
 interface MileageViewProps {
@@ -114,6 +129,8 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
           idleSec: 0,
           avgSpeedKmh: 0,
           fuelEfficiency: v?.fuelEfficiency != null ? parseFloat(String(v.fuelEfficiency)) : null,
+          fuelRatePerLiter: v?.fuelRatePerLiter != null ? parseFloat(String(v.fuelRatePerLiter)) : null,
+          fuelTankCapacity: v?.fuelTankCapacity != null ? parseFloat(String(v.fuelTankCapacity)) : null,
         });
       }
       const row = map.get(seg.vehicleId)!;
@@ -123,7 +140,6 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
       row.idleSec += seg.idleTimeSec;
       row.avgSpeedKmh += seg.avgSpeedKmh;
     }
-    // Finalise avg speed
     Array.from(map.values()).forEach(row => {
       if (row.tripCount > 0) row.avgSpeedKmh = row.avgSpeedKmh / row.tripCount;
     });
@@ -131,66 +147,180 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
   }, [segments, vehicles]);
 
   const totalFleetKm = rows.reduce((s, r) => s + r.totalKm, 0);
+  const totalTrips = rows.reduce((s, r) => s + r.tripCount, 0);
+  const totalMovingSec = rows.reduce((s, r) => s + r.movingSec, 0);
+  const totalIdleSec = rows.reduce((s, r) => s + r.idleSec, 0);
   const vehiclesActive = rows.length;
   const avgPerVehicle = vehiclesActive > 0 ? totalFleetKm / vehiclesActive : 0;
+  const avgSpeed = rows.length > 0 ? rows.reduce((s, r) => s + r.avgSpeedKmh, 0) / rows.length : 0;
+
+  const totalEstFuel = rows.reduce((s, r) => {
+    if (r.fuelEfficiency && r.fuelEfficiency > 0) return s + r.totalKm / r.fuelEfficiency;
+    return s;
+  }, 0);
+  const hasFuelData = rows.some(r => r.fuelEfficiency != null);
+
+  const totalEstCost = rows.reduce((s, r) => {
+    if (r.fuelEfficiency && r.fuelEfficiency > 0 && r.fuelRatePerLiter && r.fuelRatePerLiter > 0) {
+      return s + (r.totalKm / r.fuelEfficiency) * r.fuelRatePerLiter;
+    }
+    return s;
+  }, 0);
+  const hasCostData = rows.some(r => r.fuelEfficiency != null && r.fuelRatePerLiter != null);
+
+  const costPerKmTotal = totalFleetKm > 0 && hasCostData ? totalEstCost / totalFleetKm : null;
+
+  const getRowFuel = (r: MileageRow) => r.fuelEfficiency ? r.totalKm / r.fuelEfficiency : null;
+  const getRowCost = (r: MileageRow) => {
+    const fuel = getRowFuel(r);
+    return fuel != null && r.fuelRatePerLiter ? fuel * r.fuelRatePerLiter : null;
+  };
+  const getRowCostPerKm = (r: MileageRow) => {
+    const cost = getRowCost(r);
+    return cost != null && r.totalKm > 0 ? cost / r.totalKm : null;
+  };
+  const getRowRange = (r: MileageRow) => r.fuelEfficiency && r.fuelTankCapacity ? r.fuelEfficiency * r.fuelTankCapacity : null;
+
+  const dateStr = format(new Date(), "yyyy-MM-dd");
+
+  const buildRows = () => rows.map(r => {
+    const fuel = getRowFuel(r);
+    const cost = getRowCost(r);
+    const cpk = getRowCostPerKm(r);
+    const range = getRowRange(r);
+    return [
+      r.name,
+      r.tripCount,
+      r.totalKm.toFixed(2),
+      formatDuration(r.movingSec),
+      formatDuration(r.idleSec),
+      r.avgSpeedKmh.toFixed(1),
+      fuel != null ? fuel.toFixed(1) : "—",
+      cost != null ? cost.toFixed(2) : "—",
+      cpk != null ? cpk.toFixed(3) : "—",
+      range != null ? range.toFixed(1) : "—",
+    ] as (string | number)[];
+  });
+
+  const exportHeaders = ["Vehicle", "Trips", "Distance (km)", "Moving Time", "Idle Time", "Avg Speed (km/h)", "Est. Fuel (L)", "Est. Fuel Cost", "Cost/km", "Tank Range (km)"];
 
   const exportCSV = () => {
-    const headers = ["Vehicle", "Trips", "Distance (km)", "Moving Time", "Idle Time", "Avg Speed (km/h)", "Est. Fuel (L)"];
-    const csvRows = rows.map(r => {
-      const fuel = r.fuelEfficiency ? (r.totalKm / r.fuelEfficiency).toFixed(1) : "—";
-      return [
-        r.name,
-        r.tripCount,
-        r.totalKm.toFixed(2),
-        formatDuration(r.movingSec),
-        formatDuration(r.idleSec),
-        r.avgSpeedKmh.toFixed(1),
-        fuel,
-      ];
-    });
-    downloadCSV(headers, csvRows, `mileage-report-${format(new Date(), "yyyy-MM-dd")}.csv`);
+    downloadCSV(exportHeaders, buildRows(), `mileage-report-${dateStr}.csv`);
+  };
+
+  const exportExcel = () => {
+    downloadExcel(exportHeaders, buildRows(), `mileage-report-${dateStr}.xlsx`);
   };
 
   return (
     <>
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Summary cards — up to 9 */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
-            <CardTitle className="text-sm font-medium">Total Fleet Distance</CardTitle>
+            <CardTitle className="text-xs font-medium">Total Trips</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-12" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-total-trips">{totalTrips}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
+            <CardTitle className="text-xs font-medium">Fleet Distance</CardTitle>
             <Navigation className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardHeader>
           <CardContent>
             {isLoading ? <Skeleton className="h-8 w-24" /> : (
               <div className="text-2xl font-bold" data-testid="text-mileage-total-distance">
-                {totalFleetKm.toFixed(2)} km
+                {totalFleetKm.toFixed(1)} km
               </div>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
-            <CardTitle className="text-sm font-medium">Vehicles Active</CardTitle>
+            <CardTitle className="text-xs font-medium">Moving Time</CardTitle>
+            <Timer className="h-4 w-4 text-muted-foreground shrink-0" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-20" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-moving-time">{formatDuration(totalMovingSec)}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
+            <CardTitle className="text-xs font-medium">Idle Time</CardTitle>
+            <Timer className="h-4 w-4 text-muted-foreground shrink-0" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-20" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-idle-time">{formatDuration(totalIdleSec)}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
+            <CardTitle className="text-xs font-medium">Avg Speed</CardTitle>
+            <Gauge className="h-4 w-4 text-muted-foreground shrink-0" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-20" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-avg-speed">{avgSpeed.toFixed(1)} km/h</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
+            <CardTitle className="text-xs font-medium">Vehicles Active</CardTitle>
             <Car className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardHeader>
           <CardContent>
             {isLoading ? <Skeleton className="h-8 w-12" /> : (
-              <div className="text-2xl font-bold" data-testid="text-mileage-vehicles-active">
-                {vehiclesActive}
+              <div className="text-2xl font-bold" data-testid="text-mileage-vehicles-active">{vehiclesActive}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
+            <CardTitle className="text-xs font-medium">Avg Dist / Vehicle</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground shrink-0" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-24" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-avg-distance">{avgPerVehicle.toFixed(1)} km</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
+            <CardTitle className="text-xs font-medium">Est. Fuel Used</CardTitle>
+            <Fuel className="h-4 w-4 text-muted-foreground shrink-0" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-20" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-est-fuel">
+                {hasFuelData ? `${totalEstFuel.toFixed(1)} L` : "—"}
               </div>
             )}
           </CardContent>
         </Card>
-        <Card className="col-span-2 lg:col-span-1">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
-            <CardTitle className="text-sm font-medium">Avg Distance / Vehicle</CardTitle>
-            <Gauge className="h-4 w-4 text-muted-foreground shrink-0" />
+            <CardTitle className="text-xs font-medium">Est. Fuel Cost</CardTitle>
+            <Banknote className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardHeader>
           <CardContent>
-            {isLoading ? <Skeleton className="h-8 w-24" /> : (
-              <div className="text-2xl font-bold" data-testid="text-mileage-avg-distance">
-                {avgPerVehicle.toFixed(2)} km
+            {isLoading ? <Skeleton className="h-8 w-20" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-est-cost">
+                {hasCostData ? totalEstCost.toFixed(2) : "—"}
               </div>
+            )}
+            {hasCostData && costPerKmTotal != null && (
+              <p className="text-xs text-muted-foreground mt-1">{costPerKmTotal.toFixed(3)}/km</p>
             )}
           </CardContent>
         </Card>
@@ -201,22 +331,34 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
         <CardHeader>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle>Mileage by Vehicle</CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportCSV}
-              disabled={rows.length === 0}
-              data-testid="button-export-csv"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportCSV}
+                disabled={rows.length === 0}
+                data-testid="button-export-csv"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportExcel}
+                disabled={rows.length === 0}
+                data-testid="button-export-excel"
+              >
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Export Excel
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-48 w-full" />
-          ) : rows.length > 0 ? (
+          ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -227,14 +369,18 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
                     <TableHead>Moving Time</TableHead>
                     <TableHead>Idle Time</TableHead>
                     <TableHead>Avg Speed</TableHead>
-                    <TableHead>Est. Fuel</TableHead>
+                    <TableHead>Est. Fuel (L)</TableHead>
+                    <TableHead>Est. Cost</TableHead>
+                    <TableHead>Cost/km</TableHead>
+                    <TableHead>Tank Range</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((r, i) => {
-                    const fuel = r.fuelEfficiency
-                      ? `${(r.totalKm / r.fuelEfficiency).toFixed(1)} L`
-                      : "—";
+                  {rows.length > 0 ? rows.map((r, i) => {
+                    const fuel = getRowFuel(r);
+                    const cost = getRowCost(r);
+                    const cpk = getRowCostPerKm(r);
+                    const range = getRowRange(r);
                     return (
                       <TableRow key={r.vehicleId} data-testid={`row-mileage-${i}`}>
                         <TableCell className="font-medium whitespace-nowrap">{r.name}</TableCell>
@@ -243,15 +389,22 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
                         <TableCell className="whitespace-nowrap">{formatDuration(r.movingSec)}</TableCell>
                         <TableCell className="whitespace-nowrap text-muted-foreground">{formatDuration(r.idleSec)}</TableCell>
                         <TableCell className="whitespace-nowrap">{r.avgSpeedKmh.toFixed(1)} km/h</TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">{fuel}</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">{fuel != null ? fuel.toFixed(1) : "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">{cost != null ? cost.toFixed(2) : "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">{cpk != null ? cpk.toFixed(3) : "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">{range != null ? `${range.toFixed(0)} km` : "—"}</TableCell>
                       </TableRow>
                     );
-                  })}
+                  }) : (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center py-12 text-muted-foreground text-sm">
+                        No data found. Try adjusting the date range or vehicle filter.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
-          ) : (
-            <EmptyState />
           )}
         </CardContent>
       </Card>
@@ -267,14 +420,17 @@ interface ActivityRow {
   idleSec: number;
   totalKm: number;
   vehicleIds: Set<string>;
+  fuelUsedL: number | null;
+  fuelCost: number | null;
 }
 
 interface ActivityViewProps {
   segments: TripSegment[];
+  vehicles: Vehicle[];
   isLoading: boolean;
 }
 
-function ActivityView({ segments, isLoading }: ActivityViewProps) {
+function ActivityView({ segments, vehicles, isLoading }: ActivityViewProps) {
   const rows: ActivityRow[] = useMemo(() => {
     const map = new Map<string, ActivityRow>();
     for (const seg of segments) {
@@ -286,6 +442,8 @@ function ActivityView({ segments, isLoading }: ActivityViewProps) {
           idleSec: 0,
           totalKm: 0,
           vehicleIds: new Set(),
+          fuelUsedL: null,
+          fuelCost: null,
         });
       }
       const row = map.get(seg.date)!;
@@ -294,9 +452,20 @@ function ActivityView({ segments, isLoading }: ActivityViewProps) {
       row.idleSec += seg.idleTimeSec;
       row.totalKm += seg.distanceKm;
       row.vehicleIds.add(seg.vehicleId);
+
+      const v = vehicles.find(veh => veh.id === seg.vehicleId);
+      const eff = v?.fuelEfficiency != null ? parseFloat(String(v.fuelEfficiency)) : null;
+      const rate = v?.fuelRatePerLiter != null ? parseFloat(String(v.fuelRatePerLiter)) : null;
+      if (eff && eff > 0) {
+        const fuel = seg.distanceKm / eff;
+        row.fuelUsedL = (row.fuelUsedL ?? 0) + fuel;
+        if (rate && rate > 0) {
+          row.fuelCost = (row.fuelCost ?? 0) + fuel * rate;
+        }
+      }
     }
     return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
-  }, [segments]);
+  }, [segments, vehicles]);
 
   const activeDays = rows.length;
   const totalMovingSec = rows.reduce((s, r) => s + r.movingSec, 0);
@@ -307,18 +476,22 @@ function ActivityView({ segments, isLoading }: ActivityViewProps) {
     distance: Math.round(r.totalKm * 10) / 10,
   }));
 
-  const exportCSV = () => {
-    const headers = ["Date", "Trips", "Moving Time", "Idle Time", "Total Distance (km)", "Vehicles Active"];
-    const csvRows = rows.map(r => [
-      r.date,
-      r.tripCount,
-      formatDuration(r.movingSec),
-      formatDuration(r.idleSec),
-      r.totalKm.toFixed(2),
-      r.vehicleIds.size,
-    ]);
-    downloadCSV(headers, csvRows, `activity-report-${format(new Date(), "yyyy-MM-dd")}.csv`);
-  };
+  const dateStr = format(new Date(), "yyyy-MM-dd");
+  const exportHeaders = ["Date", "Trips", "Moving Time", "Idle Time", "Total Distance (km)", "Vehicles Active", "Fuel Used (L)", "Fuel Cost"];
+
+  const buildRows = () => rows.map(r => [
+    r.date,
+    r.tripCount,
+    formatDuration(r.movingSec),
+    formatDuration(r.idleSec),
+    r.totalKm.toFixed(2),
+    r.vehicleIds.size,
+    r.fuelUsedL != null ? r.fuelUsedL.toFixed(1) : "—",
+    r.fuelCost != null ? r.fuelCost.toFixed(2) : "—",
+  ] as (string | number)[]);
+
+  const exportCSV = () => downloadCSV(exportHeaders, buildRows(), `activity-report-${dateStr}.csv`);
+  const exportExcel = () => downloadExcel(exportHeaders, buildRows(), `activity-report-${dateStr}.xlsx`);
 
   return (
     <>
@@ -390,22 +563,34 @@ function ActivityView({ segments, isLoading }: ActivityViewProps) {
         <CardHeader>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle>Activity by Day</CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportCSV}
-              disabled={rows.length === 0}
-              data-testid="button-export-csv"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportCSV}
+                disabled={rows.length === 0}
+                data-testid="button-export-csv"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportExcel}
+                disabled={rows.length === 0}
+                data-testid="button-export-excel-activity"
+              >
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Export Excel
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-48 w-full" />
-          ) : rows.length > 0 ? (
+          ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -416,10 +601,12 @@ function ActivityView({ segments, isLoading }: ActivityViewProps) {
                     <TableHead>Idle Time</TableHead>
                     <TableHead>Distance</TableHead>
                     <TableHead className="text-center">Vehicles Active</TableHead>
+                    <TableHead>Fuel Used (L)</TableHead>
+                    <TableHead>Fuel Cost</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((r, i) => (
+                  {rows.length > 0 ? rows.map((r, i) => (
                     <TableRow key={r.date} data-testid={`row-activity-${i}`}>
                       <TableCell className="font-medium whitespace-nowrap">{r.date}</TableCell>
                       <TableCell className="text-center">{r.tripCount}</TableCell>
@@ -427,13 +614,19 @@ function ActivityView({ segments, isLoading }: ActivityViewProps) {
                       <TableCell className="whitespace-nowrap text-muted-foreground">{formatDuration(r.idleSec)}</TableCell>
                       <TableCell className="whitespace-nowrap">{r.totalKm.toFixed(2)} km</TableCell>
                       <TableCell className="text-center">{r.vehicleIds.size}</TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">{r.fuelUsedL != null ? r.fuelUsedL.toFixed(1) : "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">{r.fuelCost != null ? r.fuelCost.toFixed(2) : "—"}</TableCell>
                     </TableRow>
-                  ))}
+                  )) : (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
+                        No data found. Try adjusting the date range or vehicle filter.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
-          ) : (
-            <EmptyState />
           )}
         </CardContent>
       </Card>
@@ -460,28 +653,53 @@ function TripView({ segments, vehicles, isLoading }: TripViewProps) {
     distance: Math.round(seg.distanceKm * 10) / 10,
   }));
 
+  const getTripFuel = (seg: TripSegment) => {
+    const v = vehicles.find(veh => veh.id === seg.vehicleId);
+    const eff = v?.fuelEfficiency != null ? parseFloat(String(v.fuelEfficiency)) : null;
+    return eff && eff > 0 ? seg.distanceKm / eff : null;
+  };
+  const getTripCost = (seg: TripSegment) => {
+    const v = vehicles.find(veh => veh.id === seg.vehicleId);
+    const eff = v?.fuelEfficiency != null ? parseFloat(String(v.fuelEfficiency)) : null;
+    const rate = v?.fuelRatePerLiter != null ? parseFloat(String(v.fuelRatePerLiter)) : null;
+    const fuel = eff && eff > 0 ? seg.distanceKm / eff : null;
+    return fuel != null && rate && rate > 0 ? fuel * rate : null;
+  };
+
+  const dateStr = format(new Date(), "yyyy-MM-dd");
+  const exportHeaders = ["Vehicle", "Date", "Start Time", "End Time", "Distance (km)", "Moving (min)", "Idle (min)", "Stops", "Avg Speed (km/h)", "Est. Fuel (L)", "Est. Fuel Cost", "Start Location", "End Location"];
+
+  const buildRows = () => segments.map(seg => {
+    const vehicle = vehicles.find(v => v.id === seg.vehicleId);
+    const movingMin = Math.round(Math.max(0, seg.durationSec - seg.idleTimeSec) / 60);
+    const idleMin = Math.round(seg.idleTimeSec / 60);
+    const fuel = getTripFuel(seg);
+    const cost = getTripCost(seg);
+    return [
+      vehicle?.name || seg.vehicleId,
+      seg.date,
+      format(new Date(seg.startTime), "HH:mm:ss"),
+      format(new Date(seg.endTime), "HH:mm:ss"),
+      seg.distanceKm.toFixed(2),
+      movingMin,
+      idleMin,
+      seg.stopCount,
+      seg.avgSpeedKmh.toFixed(1),
+      fuel != null ? fuel.toFixed(1) : "—",
+      cost != null ? cost.toFixed(2) : "—",
+      seg.startAddress || `${seg.startLat.toFixed(5)}, ${seg.startLng.toFixed(5)}`,
+      seg.endAddress || `${seg.endLat.toFixed(5)}, ${seg.endLng.toFixed(5)}`,
+    ] as (string | number)[];
+  });
+
   const exportCSV = () => {
     if (segments.length === 0) return;
-    const headers = ["Vehicle", "Date", "Start Time", "End Time", "Distance (km)", "Moving (min)", "Idle (min)", "Stops", "Avg Speed (km/h)", "Start Location", "End Location"];
-    const rows = segments.map(seg => {
-      const vehicle = vehicles.find(v => v.id === seg.vehicleId);
-      const movingMin = Math.round(Math.max(0, seg.durationSec - seg.idleTimeSec) / 60);
-      const idleMin = Math.round(seg.idleTimeSec / 60);
-      return [
-        vehicle?.name || seg.vehicleId,
-        seg.date,
-        format(new Date(seg.startTime), "HH:mm:ss"),
-        format(new Date(seg.endTime), "HH:mm:ss"),
-        seg.distanceKm.toFixed(2),
-        movingMin,
-        idleMin,
-        seg.stopCount,
-        seg.avgSpeedKmh.toFixed(1),
-        seg.startAddress || `${seg.startLat.toFixed(5)}, ${seg.startLng.toFixed(5)}`,
-        seg.endAddress || `${seg.endLat.toFixed(5)}, ${seg.endLng.toFixed(5)}`,
-      ];
-    });
-    downloadCSV(headers, rows, `trip-report-${format(new Date(), "yyyy-MM-dd")}.csv`);
+    downloadCSV(exportHeaders, buildRows(), `trip-report-${dateStr}.csv`);
+  };
+
+  const exportExcel = () => {
+    if (segments.length === 0) return;
+    downloadExcel(exportHeaders, buildRows(), `trip-report-${dateStr}.xlsx`);
   };
 
   return (
@@ -559,22 +777,34 @@ function TripView({ segments, vehicles, isLoading }: TripViewProps) {
         <CardHeader>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle>Trip Details</CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportCSV}
-              disabled={segments.length === 0}
-              data-testid="button-export-csv"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportCSV}
+                disabled={segments.length === 0}
+                data-testid="button-export-csv"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportExcel}
+                disabled={segments.length === 0}
+                data-testid="button-export-excel-trip"
+              >
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Export Excel
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-64 w-full" />
-          ) : segments.length > 0 ? (
+          ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -588,12 +818,16 @@ function TripView({ segments, vehicles, isLoading }: TripViewProps) {
                     <TableHead>Idle</TableHead>
                     <TableHead>Stops</TableHead>
                     <TableHead>Avg Speed</TableHead>
+                    <TableHead>Est. Fuel</TableHead>
+                    <TableHead>Est. Cost</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {segments.map((seg, i) => {
+                  {segments.length > 0 ? segments.map((seg, i) => {
                     const vehicle = vehicles.find(v => v.id === seg.vehicleId);
                     const movingSec = Math.max(0, seg.durationSec - seg.idleTimeSec);
+                    const fuel = getTripFuel(seg);
+                    const cost = getTripCost(seg);
                     return (
                       <TableRow key={i} data-testid={`row-report-trip-${i}`}>
                         <TableCell className="font-medium whitespace-nowrap">{vehicle?.name || seg.vehicleId}</TableCell>
@@ -605,14 +839,20 @@ function TripView({ segments, vehicles, isLoading }: TripViewProps) {
                         <TableCell className="whitespace-nowrap text-muted-foreground">{formatDuration(seg.idleTimeSec)}</TableCell>
                         <TableCell className="text-center">{seg.stopCount}</TableCell>
                         <TableCell className="whitespace-nowrap">{seg.avgSpeedKmh.toFixed(1)} km/h</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">{fuel != null ? `${fuel.toFixed(1)} L` : "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">{cost != null ? cost.toFixed(2) : "—"}</TableCell>
                       </TableRow>
                     );
-                  })}
+                  }) : (
+                    <TableRow>
+                      <TableCell colSpan={11} className="text-center py-12 text-muted-foreground text-sm">
+                        No data found. Try adjusting the date range or vehicle filter.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
-          ) : (
-            <EmptyState />
           )}
         </CardContent>
       </Card>
@@ -749,7 +989,7 @@ export default function Reports() {
       {reportType === "mileage" ? (
         <MileageView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} />
       ) : reportType === "activity" ? (
-        <ActivityView segments={safeSegments} isLoading={isLoading} />
+        <ActivityView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} />
       ) : (
         <TripView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} />
       )}

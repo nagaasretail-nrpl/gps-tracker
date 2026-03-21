@@ -132,6 +132,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fuelEfficiency: parsed.fuelEfficiency !== undefined
           ? (parsed.fuelEfficiency === null ? null : String(parsed.fuelEfficiency))
           : undefined,
+        fuelRatePerLiter: parsed.fuelRatePerLiter !== undefined
+          ? (parsed.fuelRatePerLiter === null ? null : String(parsed.fuelRatePerLiter))
+          : undefined,
+        fuelTankCapacity: parsed.fuelTankCapacity !== undefined
+          ? (parsed.fuelTankCapacity === null ? null : String(parsed.fuelTankCapacity))
+          : undefined,
       };
       const vehicle = await storage.updateVehicle(req.params.id, updates);
       if (!vehicle) {

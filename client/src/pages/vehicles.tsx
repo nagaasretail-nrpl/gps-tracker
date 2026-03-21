@@ -55,6 +55,8 @@ function fuelEfficiencyLabel(fuelType: FuelTypeValue): string {
 const addVehicleFormSchema = insertVehicleSchema.extend({
   fuelEfficiency: z.coerce.number().positive("Must be a positive number").nullable().optional(),
   fuelType: z.enum(["petrol", "diesel", "cng", "electric", "none"]).nullable().optional(),
+  fuelRatePerLiter: z.coerce.number().positive("Must be a positive number").nullable().optional(),
+  fuelTankCapacity: z.coerce.number().positive("Must be a positive number").nullable().optional(),
 });
 
 const iconColors = [
@@ -72,6 +74,8 @@ export default function Vehicles() {
   const [editType, setEditType] = useState("car");
   const [editFuelType, setEditFuelType] = useState<FuelTypeValue>("");
   const [editFuelEfficiency, setEditFuelEfficiency] = useState<string>("");
+  const [editFuelRatePerLiter, setEditFuelRatePerLiter] = useState<string>("");
+  const [editFuelTankCapacity, setEditFuelTankCapacity] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedGt06Id, setCopiedGt06Id] = useState<string | null>(null);
   const [setupExpanded, setSetupExpanded] = useState(false);
@@ -118,6 +122,8 @@ export default function Vehicles() {
       iconColor: "#2563eb",
       fuelType: null,
       fuelEfficiency: null,
+      fuelRatePerLiter: null,
+      fuelTankCapacity: null,
     },
   });
 
@@ -164,8 +170,8 @@ export default function Vehicles() {
   });
 
   const editMutation = useMutation({
-    mutationFn: async ({ id, name, deviceId, iconColor, type, fuelType, fuelEfficiency }: { id: string; name: string; deviceId: string; iconColor: string; type: string; fuelType: string | null; fuelEfficiency: number | null }) => {
-      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId, iconColor, type, fuelType: fuelType || null, fuelEfficiency });
+    mutationFn: async ({ id, name, deviceId, iconColor, type, fuelType, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity }: { id: string; name: string; deviceId: string; iconColor: string; type: string; fuelType: string | null; fuelEfficiency: number | null; fuelRatePerLiter: number | null; fuelTankCapacity: number | null }) => {
+      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId, iconColor, type, fuelType: fuelType || null, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
@@ -185,6 +191,8 @@ export default function Vehicles() {
     setEditType(v.type || "car");
     setEditFuelType(v.fuelType ? (v.fuelType as FuelTypeValue) : "none");
     setEditFuelEfficiency(v.fuelEfficiency != null ? String(v.fuelEfficiency) : "");
+    setEditFuelRatePerLiter(v.fuelRatePerLiter != null ? String(v.fuelRatePerLiter) : "");
+    setEditFuelTankCapacity(v.fuelTankCapacity != null ? String(v.fuelTankCapacity) : "");
     setSetupExpanded(false);
   };
 
@@ -417,6 +425,52 @@ export default function Vehicles() {
                   }}
                 />
 
+                {/* Fuel Rate Per Liter */}
+                <FormField
+                  control={form.control}
+                  name="fuelRatePerLiter"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fuel Rate (per Liter) <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          placeholder="e.g. 100"
+                          value={field.value ?? ""}
+                          onChange={e => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
+                          data-testid="input-add-fuel-rate"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Fuel Tank Capacity */}
+                <FormField
+                  control={form.control}
+                  name="fuelTankCapacity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fuel Tank Capacity (Liters) <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="e.g. 50"
+                          value={field.value ?? ""}
+                          onChange={e => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
+                          data-testid="input-add-fuel-tank"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <div className="flex justify-end gap-2 pt-4">
                   <Button
                     type="button"
@@ -569,6 +623,40 @@ export default function Vehicles() {
               />
             </div>
 
+            {/* Fuel Rate Per Liter */}
+            <div className="space-y-1">
+              <Label htmlFor="edit-fuel-rate">
+                Fuel Rate (per Liter) <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+              </Label>
+              <Input
+                id="edit-fuel-rate"
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="e.g. 100"
+                value={editFuelRatePerLiter}
+                onChange={e => setEditFuelRatePerLiter(e.target.value)}
+                data-testid="input-edit-fuel-rate"
+              />
+            </div>
+
+            {/* Fuel Tank Capacity */}
+            <div className="space-y-1">
+              <Label htmlFor="edit-fuel-tank">
+                Fuel Tank Capacity (Liters) <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+              </Label>
+              <Input
+                id="edit-fuel-tank"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="e.g. 50"
+                value={editFuelTankCapacity}
+                onChange={e => setEditFuelTankCapacity(e.target.value)}
+                data-testid="input-edit-fuel-tank"
+              />
+            </div>
+
             {/* Device Setup — collapsible section in Edit dialog */}
             <div className="border rounded-md overflow-hidden">
               <button
@@ -641,6 +729,8 @@ export default function Vehicles() {
                   type: editType,
                   fuelType: (editFuelType === "none" || editFuelType === "") ? null : editFuelType as string,
                   fuelEfficiency: editFuelEfficiency !== "" ? parseFloat(editFuelEfficiency) : null,
+                  fuelRatePerLiter: editFuelRatePerLiter !== "" ? parseFloat(editFuelRatePerLiter) : null,
+                  fuelTankCapacity: editFuelTankCapacity !== "" ? parseFloat(editFuelTankCapacity) : null,
                 })}
                 data-testid="button-save-edit-vehicle"
               >
