@@ -590,7 +590,7 @@ export default function Vehicles() {
 
                 {/* Device ID */}
                 <span
-                  className="text-xs text-muted-foreground font-mono hidden sm:block truncate max-w-[180px]"
+                  className="text-xs text-muted-foreground font-mono truncate max-w-[120px] sm:max-w-[200px]"
                   title={vehicle.deviceId}
                   data-testid={`text-vehicle-deviceid-${vehicle.id}`}
                 >
