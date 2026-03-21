@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -265,6 +265,16 @@ export default function Renew({ user, onRenewed }: RenewProps) {
 
               <p className="text-xs text-center text-muted-foreground">
                 Payments are securely processed by Razorpay
+              </p>
+              <p className="text-xs text-center text-muted-foreground" data-testid="text-legal-disclosure">
+                By paying, you agree to our{" "}
+                <Link href="/terms" className="underline underline-offset-2 hover:text-foreground transition-colors" data-testid="link-renew-terms">
+                  Terms &amp; Conditions
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" className="underline underline-offset-2 hover:text-foreground transition-colors" data-testid="link-renew-privacy">
+                  Privacy Policy
+                </Link>
               </p>
             </div>
           )}

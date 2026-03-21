@@ -638,6 +638,15 @@ export default function Dashboard() {
         </Button>
       </div>
 
+      {/* Copyright footer */}
+      <div className="border-t pt-4 pb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span data-testid="text-copyright">© 2025 NagaasRetail Pvt Ltd. All Rights Reserved.</span>
+        <span className="hidden sm:inline text-muted-foreground/40">·</span>
+        <Link href="/terms" className="hover:text-foreground transition-colors" data-testid="link-terms">Terms &amp; Conditions</Link>
+        <span className="text-muted-foreground/40">·</span>
+        <Link href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-privacy">Privacy Policy</Link>
+      </div>
+
     </div>
   );
 }

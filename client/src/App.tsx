@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, useRoute } from "wouter";
 import { useState, useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -28,6 +28,8 @@ import Profile from "@/pages/profile";
 import AdminUsers from "@/pages/admin-users";
 import AdminSettings from "@/pages/admin-settings";
 import Renew from "@/pages/renew";
+import Terms from "@/pages/terms";
+import Privacy from "@/pages/privacy";
 import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -113,6 +115,8 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
           />
         ) : null
       } />
+      <Route path="/terms" component={Terms} />
+      <Route path="/privacy" component={Privacy} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -177,11 +181,19 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function App() {
+function PublicOrAuthApp() {
+  const [isTermsMatch] = useRoute("/terms");
+  const [isPrivacyMatch] = useRoute("/privacy");
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Skip auth check for public pages — show them immediately
+    if (isTermsMatch || isPrivacyMatch) {
+      setIsLoading(false);
+      return;
+    }
     const checkAuth = async () => {
       try {
         const response = await fetch("/api/auth/me", {
@@ -194,9 +206,12 @@ function App() {
         setIsLoading(false);
       }
     };
-
     checkAuth();
-  }, []);
+  }, [isTermsMatch, isPrivacyMatch]);
+
+  // Always serve public pages regardless of auth state
+  if (isTermsMatch) return <Terms />;
+  if (isPrivacyMatch) return <Privacy />;
 
   if (isLoading) {
     return (
@@ -209,21 +224,25 @@ function App() {
     );
   }
 
+  return isAuthenticated ? (
+    <AuthenticatedApp onLogout={() => {
+      queryClient.invalidateQueries();
+      setIsAuthenticated(false);
+    }} />
+  ) : (
+    <Login onLoginSuccess={() => {
+      queryClient.invalidateQueries();
+      setIsAuthenticated(true);
+    }} />
+  );
+}
+
+function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <ThemeProvider>
-          {isAuthenticated ? (
-            <AuthenticatedApp onLogout={() => {
-              queryClient.invalidateQueries();
-              setIsAuthenticated(false);
-            }} />
-          ) : (
-            <Login onLoginSuccess={() => {
-              queryClient.invalidateQueries();
-              setIsAuthenticated(true);
-            }} />
-          )}
+          <PublicOrAuthApp />
           <Toaster />
         </ThemeProvider>
       </TooltipProvider>
