@@ -253,7 +253,7 @@ function MileageView({ segments, vehicles, isLoading, selectedVehicle, startDate
 
   return (
     <>
-      {/* Summary cards — up to 9 */}
+      {/* Summary cards — 10 */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
@@ -275,6 +275,19 @@ function MileageView({ segments, vehicles, isLoading, selectedVehicle, startDate
             {isLoading ? <Skeleton className="h-8 w-24" /> : (
               <div className="text-2xl font-bold" data-testid="text-mileage-total-distance">
                 {totalFleetKm.toFixed(1)} km
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
+            <CardTitle className="text-xs font-medium">Total Duration</CardTitle>
+            <Timer className="h-4 w-4 text-muted-foreground shrink-0" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-20" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-total-duration">
+                {formatDuration(totalMovingSec + totalIdleSec)}
               </div>
             )}
           </CardContent>
