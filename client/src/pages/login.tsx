@@ -10,8 +10,8 @@ interface LoginProps {
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
-  const [phone, setPhone] = useState("9000000001");
-  const [password, setPassword] = useState("admin123");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -103,13 +103,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             </Button>
           </form>
 
-          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950 rounded-md">
-            <p className="text-sm font-medium mb-2">Demo Credentials:</p>
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p><strong>Admin:</strong> 9000000001 / admin123</p>
-              <p><strong>User:</strong> 9000000002 / user123</p>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

@@ -95,7 +95,7 @@ app.use((req, res, next) => {
   try {
     log("Seeding demo users...");
     const demoUsers = [
-      { phone: "9000000001", email: "admin@gps.com", password: "admin123", name: "Admin User", role: "admin" as const },
+      { phone: "9843777277", email: "admin@gps.com", password: "admin123", name: "Admin User", role: "admin" as const },
       { phone: "9000000002", email: "user@gps.com", password: "user123", name: "Regular User", role: "user" as const },
       { phone: "9000000003", email: "test@example.com", password: "password123", name: "Test User", role: "user" as const },
     ];
