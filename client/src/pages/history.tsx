@@ -114,6 +114,7 @@ export default function History() {
   useEffect(() => {
     setCurrentIndex(0);
     setIsPlaying(false);
+    setPlaybackSpeed(1);
   }, [selectedDate]);
 
   const activeDateLocations = selectedDate ? (dateGroups[selectedDate] || []) : [];
