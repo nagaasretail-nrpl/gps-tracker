@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -57,7 +58,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-orange-50 to-white dark:from-slate-950 dark:to-slate-900 p-4">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-orange-50 to-white dark:from-slate-950 dark:to-slate-900 p-4 gap-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-center gap-2 mb-4">
@@ -102,9 +103,17 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               {isLoading ? "Logging in..." : "Login"}
             </Button>
           </form>
-
         </CardContent>
       </Card>
+
+      {/* Legal footer */}
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span data-testid="text-login-copyright">© 2025 NagaasRetail Pvt Ltd. All Rights Reserved.</span>
+        <span className="text-muted-foreground/40">·</span>
+        <Link href="/terms" className="hover:text-foreground transition-colors" data-testid="link-login-terms">Terms &amp; Conditions</Link>
+        <span className="text-muted-foreground/40">·</span>
+        <Link href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-login-privacy">Privacy Policy</Link>
+      </div>
     </div>
   );
 }
