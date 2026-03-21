@@ -113,7 +113,7 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
           movingSec: 0,
           idleSec: 0,
           avgSpeedKmh: 0,
-          fuelEfficiency: v?.fuelEfficiency ?? null,
+          fuelEfficiency: v?.fuelEfficiency != null ? parseFloat(String(v.fuelEfficiency)) : null,
         });
       }
       const row = map.get(seg.vehicleId)!;

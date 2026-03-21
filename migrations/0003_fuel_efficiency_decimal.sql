@@ -1,0 +1,1 @@
+ALTER TABLE "vehicles" ALTER COLUMN "fuel_efficiency" SET DATA TYPE numeric(5, 2);

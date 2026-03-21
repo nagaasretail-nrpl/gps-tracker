@@ -22,6 +22,13 @@
       "when": 1774066331279,
       "tag": "0002_smart_la_nuit",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774069289828,
+      "tag": "0003_fuel_efficiency_decimal",
+      "breakpoints": true
     }
   ]
 }
