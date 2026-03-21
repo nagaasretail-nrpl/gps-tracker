@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Plus, User as UserIcon, ChevronDown, ChevronUp, ChevronRight, Car, Menu } from "lucide-react";
+import { Trash2, Plus, User as UserIcon, ChevronDown, ChevronUp, ChevronRight, Car, Menu, Search, X } from "lucide-react";
 import type { User, Vehicle } from "@shared/schema";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -106,6 +106,7 @@ export default function AdminUsers() {
   const [editStates, setEditStates] = useState<Record<string, EditState>>({});
   const [newUser, setNewUser] = useState({ name: "", phone: "", password: "", role: "user" });
   const [openMenuPanels, setOpenMenuPanels] = useState<Record<string, boolean>>({});
+  const [vehicleSearches, setVehicleSearches] = useState<Record<string, string>>({});
 
   const { data: users = [], isLoading } = useQuery<UserWithoutPassword[]>({
     queryKey: ["/api/users"],
@@ -536,11 +537,44 @@ export default function AdminUsers() {
                           Vehicle Access
                           <span className="text-xs text-muted-foreground ml-2">(unchecked = all vehicles)</span>
                         </Label>
+                        {vehicles.length > 0 && (
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                            <Input
+                              placeholder="Search vehicles…"
+                              value={vehicleSearches[user.id] ?? ""}
+                              onChange={(e) => setVehicleSearches((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                              className="pl-8 h-8 text-sm"
+                              data-testid={`input-vehicle-search-${user.id}`}
+                            />
+                            {vehicleSearches[user.id] && (
+                              <button
+                                type="button"
+                                onClick={() => setVehicleSearches((prev) => ({ ...prev, [user.id]: "" }))}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                data-testid={`button-clear-vehicle-search-${user.id}`}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        )}
                         <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto">
                           {vehicles.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No vehicles registered</p>
-                          ) : (
-                            vehicles.map((v) => (
+                          ) : (() => {
+                            const q = (vehicleSearches[user.id] ?? "").toLowerCase();
+                            const filtered = q
+                              ? vehicles.filter((v) =>
+                                  v.name.toLowerCase().includes(q) ||
+                                  (v.licensePlate ?? "").toLowerCase().includes(q) ||
+                                  (v.deviceId ?? "").toLowerCase().includes(q)
+                                )
+                              : vehicles;
+                            if (filtered.length === 0) {
+                              return <p className="text-sm text-muted-foreground">No vehicles match your search</p>;
+                            }
+                            return filtered.map((v) => (
                               <div key={v.id} className="flex items-center gap-2">
                                 <Checkbox
                                   id={`vehicle-${user.id}-${v.id}`}
@@ -558,8 +592,8 @@ export default function AdminUsers() {
                                   )}
                                 </label>
                               </div>
-                            ))
-                          )}
+                            ));
+                          })()}
                         </div>
                       </div>
 
