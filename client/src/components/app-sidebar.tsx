@@ -73,8 +73,9 @@ export function AppSidebar() {
   const isAllowed = (url: string): boolean => {
     if (!currentUser || isAdmin) return true;
     const allowed = currentUser.allowedMenus;
-    if (allowed == null) return true; // null = no restriction (default for new users)
-    return allowed.includes(url); // empty array = fully restricted
+    // null or empty array both mean unrestricted (no specific menus configured)
+    if (allowed == null || allowed.length === 0) return true;
+    return allowed.includes(url);
   };
 
   const visiblePersonal = personalMenuItems.filter((i) => isAllowed(i.url));

@@ -390,7 +390,9 @@ export default function AdminUsers() {
                           </span>
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Menu className="h-3 w-3" />
-                            {restrictedMenuCount !== null ? `${restrictedMenuCount} menu${restrictedMenuCount !== 1 ? "s" : ""}` : "All menus"}
+                            {restrictedMenuCount !== null && restrictedMenuCount > 0
+                              ? `${restrictedMenuCount} menu${restrictedMenuCount !== 1 ? "s" : ""} restricted`
+                              : "All menus"}
                           </span>
                         </div>
                       </div>
@@ -569,7 +571,7 @@ export default function AdminUsers() {
                             <Menu className="h-3.5 w-3.5 text-muted-foreground" />
                             Menu Access
                             <span className="text-xs text-muted-foreground font-normal">
-                              ({state.allowedMenus === null ? "All menus allowed" : `${state.allowedMenus.length} menu${state.allowedMenus.length !== 1 ? "s" : ""} allowed`})
+                              ({(state.allowedMenus == null || state.allowedMenus.length === 0) ? "All menus allowed" : `${state.allowedMenus.length} menu${state.allowedMenus.length !== 1 ? "s" : ""} allowed`})
                             </span>
                           </span>
                           {menuPanelOpen

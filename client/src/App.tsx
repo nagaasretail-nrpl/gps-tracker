@@ -59,13 +59,14 @@ function RouteGuard({ user, path, component: Component }: {
   }
 
   const allowedMenus = user.allowedMenus;
-  if (allowedMenus == null) {
+  // null or empty array both mean unrestricted (no specific menus configured)
+  if (allowedMenus == null || allowedMenus.length === 0) {
     return <Component />;
   }
 
   const requiredMenu = PROTECTED_ROUTES[path];
   if (requiredMenu && !requiredMenu.some((r) => allowedMenus.includes(r))) {
-    navigate("/profile");
+    navigate("/");
     return null;
   }
 
