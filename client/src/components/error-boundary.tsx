@@ -56,7 +56,7 @@ export class ErrorBoundary extends Component<Props, State> {
               )}
               <div className="flex gap-2 flex-wrap">
                 <Button onClick={this.handleReload} data-testid="button-error-reload">
-                  Reload page
+                  Reload
                 </Button>
                 <Button variant="outline" onClick={this.handleReset} data-testid="button-error-retry">
                   Try again
