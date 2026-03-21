@@ -16,8 +16,9 @@ interface FleetEvent {
   id: string;
   vehicleId: string;
   type: string;
-  message: string;
-  createdAt: string;
+  description: string;
+  severity: string | null;
+  timestamp: string;
 }
 
 interface TripSegment {
@@ -111,7 +112,7 @@ export default function Dashboard() {
   const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
   const onlineCount = vehicles?.filter(v => {
     const loc = latestLocations?.find(l => l.vehicleId === v.id);
-    return loc ? new Date(loc.createdAt).getTime() > thirtyMinAgo : false;
+    return loc ? new Date(loc.timestamp).getTime() > thirtyMinAgo : false;
   }).length ?? 0;
   const onlinePct = total > 0 ? Math.round((onlineCount / total) * 100) : 0;
 
@@ -121,7 +122,7 @@ export default function Dashboard() {
   const avgKmPerVehicle = total > 0 ? todayKm / total : 0;
 
   const todayTs = new Date(todayStart).getTime();
-  const todayEvents = events?.filter(e => new Date(e.createdAt).getTime() >= todayTs) ?? [];
+  const todayEvents = events?.filter(e => new Date(e.timestamp).getTime() >= todayTs) ?? [];
   const speedViolationsToday = todayEvents.filter(e => e.type === "speed_violation").length;
   const geofenceAlertsToday = todayEvents.filter(e => e.type === "geofence_entry" || e.type === "geofence_exit").length;
   const recentEvents = (events ?? []).slice(0, 8);
@@ -346,7 +347,7 @@ export default function Dashboard() {
                 {vehicles.map(v => {
                   const loc = latestLocations?.find(l => l.vehicleId === v.id);
                   const speed = parseFloat(String(loc?.speed ?? "0")).toFixed(0);
-                  const isOnline = loc ? new Date(loc.createdAt).getTime() > thirtyMinAgo : false;
+                  const isOnline = loc ? new Date(loc.timestamp).getTime() > thirtyMinAgo : false;
                   return (
                     <div
                       key={v.id}
@@ -361,7 +362,7 @@ export default function Dashboard() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">{v.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {loc ? `${speed} km/h · ${formatAgo(loc.createdAt)}` : "No location data"}
+                            {loc ? `${speed} km/h · ${formatAgo(loc.timestamp)}` : "No location data"}
                           </p>
                         </div>
                       </div>
@@ -404,7 +405,7 @@ export default function Dashboard() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-xs font-medium truncate">{vehicle?.name ?? "Unknown vehicle"}</p>
-                          <p className="text-xs text-muted-foreground truncate">{ev.message}</p>
+                          <p className="text-xs text-muted-foreground truncate">{ev.description}</p>
                         </div>
                         <Badge variant={eventBadgeVariant(ev.type)} className="shrink-0 text-xs">
                           {ev.type.replace(/_/g, " ")}
@@ -412,7 +413,7 @@ export default function Dashboard() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {formatAgo(ev.createdAt)}
+                        {formatAgo(ev.timestamp)}
                       </p>
                     </div>
                   );
