@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, integer, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, integer, jsonb, boolean, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -129,6 +129,7 @@ export const vehicles = pgTable("vehicles", {
   iconColor: text("icon_color").default("#2563eb"),
   driverName: text("driver_name"),
   licensePlate: text("license_plate"),
+  fuelEfficiency: real("fuel_efficiency"), // km/L; null = not set
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

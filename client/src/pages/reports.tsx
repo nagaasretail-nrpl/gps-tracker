@@ -90,6 +90,7 @@ interface MileageRow {
   movingSec: number;
   idleSec: number;
   avgSpeedKmh: number;
+  fuelEfficiency: number | null;
 }
 
 interface MileageViewProps {
@@ -112,6 +113,7 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
           movingSec: 0,
           idleSec: 0,
           avgSpeedKmh: 0,
+          fuelEfficiency: v?.fuelEfficiency ?? null,
         });
       }
       const row = map.get(seg.vehicleId)!;
@@ -122,9 +124,9 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
       row.avgSpeedKmh += seg.avgSpeedKmh;
     }
     // Finalise avg speed
-    for (const row of map.values()) {
+    Array.from(map.values()).forEach(row => {
       if (row.tripCount > 0) row.avgSpeedKmh = row.avgSpeedKmh / row.tripCount;
-    }
+    });
     return Array.from(map.values()).sort((a, b) => b.totalKm - a.totalKm);
   }, [segments, vehicles]);
 
@@ -134,15 +136,18 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
 
   const exportCSV = () => {
     const headers = ["Vehicle", "Trips", "Distance (km)", "Moving Time", "Idle Time", "Avg Speed (km/h)", "Est. Fuel (L)"];
-    const csvRows = rows.map(r => [
-      r.name,
-      r.tripCount,
-      r.totalKm.toFixed(2),
-      formatDuration(r.movingSec),
-      formatDuration(r.idleSec),
-      r.avgSpeedKmh.toFixed(1),
-      "—",
-    ]);
+    const csvRows = rows.map(r => {
+      const fuel = r.fuelEfficiency ? (r.totalKm / r.fuelEfficiency).toFixed(1) : "—";
+      return [
+        r.name,
+        r.tripCount,
+        r.totalKm.toFixed(2),
+        formatDuration(r.movingSec),
+        formatDuration(r.idleSec),
+        r.avgSpeedKmh.toFixed(1),
+        fuel,
+      ];
+    });
     downloadCSV(headers, csvRows, `mileage-report-${format(new Date(), "yyyy-MM-dd")}.csv`);
   };
 
@@ -227,6 +232,9 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
                 </TableHeader>
                 <TableBody>
                   {rows.map((r, i) => {
+                    const fuel = r.fuelEfficiency
+                      ? `${(r.totalKm / r.fuelEfficiency).toFixed(1)} L`
+                      : "—";
                     return (
                       <TableRow key={r.vehicleId} data-testid={`row-mileage-${i}`}>
                         <TableCell className="font-medium whitespace-nowrap">{r.name}</TableCell>
@@ -235,7 +243,7 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
                         <TableCell className="whitespace-nowrap">{formatDuration(r.movingSec)}</TableCell>
                         <TableCell className="whitespace-nowrap text-muted-foreground">{formatDuration(r.idleSec)}</TableCell>
                         <TableCell className="whitespace-nowrap">{r.avgSpeedKmh.toFixed(1)} km/h</TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">—</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">{fuel}</TableCell>
                       </TableRow>
                     );
                   })}
