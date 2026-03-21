@@ -201,7 +201,11 @@ export default function Vehicles() {
   };
 
   const onSubmit = (data: AddVehicleForm) => {
-    addMutation.mutate({ ...data, fuelType: (data.fuelType === "none" ? null : data.fuelType) ?? null });
+    addMutation.mutate({
+      ...data,
+      fuelType: (data.fuelType === "none" ? null : data.fuelType) ?? null,
+      devicePhone: data.devicePhone?.trim() || null,
+    });
   };
 
   const getStatusBadge = (status: string) => {
@@ -862,14 +866,25 @@ export default function Vehicles() {
                   {vehicle.name}
                 </span>
 
-                {/* Device ID */}
-                <span
-                  className="text-xs text-muted-foreground font-mono truncate max-w-[120px] sm:max-w-[200px]"
-                  title={vehicle.deviceId}
-                  data-testid={`text-vehicle-deviceid-${vehicle.id}`}
-                >
-                  {vehicle.deviceId}
-                </span>
+                {/* Device ID + Device Phone */}
+                <div className="flex flex-col min-w-0 max-w-[120px] sm:max-w-[200px]">
+                  <span
+                    className="text-xs text-muted-foreground font-mono truncate"
+                    title={vehicle.deviceId}
+                    data-testid={`text-vehicle-deviceid-${vehicle.id}`}
+                  >
+                    {vehicle.deviceId}
+                  </span>
+                  {vehicle.devicePhone && (
+                    <span
+                      className="text-xs text-muted-foreground/70 truncate"
+                      title={vehicle.devicePhone}
+                      data-testid={`text-vehicle-devicephone-${vehicle.id}`}
+                    >
+                      {vehicle.devicePhone}
+                    </span>
+                  )}
+                </div>
 
                 {/* Status badge */}
                 <Badge
