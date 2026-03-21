@@ -123,7 +123,7 @@ export default function Dashboard() {
   const todayTs = new Date(todayStart).getTime();
   const todayEvents = events?.filter(e => new Date(e.createdAt).getTime() >= todayTs) ?? [];
   const speedViolationsToday = todayEvents.filter(e => e.type === "speed_violation").length;
-  const geofenceAlertsToday = todayEvents.filter(e => e.type.startsWith("geofence")).length;
+  const geofenceAlertsToday = todayEvents.filter(e => e.type === "geofence_entry" || e.type === "geofence_exit").length;
   const recentEvents = (events ?? []).slice(0, 8);
   const vehicleById = Object.fromEntries((vehicles ?? []).map(v => [v.id, v]));
 
@@ -277,7 +277,7 @@ export default function Dashboard() {
       </div>
 
       {/* Row 2: Alert stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-2 rounded-md bg-red-100 dark:bg-red-950 shrink-0">
