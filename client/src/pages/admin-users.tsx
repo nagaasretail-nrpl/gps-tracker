@@ -39,6 +39,7 @@ interface EditState {
   allowedVehicleIds: string[];
   role: string;
   phone: string;
+  email: string;
   department: string;
 }
 
@@ -52,6 +53,7 @@ function buildEditState(user: UserWithoutPassword): EditState {
     allowedVehicleIds: user.allowedVehicleIds ?? [],
     role: user.role,
     phone: user.phone ?? "",
+    email: user.email ?? "",
     department: user.department ?? "",
   };
 }
@@ -175,6 +177,7 @@ export default function AdminUsers() {
       subscriptionType: state.subscriptionType,
       role: state.role,
       phone: state.phone,
+      email: state.email || null,
       department: state.department,
       allowedVehicleIds: state.allowedVehicleIds.length > 0 ? state.allowedVehicleIds : null,
       subscriptionExpiry: state.subscriptionExpiry
@@ -343,6 +346,19 @@ export default function AdminUsers() {
                             onChange={(e) => updateEditState(user.id, { phone: e.target.value })}
                             placeholder="+91 9876543210"
                             data-testid={`input-phone-${user.id}`}
+                          />
+                        </div>
+
+                        {/* Email (optional contact info) */}
+                        <div className="space-y-1">
+                          <Label htmlFor={`email-${user.id}`}>Email (optional)</Label>
+                          <Input
+                            id={`email-${user.id}`}
+                            type="email"
+                            value={state.email}
+                            onChange={(e) => updateEditState(user.id, { email: e.target.value })}
+                            placeholder="e.g. user@example.com"
+                            data-testid={`input-email-${user.id}`}
                           />
                         </div>
 

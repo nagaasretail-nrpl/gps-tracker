@@ -128,13 +128,8 @@ export class DbStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    await db.insert(users).values(insertUser);
-    const rows = await db.select().from(users).where(
-      insertUser.phone
-        ? eq(users.phone, insertUser.phone)
-        : eq(users.email!, insertUser.email!)
-    );
-    return rows[0];
+    const result = await db.insert(users).values(insertUser).returning();
+    return result[0];
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
