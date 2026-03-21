@@ -288,25 +288,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Bulk create vehicles
+  // Bulk create vehicles (per-row safeParse so malformed rows become errors, not 400s)
   app.post("/api/vehicles/bulk", requireAdmin, async (req, res) => {
     try {
-      const bodySchema = z.object({ vehicles: z.array(insertVehicleSchema) });
-      const { vehicles: rows } = bodySchema.parse(req.body);
+      const bodySchema = z.object({ vehicles: z.array(z.unknown()) });
+      const { vehicles: rawRows } = bodySchema.parse(req.body);
+      if (!Array.isArray(rawRows) || rawRows.length === 0) {
+        return res.status(400).json({ error: "No vehicles provided" });
+      }
       let created = 0;
       const errors: string[] = [];
-      for (const row of rows) {
+      for (let i = 0; i < rawRows.length; i++) {
+        const parsed = insertVehicleSchema.safeParse(rawRows[i]);
+        if (!parsed.success) {
+          const raw = rawRows[i] as Record<string, unknown>;
+          const label = raw?.name ? `"${raw.name}"` : `Row ${i + 1}`;
+          errors.push(`${label}: ${parsed.error.errors.map(e => e.message).join("; ")}`);
+          continue;
+        }
         try {
-          await storage.createVehicle(row);
+          await storage.createVehicle(parsed.data);
           created++;
         } catch (err) {
-          errors.push(`Row "${row.name}" (${row.deviceId}): ${err instanceof Error ? err.message : String(err)}`);
+          const label = parsed.data.name ? `"${parsed.data.name}" (${parsed.data.deviceId})` : `Row ${i + 1}`;
+          errors.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
       res.status(201).json({ created, errors });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid data", details: error.errors });
+        return res.status(400).json({ error: "Invalid request body", details: error.errors });
       }
       res.status(500).json({ error: "Bulk create failed", details: error instanceof Error ? error.message : String(error) });
     }

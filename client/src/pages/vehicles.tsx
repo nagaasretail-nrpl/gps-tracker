@@ -350,11 +350,12 @@ export default function Vehicles() {
 
   // ── Export ─────────────────────────────────────────────────────────────────
   const handleExport = () => {
-    if (!vehicles || vehicles.length === 0) {
-      toast({ description: "No vehicles to export." });
+    const toExport = filteredVehicles ?? vehicles;
+    if (!toExport || toExport.length === 0) {
+      toast({ description: searchQuery ? "No vehicles match the current search filter." : "No vehicles to export." });
       return;
     }
-    const rows = (filteredVehicles ?? vehicles).map((v) => ({
+    const rows = toExport.map((v) => ({
       Name: v.name,
       IMEI: v.deviceId,
       "Device Phone": v.devicePhone ?? "",
@@ -368,7 +369,7 @@ export default function Vehicles() {
       "Tank Capacity (L)": v.fuelTankCapacity ?? "",
     }));
     downloadXlsx(rows, "vehicles.xlsx");
-    toast({ description: `Exported ${rows.length} vehicle(s) to vehicles.xlsx` });
+    toast({ description: `Exported ${rows.length} vehicle(s) to vehicles.xlsx${searchQuery ? " (filtered)" : ""}` });
   };
 
   // ── Sample Template ────────────────────────────────────────────────────────
