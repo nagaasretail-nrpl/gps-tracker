@@ -54,10 +54,31 @@ export default function History() {
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 2 | 3>(1);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
+  const [autoPlayPending, setAutoPlayPending] = useState(false);
 
   const { data: vehicles } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
   });
+
+  // Parse URL params from trips page playback button
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const vehicleId = params.get("vehicleId");
+    const from = params.get("from");
+    const autoplay = params.get("autoplay") === "1";
+
+    if (vehicleId && from) {
+      const dayStart = new Date(from);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(from);
+      dayEnd.setHours(23, 59, 59, 999);
+      setSelectedVehicle(vehicleId);
+      setStartDate(dayStart);
+      setEndDate(dayEnd);
+      setLoadTrigger(t => t + 1);
+      if (autoplay) setAutoPlayPending(true);
+    }
+  }, []);
 
   const { data: locations, isLoading: locationsLoading } = useQuery<Location[]>({
     queryKey: [
@@ -135,6 +156,14 @@ export default function History() {
       return validCoords.has(`${lat},${lng}`);
     });
   }, [activeDateLocations]);
+
+  // Auto-start playback once data loads (when coming from trips page play button)
+  useEffect(() => {
+    if (autoPlayPending && validActiveDateLocations.length > 0) {
+      setIsPlaying(true);
+      setAutoPlayPending(false);
+    }
+  }, [autoPlayPending, validActiveDateLocations.length]);
 
   const currentLocation = validActiveDateLocations.length > 0 ? validActiveDateLocations[currentIndex] : undefined;
 

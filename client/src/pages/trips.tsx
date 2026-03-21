@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   ChevronDown,
   ChevronRight,
   Timer,
+  Play,
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import type { Vehicle } from "@shared/schema";
@@ -69,12 +71,18 @@ function formatDay(dateStr: string): string {
   }
 }
 
+function todayRange() {
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  const to = new Date();
+  to.setHours(23, 59, 59, 999);
+  return { from, to };
+}
+
 export default function Trips() {
+  const [, navigate] = useLocation();
   const [selectedVehicle, setSelectedVehicle] = useState<string>("all");
-  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-    from: subDays(new Date(), 7),
-    to: new Date(),
-  });
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>(todayRange);
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 
   const { data: vehicles } = useQuery<Vehicle[]>({ queryKey: ["/api/vehicles"] });
@@ -289,9 +297,28 @@ export default function Trips() {
                                 <CardContent className="pt-4 pb-4 px-4">
                                   <div className="flex items-center justify-between mb-3">
                                     <Badge variant="outline" className="font-semibold text-xs">Trip {idx + 1}</Badge>
-                                    <span className="text-xs text-muted-foreground">
-                                      {formatTime(seg.startTime)} – {formatTime(seg.endTime)}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-muted-foreground">
+                                        {formatTime(seg.startTime)} – {formatTime(seg.endTime)}
+                                      </span>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        title="Playback this trip"
+                                        data-testid={`button-playback-${vid}-${day}-${idx}`}
+                                        onClick={() => {
+                                          const params = new URLSearchParams({
+                                            vehicleId: seg.vehicleId,
+                                            from: seg.startTime,
+                                            to: seg.endTime,
+                                            autoplay: "1",
+                                          });
+                                          navigate(`/history?${params.toString()}`);
+                                        }}
+                                      >
+                                        <Play className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
                                   </div>
 
                                   <div className="space-y-2 mb-3">
