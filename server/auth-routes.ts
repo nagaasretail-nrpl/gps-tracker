@@ -96,13 +96,11 @@ authRoutes.get("/me", async (req, res) => {
     return res.status(401).json({ error: "Not authenticated" });
   }
 
-  // Auto-mark expired non-admin users as inactive
+  // Auto-mark expired non-admin users as inactive (real-time timestamp comparison)
   if (freshUser.role !== "admin" && freshUser.subscriptionExpiry) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
     const expiry = new Date(freshUser.subscriptionExpiry);
-    expiry.setHours(0, 0, 0, 0);
-    if (expiry < today && freshUser.status !== "inactive") {
+    if (expiry < now && freshUser.status !== "inactive") {
       await storage.updateUser(freshUser.id, { status: "inactive" });
       freshUser.status = "inactive";
     }

@@ -29,8 +29,23 @@ import {
 // In-memory log of unrecognised device IDs (last 20 attempts)
 const unknownDeviceLog: { deviceId: string; lat: number; lng: number; speed: number; seenAt: string }[] = [];
 
-// In-memory idempotency set for processed Razorpay payment IDs (prevents replay)
-const usedPaymentIds = new Set<string>();
+// DB-backed idempotency helpers for processed Razorpay payment IDs
+async function isPaymentProcessed(paymentId: string): Promise<boolean> {
+  const setting = await storage.getSetting("processed_payment_ids");
+  const ids: string[] = setting ? JSON.parse(setting.value) : [];
+  return ids.includes(paymentId);
+}
+
+async function markPaymentProcessed(paymentId: string): Promise<void> {
+  const setting = await storage.getSetting("processed_payment_ids");
+  const ids: string[] = setting ? JSON.parse(setting.value) : [];
+  if (!ids.includes(paymentId)) {
+    ids.push(paymentId);
+    // Keep list bounded (last 1000 payment IDs)
+    const trimmed = ids.slice(-1000);
+    await storage.setSetting("processed_payment_ids", JSON.stringify(trimmed));
+  }
+}
 
 // Auto-expiry middleware: after requireAuth, auto-set non-admin users to inactive
 // when their subscriptionExpiry has passed. Skip for /api/auth/* and /api/payments/*.
@@ -40,13 +55,11 @@ async function checkSubscriptionExpiry(req: Request, res: Response, next: NextFu
   if (user.role === "admin") return next();
   if (!user.subscriptionExpiry) return next();
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const now = new Date();
   const expiry = new Date(user.subscriptionExpiry);
-  expiry.setHours(0, 0, 0, 0);
 
-  if (expiry < today) {
-    // Mark inactive (fire-and-forget, do not block the request)
+  if (expiry < now) {
+    // Mark inactive (fire-and-forget secondary check; /api/auth/me does it authoritatively)
     storage.updateUser(user.id, { status: "inactive" }).catch((err) =>
       console.error("[expiry] Failed to set user inactive:", err)
     );
@@ -66,6 +79,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Payment routes (require auth but skip expiry check so inactive users can pay)
+
+  // Check if payment gateway is configured (lightweight, no sensitive data exposed)
+  app.get("/api/payments/status", requireAuth, async (_req, res) => {
+    try {
+      const keyId = (await storage.getSetting("razorpay_key_id"))?.value || "";
+      const keySecret = (await storage.getSetting("razorpay_key_secret"))?.value || "";
+      const amountSetting = (await storage.getSetting("renewal_amount"))?.value || "";
+      const configured = !!(keyId && keySecret && amountSetting && parseInt(amountSetting, 10) > 0);
+      res.json({ configured, amount: configured ? parseInt(amountSetting, 10) : null });
+    } catch {
+      res.json({ configured: false, amount: null });
+    }
+  });
+
   app.post("/api/payments/create-order", requireAuth, async (req, res) => {
     try {
       const keyId = (await storage.getSetting("razorpay_key_id"))?.value || "";
@@ -104,8 +131,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = schema.parse(req.body);
 
-      // Idempotency: reject already-processed payment IDs
-      if (usedPaymentIds.has(razorpayPaymentId)) {
+      // Idempotency: reject already-processed payment IDs (DB-backed, survives restarts)
+      if (await isPaymentProcessed(razorpayPaymentId)) {
         return res.status(409).json({ error: "Payment already processed" });
       }
 
@@ -146,8 +173,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Payment amount mismatch. Please contact support." });
       }
 
-      // Mark payment ID as used before updating DB (prevents TOCTOU replay)
-      usedPaymentIds.add(razorpayPaymentId);
+      // Mark payment ID as processed in DB before updating user (durable idempotency)
+      await markPaymentProcessed(razorpayPaymentId);
 
       const userId = (req.user as { id: string }).id;
       const newExpiry = new Date();

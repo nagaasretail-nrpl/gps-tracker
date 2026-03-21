@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { CreditCard, RefreshCw, Phone, AlertCircle, XCircle } from "lucide-react";
+import { CreditCard, RefreshCw, Phone, AlertCircle, XCircle, Loader2 } from "lucide-react";
 import type { User } from "@shared/schema";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -61,8 +61,22 @@ export default function Renew({ user, onRenewed }: RenewProps) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [isPaying, setIsPaying] = useState(false);
-  const [noCredentials, setNoCredentials] = useState(false);
   const [paymentCancelled, setPaymentCancelled] = useState(false);
+  const [gatewayConfigured, setGatewayConfigured] = useState<boolean | null>(null);
+  const [renewalAmount, setRenewalAmount] = useState<number | null>(null);
+
+  // On mount, check gateway configuration so we can show "Contact admin" immediately
+  useEffect(() => {
+    fetch("/api/payments/status", { credentials: "include" })
+      .then((r) => r.json())
+      .then((data: { configured: boolean; amount: number | null }) => {
+        setGatewayConfigured(data.configured);
+        setRenewalAmount(data.amount);
+      })
+      .catch(() => {
+        setGatewayConfigured(false);
+      });
+  }, []);
 
   const expiryDate = user.subscriptionExpiry
     ? new Date(user.subscriptionExpiry).toLocaleDateString("en-IN", {
@@ -90,7 +104,7 @@ export default function Renew({ user, onRenewed }: RenewProps) {
       });
 
       if (orderRes.status === 503) {
-        setNoCredentials(true);
+        setGatewayConfigured(false);
         setIsPaying(false);
         return;
       }
@@ -180,7 +194,16 @@ export default function Renew({ user, onRenewed }: RenewProps) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {noCredentials ? (
+          {/* Loading state while checking gateway config */}
+          {gatewayConfigured === null && (
+            <div className="flex items-center justify-center py-4 gap-2 text-muted-foreground text-sm" data-testid="status-checking-gateway">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Checking payment options...</span>
+            </div>
+          )}
+
+          {/* No gateway configured */}
+          {gatewayConfigured === false && (
             <div className="rounded-md bg-muted p-4 space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium">
                 <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
@@ -194,7 +217,10 @@ export default function Renew({ user, onRenewed }: RenewProps) {
                 <span>Contact admin for assistance</span>
               </div>
             </div>
-          ) : (
+          )}
+
+          {/* Gateway configured — show pay flow */}
+          {gatewayConfigured === true && (
             <div className="space-y-4">
               {paymentCancelled && (
                 <div className="rounded-md bg-muted p-3 flex items-start gap-2 text-sm" data-testid="status-payment-cancelled">
@@ -210,6 +236,9 @@ export default function Renew({ user, onRenewed }: RenewProps) {
                 <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
                   <li>Full access to all GPS tracking features</li>
                   <li>Real-time vehicle location monitoring</li>
+                  {renewalAmount && (
+                    <li>Renewal amount: <span className="font-medium text-foreground">₹{renewalAmount}</span></li>
+                  )}
                   <li>Subscription extended for 1 year</li>
                 </ul>
               </div>
