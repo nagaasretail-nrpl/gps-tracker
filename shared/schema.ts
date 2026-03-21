@@ -129,7 +129,8 @@ export const vehicles = pgTable("vehicles", {
   iconColor: text("icon_color").default("#2563eb"),
   driverName: text("driver_name"),
   licensePlate: text("license_plate"),
-  fuelEfficiency: real("fuel_efficiency"), // km/L; null = not set
+  fuelType: text("fuel_type"), // petrol, diesel, cng, electric; null = not set
+  fuelEfficiency: real("fuel_efficiency"), // km/L (or km/kWh for electric); null = not set
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -138,7 +139,20 @@ export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   createdAt: true,
 });
 
+export const updateVehicleSchema = z.object({
+  name: z.string().min(1).optional(),
+  deviceId: z.string().min(1).optional(),
+  type: z.string().optional(),
+  status: z.string().optional(),
+  iconColor: z.string().optional(),
+  driverName: z.string().nullable().optional(),
+  licensePlate: z.string().nullable().optional(),
+  fuelType: z.enum(["petrol", "diesel", "cng", "electric"]).nullable().optional(),
+  fuelEfficiency: z.number().positive().nullable().optional(),
+});
+
 export type InsertVehicle = z.infer<typeof insertVehicleSchema>;
+export type UpdateVehicle = z.infer<typeof updateVehicleSchema>;
 export type Vehicle = typeof vehicles.$inferSelect;
 
 // Location updates table (used by both vehicles and activities)

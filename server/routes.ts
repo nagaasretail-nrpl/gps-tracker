@@ -10,6 +10,7 @@ import { requireAuth, requireAdmin } from "./auth";
 import { z } from "zod";
 import {
   insertVehicleSchema,
+  updateVehicleSchema,
   insertLocationSchema,
   insertGeofenceSchema,
   insertRouteSchema,
@@ -122,13 +123,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/vehicles/:id", requireAdmin, async (req, res) => {
     try {
-      const vehicle = await storage.updateVehicle(req.params.id, req.body);
+      const updates = updateVehicleSchema.parse(req.body);
+      const vehicle = await storage.updateVehicle(req.params.id, updates);
       if (!vehicle) {
         return res.status(404).json({ error: "Vehicle not found" });
       }
       res.json(vehicle);
     } catch (error) {
-      res.status(500).json({ error: "Failed to update vehicle" });
+      res.status(400).json({ error: "Invalid vehicle data", details: error instanceof Error ? error.message : String(error) });
     }
   });
 

@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertVehicleSchema } from "@shared/schema";
+import { z } from "zod";
 import {
   Form,
   FormControl,
@@ -29,7 +30,31 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { VEHICLE_TYPE_OPTIONS, getMarkerSvg } from "@/lib/vehicleIcons";
+
+const FUEL_TYPE_OPTIONS = [
+  { value: "petrol", label: "Petrol" },
+  { value: "diesel", label: "Diesel" },
+  { value: "cng", label: "CNG" },
+  { value: "electric", label: "Electric" },
+] as const;
+
+type FuelTypeValue = typeof FUEL_TYPE_OPTIONS[number]["value"] | "";
+
+function fuelEfficiencyLabel(fuelType: FuelTypeValue): string {
+  return fuelType === "electric" ? "Efficiency (km/kWh)" : "Efficiency (km/L)";
+}
+
+const addVehicleFormSchema = insertVehicleSchema.extend({
+  fuelEfficiency: z.coerce.number().positive("Must be a positive number").nullable().optional(),
+});
 
 const iconColors = [
   "#2563eb", "#dc2626", "#16a34a", "#ea580c", "#9333ea",
@@ -44,6 +69,8 @@ export default function Vehicles() {
   const [editDeviceId, setEditDeviceId] = useState("");
   const [editIconColor, setEditIconColor] = useState("#2563eb");
   const [editType, setEditType] = useState("car");
+  const [editFuelType, setEditFuelType] = useState<FuelTypeValue>("");
+  const [editFuelEfficiency, setEditFuelEfficiency] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedGt06Id, setCopiedGt06Id] = useState<string | null>(null);
   const [setupExpanded, setSetupExpanded] = useState(false);
@@ -79,19 +106,22 @@ export default function Vehicles() {
     refetchInterval: 10_000,
   });
 
-  const form = useForm<InsertVehicle>({
-    resolver: zodResolver(insertVehicleSchema),
+  type AddVehicleForm = z.infer<typeof addVehicleFormSchema>;
+  const form = useForm<AddVehicleForm>({
+    resolver: zodResolver(addVehicleFormSchema),
     defaultValues: {
       name: "",
       deviceId: "",
       type: "car",
       status: "offline",
       iconColor: "#2563eb",
+      fuelType: null,
+      fuelEfficiency: null,
     },
   });
 
   const addMutation = useMutation({
-    mutationFn: async (data: InsertVehicle) => {
+    mutationFn: async (data: AddVehicleForm) => {
       return await apiRequest("POST", "/api/vehicles", data);
     },
     onSuccess: () => {
@@ -133,8 +163,8 @@ export default function Vehicles() {
   });
 
   const editMutation = useMutation({
-    mutationFn: async ({ id, name, deviceId, iconColor, type }: { id: string; name: string; deviceId: string; iconColor: string; type: string }) => {
-      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId, iconColor, type });
+    mutationFn: async ({ id, name, deviceId, iconColor, type, fuelType, fuelEfficiency }: { id: string; name: string; deviceId: string; iconColor: string; type: string; fuelType: string | null; fuelEfficiency: number | null }) => {
+      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId, iconColor, type, fuelType: fuelType || null, fuelEfficiency });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
@@ -152,10 +182,12 @@ export default function Vehicles() {
     setEditDeviceId(v.deviceId);
     setEditIconColor(v.iconColor || "#2563eb");
     setEditType(v.type || "car");
+    setEditFuelType((v.fuelType as FuelTypeValue) || "");
+    setEditFuelEfficiency(v.fuelEfficiency != null ? String(v.fuelEfficiency) : "");
     setSetupExpanded(false);
   };
 
-  const onSubmit = (data: InsertVehicle) => {
+  const onSubmit = (data: AddVehicleForm) => {
     addMutation.mutate(data);
   };
 
@@ -324,6 +356,59 @@ export default function Vehicles() {
                   )}
                 />
 
+                {/* Fuel Type */}
+                <FormField
+                  control={form.control}
+                  name="fuelType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fuel Type <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                      <Select
+                        value={field.value ?? ""}
+                        onValueChange={(val) => field.onChange(val || null)}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-add-fuel-type">
+                            <SelectValue placeholder="Not set" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {FUEL_TYPE_OPTIONS.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Fuel Efficiency */}
+                <FormField
+                  control={form.control}
+                  name="fuelEfficiency"
+                  render={({ field }) => {
+                    const watchedFuelType = form.watch("fuelType") as FuelTypeValue ?? "";
+                    return (
+                      <FormItem>
+                        <FormLabel>{fuelEfficiencyLabel(watchedFuelType)} <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0.1"
+                            step="0.1"
+                            placeholder="e.g. 15"
+                            value={field.value ?? ""}
+                            onChange={e => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
+                            data-testid="input-add-fuel-efficiency"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+
                 <div className="flex justify-end gap-2 pt-4">
                   <Button
                     type="button"
@@ -434,6 +519,41 @@ export default function Vehicles() {
               </div>
             </div>
 
+            {/* Fuel Type */}
+            <div className="space-y-1">
+              <Label>Fuel Type <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Select
+                value={editFuelType}
+                onValueChange={(val) => setEditFuelType(val as FuelTypeValue)}
+              >
+                <SelectTrigger data-testid="select-edit-fuel-type">
+                  <SelectValue placeholder="Not set" />
+                </SelectTrigger>
+                <SelectContent>
+                  {FUEL_TYPE_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Fuel Efficiency */}
+            <div className="space-y-1">
+              <Label htmlFor="edit-fuel-efficiency">
+                {fuelEfficiencyLabel(editFuelType)} <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+              </Label>
+              <Input
+                id="edit-fuel-efficiency"
+                type="number"
+                min="0.1"
+                step="0.1"
+                placeholder="e.g. 15"
+                value={editFuelEfficiency}
+                onChange={e => setEditFuelEfficiency(e.target.value)}
+                data-testid="input-edit-fuel-efficiency"
+              />
+            </div>
+
             {/* Device Setup — collapsible section in Edit dialog */}
             <div className="border rounded-md overflow-hidden">
               <button
@@ -504,6 +624,8 @@ export default function Vehicles() {
                   deviceId: editDeviceId.trim(),
                   iconColor: editIconColor,
                   type: editType,
+                  fuelType: editFuelType || null,
+                  fuelEfficiency: editFuelEfficiency !== "" ? parseFloat(editFuelEfficiency) : null,
                 })}
                 data-testid="button-save-edit-vehicle"
               >
