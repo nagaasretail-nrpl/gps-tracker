@@ -31,11 +31,12 @@ import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
 
+// "/" (dashboard) is intentionally not in PROTECTED_ROUTES so it is always
+// accessible and acts as a safe redirect target for blocked routes.
 const PROTECTED_ROUTES: Record<string, string[]> = {
   "/track": ["/track"],
   "/activities": ["/activities"],
   "/stats": ["/stats"],
-  "/": ["/"],
   "/tracking": ["/tracking"],
   "/vehicles": ["/vehicles"],
   "/trips": ["/trips"],
@@ -47,12 +48,18 @@ const PROTECTED_ROUTES: Record<string, string[]> = {
   "/profile": ["/profile"],
 };
 
-function RouteGuard({ user, path, component: Component }: {
+function RouteGuard({ user, userLoaded, path, component: Component }: {
   user: UserWithoutPassword | null;
+  userLoaded: boolean;
   path: string;
   component: React.ComponentType;
 }) {
   const [, navigate] = useLocation();
+
+  // Wait until user data is resolved before making access decisions
+  if (!userLoaded) {
+    return null;
+  }
 
   if (!user || user.role === "admin") {
     return <Component />;
@@ -66,8 +73,7 @@ function RouteGuard({ user, path, component: Component }: {
 
   const requiredMenu = PROTECTED_ROUTES[path];
   if (requiredMenu && !requiredMenu.some((r) => allowedMenus.includes(r))) {
-    // Redirect to the user's first allowed menu (avoids infinite redirect loops)
-    navigate(allowedMenus[0] ?? "/profile");
+    navigate("/"); // "/" is always accessible and never in PROTECTED_ROUTES
     return null;
   }
 
@@ -75,7 +81,7 @@ function RouteGuard({ user, path, component: Component }: {
 }
 
 function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean; onLoginSuccess: () => void }) {
-  const { data: authData } = useQuery<{ user: UserWithoutPassword }>({
+  const { data: authData, isFetched: userFetched } = useQuery<{ user: UserWithoutPassword }>({
     queryKey: ["/api/auth/me"],
     enabled: isAuthenticated,
   });
@@ -86,21 +92,25 @@ function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean;
     return <Login onLoginSuccess={onLoginSuccess} />;
   }
 
+  const guard = (path: string, Component: React.ComponentType) => () => (
+    <RouteGuard user={currentUser} userLoaded={userFetched} path={path} component={Component} />
+  );
+
   return (
     <Switch>
-      <Route path="/" component={() => <RouteGuard user={currentUser} path="/" component={Dashboard} />} />
-      <Route path="/track" component={() => <RouteGuard user={currentUser} path="/track" component={TrackActivity} />} />
-      <Route path="/activities" component={() => <RouteGuard user={currentUser} path="/activities" component={Activities} />} />
-      <Route path="/stats" component={() => <RouteGuard user={currentUser} path="/stats" component={Statistics} />} />
-      <Route path="/tracking" component={() => <RouteGuard user={currentUser} path="/tracking" component={Tracking} />} />
-      <Route path="/trips" component={() => <RouteGuard user={currentUser} path="/trips" component={Trips} />} />
-      <Route path="/history" component={() => <RouteGuard user={currentUser} path="/history" component={History} />} />
-      <Route path="/geofences" component={() => <RouteGuard user={currentUser} path="/geofences" component={Geofences} />} />
-      <Route path="/routes" component={() => <RouteGuard user={currentUser} path="/routes" component={Routes} />} />
-      <Route path="/pois" component={() => <RouteGuard user={currentUser} path="/pois" component={Pois} />} />
-      <Route path="/reports" component={() => <RouteGuard user={currentUser} path="/reports" component={Reports} />} />
-      <Route path="/vehicles" component={() => <RouteGuard user={currentUser} path="/vehicles" component={Vehicles} />} />
-      <Route path="/profile" component={() => <RouteGuard user={currentUser} path="/profile" component={Profile} />} />
+      <Route path="/" component={Dashboard} />
+      <Route path="/track" component={guard("/track", TrackActivity)} />
+      <Route path="/activities" component={guard("/activities", Activities)} />
+      <Route path="/stats" component={guard("/stats", Statistics)} />
+      <Route path="/tracking" component={guard("/tracking", Tracking)} />
+      <Route path="/trips" component={guard("/trips", Trips)} />
+      <Route path="/history" component={guard("/history", History)} />
+      <Route path="/geofences" component={guard("/geofences", Geofences)} />
+      <Route path="/routes" component={guard("/routes", Routes)} />
+      <Route path="/pois" component={guard("/pois", Pois)} />
+      <Route path="/reports" component={guard("/reports", Reports)} />
+      <Route path="/vehicles" component={guard("/vehicles", Vehicles)} />
+      <Route path="/profile" component={guard("/profile", Profile)} />
       <Route path="/admin-users" component={AdminUsers} />
       <Route path="/admin-settings" component={AdminSettings} />
       <Route component={NotFound} />

@@ -163,9 +163,8 @@ export default function AdminUsers() {
     }
   };
 
-  const toggleAllMenus = (userId: string, checkAll: boolean) => {
-    // Both "Allow all" and reset → null (unrestricted). "Restrict all" → full list then uncheck as needed.
-    updateEditState(userId, { allowedMenus: checkAll ? null : null });
+  const allowAllMenus = (userId: string) => {
+    updateEditState(userId, { allowedMenus: null });
   };
 
   const handleStatusChange = (userId: string, newStatus: string) => {
@@ -592,7 +591,7 @@ export default function AdminUsers() {
                               <button
                                 type="button"
                                 className="text-xs text-primary underline-offset-2 hover:underline"
-                                onClick={() => toggleAllMenus(user.id, true)}
+                                onClick={() => allowAllMenus(user.id)}
                                 data-testid={`button-menu-allow-all-${user.id}`}
                               >
                                 Allow all menus
