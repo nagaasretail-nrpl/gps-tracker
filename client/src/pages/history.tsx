@@ -65,12 +65,14 @@ export default function History() {
     const params = new URLSearchParams(window.location.search);
     const vehicleId = params.get("vehicleId");
     const from = params.get("from");
+    const to = params.get("to");
     const autoplay = params.get("autoplay") === "1";
 
     if (vehicleId && from) {
       const dayStart = new Date(from);
       dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(from);
+      // Use `to` param if provided; fall back to end of the day containing `from`
+      const dayEnd = to ? new Date(to) : new Date(from);
       dayEnd.setHours(23, 59, 59, 999);
       setSelectedVehicle(vehicleId);
       setStartDate(dayStart);
