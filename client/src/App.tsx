@@ -9,7 +9,15 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { LogOut, AlertTriangle } from "lucide-react";
 import type { User } from "@shared/schema";
 import Login from "@/pages/login";
 import Tracking from "@/pages/tracking";
@@ -120,12 +128,77 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
   );
 }
 
+function ExpiryAlertDialog({ user, onDismiss }: { user: UserWithoutPassword; onDismiss: () => void }) {
+  const [, navigate] = useLocation();
+
+  const expiry = user.subscriptionExpiry ? new Date(user.subscriptionExpiry) : null;
+  const daysLeft = expiry
+    ? Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+  const expiryStr = expiry
+    ? expiry.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+    : null;
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onDismiss(); }}>
+      <DialogContent className="max-w-md" data-testid="dialog-expiry-alert">
+        <DialogHeader>
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
+            <DialogTitle>Subscription Expiring Soon</DialogTitle>
+          </div>
+          <DialogDescription className="pt-1">
+            {daysLeft !== null && expiryStr ? (
+              <>
+                Your subscription expires in{" "}
+                <span className="font-semibold text-foreground">{daysLeft} {daysLeft === 1 ? "day" : "days"}</span>
+                {" "}(on <span className="font-semibold text-foreground">{expiryStr}</span>).
+              </>
+            ) : (
+              "Your subscription is expiring soon."
+            )}
+            {" "}Please renew to avoid any interruption to your GPS fleet tracking.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={onDismiss}
+            data-testid="button-expiry-remind-later"
+          >
+            Remind Me Later
+          </Button>
+          <Button
+            onClick={() => { onDismiss(); navigate("/renew"); }}
+            data-testid="button-expiry-pay-now"
+          >
+            Pay Now
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   const { data: authData, isFetched: userFetched } = useQuery<{ user: UserWithoutPassword }>({
     queryKey: ["/api/auth/me"],
   });
 
   const currentUser = authData?.user ?? null;
+
+  const [showExpiryAlert, setShowExpiryAlert] = useState(false);
+
+  useEffect(() => {
+    if (!userFetched || !currentUser) return;
+    if (currentUser.role === "admin" || currentUser.status !== "active") return;
+    if (!currentUser.subscriptionExpiry) return;
+    const expiry = new Date(currentUser.subscriptionExpiry);
+    const daysLeft = (expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    if (daysLeft >= 0 && daysLeft <= 30) {
+      setShowExpiryAlert(true);
+    }
+  }, [userFetched, currentUser?.id]);
 
   const style = {
     "--sidebar-width": "16rem",
@@ -175,6 +248,9 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
           </main>
         </div>
       </div>
+      {showExpiryAlert && currentUser && (
+        <ExpiryAlertDialog user={currentUser} onDismiss={() => setShowExpiryAlert(false)} />
+      )}
     </SidebarProvider>
   );
 }

@@ -64,14 +64,18 @@ export default function Renew({ user, onRenewed }: RenewProps) {
   const [paymentCancelled, setPaymentCancelled] = useState(false);
   const [gatewayConfigured, setGatewayConfigured] = useState<boolean | null>(null);
   const [renewalAmount, setRenewalAmount] = useState<number | null>(null);
+  const [vehicleCount, setVehicleCount] = useState<number | null>(null);
+  const [planName, setPlanName] = useState<string | null>(null);
 
   // On mount, check gateway configuration so we can show "Contact admin" immediately
   useEffect(() => {
     fetch("/api/payments/status", { credentials: "include" })
       .then((r) => r.json())
-      .then((data: { configured: boolean; amount: number | null }) => {
+      .then((data: { configured: boolean; amount: number | null; vehicleCount?: number; planName?: string | null }) => {
         setGatewayConfigured(data.configured);
         setRenewalAmount(data.amount);
+        if (data.vehicleCount !== undefined) setVehicleCount(data.vehicleCount);
+        if (data.planName !== undefined) setPlanName(data.planName ?? null);
       })
       .catch(() => {
         setGatewayConfigured(false);
@@ -231,15 +235,34 @@ export default function Renew({ user, onRenewed }: RenewProps) {
                 </div>
               )}
 
-              <div className="rounded-md bg-muted p-3 text-sm space-y-1">
+              <div className="rounded-md bg-muted p-3 text-sm space-y-2">
+                {(vehicleCount !== null || planName) && (
+                  <div className="space-y-1 pb-2 border-b border-border">
+                    {vehicleCount !== null && (
+                      <p className="text-muted-foreground">
+                        Vehicles in your account:{" "}
+                        <span className="font-medium text-foreground" data-testid="text-vehicle-count">{vehicleCount}</span>
+                      </p>
+                    )}
+                    {planName && (
+                      <p className="text-muted-foreground">
+                        Your plan:{" "}
+                        <span className="font-medium text-foreground" data-testid="text-plan-name">{planName}</span>
+                      </p>
+                    )}
+                    {renewalAmount && (
+                      <p className="text-muted-foreground">
+                        Renewal amount:{" "}
+                        <span className="font-semibold text-foreground" data-testid="text-renewal-amount">₹{renewalAmount.toLocaleString("en-IN")}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
                 <p className="font-medium">What you get with renewal:</p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
                   <li>Full access to all GPS tracking features</li>
                   <li>Real-time vehicle location monitoring</li>
-                  {renewalAmount && (
-                    <li>Renewal amount: <span className="font-medium text-foreground">₹{renewalAmount}</span></li>
-                  )}
-                  <li>Subscription extended for 1 year</li>
+                  <li>Subscription extended for 1 year from expiry date</li>
                 </ul>
               </div>
 

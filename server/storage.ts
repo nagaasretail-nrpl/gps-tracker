@@ -508,22 +508,32 @@ export class DbStorage implements IStorage {
   }
 
   async getSettings(): Promise<AppSetting[]> {
-    return await db.select().from(appSettings);
+    try {
+      const result = await db.select().from(appSettings);
+      return result ?? [];
+    } catch {
+      return [];
+    }
   }
 
   async getSetting(key: string): Promise<AppSetting | undefined> {
-    const result = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
-    return result[0];
+    try {
+      const result = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+      return result?.[0];
+    } catch {
+      return undefined;
+    }
   }
 
   async setSetting(key: string, value: string): Promise<AppSetting> {
     const existing = await this.getSetting(key);
     if (existing) {
-      const result = await db.update(appSettings)
+      // neon-http null bug: update without .returning(), then fetch separately
+      await db.update(appSettings)
         .set({ value, updatedAt: new Date() })
-        .where(eq(appSettings.key, key))
-        .returning();
-      return result[0];
+        .where(eq(appSettings.key, key));
+      const updated = await this.getSetting(key);
+      return updated!;
     } else {
       const result = await db.insert(appSettings).values({ key, value }).returning();
       return result[0];

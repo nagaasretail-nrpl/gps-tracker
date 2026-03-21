@@ -29,6 +29,50 @@ import {
 // In-memory log of unrecognised device IDs (last 20 attempts)
 const unknownDeviceLog: { deviceId: string; lat: number; lng: number; speed: number; seenAt: string }[] = [];
 
+// Subscription plan type
+interface SubscriptionPlan {
+  name: string;
+  maxVehicles: number;
+  pricePerYear: number;
+}
+
+// Compute vehicle count + matched plan + amount for a given user
+async function getSubscriptionPricingForUser(userId: string): Promise<{
+  vehicleCount: number;
+  planName: string | null;
+  amount: number | null;
+}> {
+  const user = await storage.getUser(userId);
+  if (!user) return { vehicleCount: 0, planName: null, amount: null };
+
+  let vehicleCount: number;
+  if (user.allowedVehicleIds && user.allowedVehicleIds.length > 0) {
+    vehicleCount = user.allowedVehicleIds.length;
+  } else {
+    const allVehicles = await storage.getVehicles();
+    vehicleCount = allVehicles.length;
+  }
+
+  const plansSetting = await storage.getSetting("subscription_plans");
+  if (plansSetting?.value) {
+    try {
+      const plans: SubscriptionPlan[] = JSON.parse(plansSetting.value);
+      if (Array.isArray(plans) && plans.length > 0) {
+        const sorted = [...plans].sort((a, b) => a.maxVehicles - b.maxVehicles);
+        const matched = sorted.find(p => vehicleCount <= p.maxVehicles) ?? sorted[sorted.length - 1];
+        return { vehicleCount, planName: matched.name, amount: matched.pricePerYear };
+      }
+    } catch {
+      // fall through to renewal_amount
+    }
+  }
+
+  // Fallback: fixed renewal_amount setting
+  const amountSetting = await storage.getSetting("renewal_amount");
+  const amount = amountSetting ? parseInt(amountSetting.value, 10) : null;
+  return { vehicleCount, planName: null, amount: amount && !isNaN(amount) ? amount : null };
+}
+
 // DB-backed idempotency helpers for processed Razorpay payment IDs
 async function isPaymentProcessed(paymentId: string): Promise<boolean> {
   const setting = await storage.getSetting("processed_payment_ids");
@@ -80,16 +124,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Payment routes (require auth but skip expiry check so inactive users can pay)
 
-  // Check if payment gateway is configured (lightweight, no sensitive data exposed)
-  app.get("/api/payments/status", requireAuth, async (_req, res) => {
+  // Check if payment gateway is configured and return dynamic pricing for this user
+  app.get("/api/payments/status", requireAuth, async (req, res) => {
     try {
       const keyId = (await storage.getSetting("razorpay_key_id"))?.value || "";
       const keySecret = (await storage.getSetting("razorpay_key_secret"))?.value || "";
-      const amountSetting = (await storage.getSetting("renewal_amount"))?.value || "";
-      const configured = !!(keyId && keySecret && amountSetting && parseInt(amountSetting, 10) > 0);
-      res.json({ configured, amount: configured ? parseInt(amountSetting, 10) : null });
+      const userId = (req.user as { id: string }).id;
+      const { vehicleCount, planName, amount } = await getSubscriptionPricingForUser(userId);
+      const configured = !!(keyId && keySecret && amount && amount > 0);
+      res.json({
+        configured,
+        amount: configured ? amount : null,
+        vehicleCount,
+        planName,
+      });
     } catch {
-      res.json({ configured: false, amount: null });
+      res.json({ configured: false, amount: null, vehicleCount: 0, planName: null });
     }
   });
 
@@ -97,22 +147,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const keyId = (await storage.getSetting("razorpay_key_id"))?.value || "";
       const keySecret = (await storage.getSetting("razorpay_key_secret"))?.value || "";
-      const amountSetting = (await storage.getSetting("renewal_amount"))?.value || "";
 
-      if (!keyId || !keySecret || !amountSetting) {
+      if (!keyId || !keySecret) {
         return res.status(503).json({ error: "Payment gateway not configured. Contact administrator." });
       }
 
-      const amount = parseInt(amountSetting, 10);
-      if (isNaN(amount) || amount <= 0) {
-        return res.status(503).json({ error: "Invalid renewal amount configured." });
+      const userId = (req.user as { id: string }).id;
+      const { amount } = await getSubscriptionPricingForUser(userId);
+
+      if (!amount || amount <= 0) {
+        return res.status(503).json({ error: "No subscription plan configured. Contact administrator." });
       }
 
       const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
       const order = await razorpay.orders.create({
         amount: amount * 100, // paise
         currency: "INR",
-        receipt: `renewal_${(req.user as { id: string }).id}_${Date.now()}`,
+        receipt: `renewal_${userId}_${Date.now()}`,
       });
 
       res.json({ orderId: order.id, amount: order.amount, currency: order.currency, keyId });
@@ -165,19 +216,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Order ID mismatch. Payment rejected." });
       }
 
-      // Step 4: Verify amount matches configured renewal amount
-      const amountSetting = (await storage.getSetting("renewal_amount"))?.value || "";
-      const expectedAmount = parseInt(amountSetting, 10) * 100; // paise
-      if (isNaN(expectedAmount) || Number(payment.amount) !== expectedAmount) {
-        console.error(`[payments] Amount mismatch: expected ${expectedAmount}, got ${payment.amount}`);
+      // Step 4: Verify amount matches dynamically calculated renewal amount for this user
+      const userId = (req.user as { id: string }).id;
+      const { amount: expectedAmountINR } = await getSubscriptionPricingForUser(userId);
+      if (!expectedAmountINR || expectedAmountINR <= 0) {
+        return res.status(503).json({ error: "Subscription plan not configured. Contact administrator." });
+      }
+      const expectedAmountPaise = expectedAmountINR * 100;
+      if (Number(payment.amount) !== expectedAmountPaise) {
+        console.error(`[payments] Amount mismatch: expected ${expectedAmountPaise}, got ${payment.amount}`);
         return res.status(400).json({ error: "Payment amount mismatch. Please contact support." });
       }
 
       // Mark payment ID as processed in DB before updating user (durable idempotency)
       await markPaymentProcessed(razorpayPaymentId);
 
-      const userId = (req.user as { id: string }).id;
-      const newExpiry = new Date();
+      // Renewal date: 1 year from the day AFTER the previous expiry (preserves original subscription calendar)
+      const freshUser = await storage.getUser(userId);
+      let base: Date;
+      if (freshUser?.subscriptionExpiry) {
+        base = new Date(freshUser.subscriptionExpiry);
+        base.setDate(base.getDate() + 1); // next day after previous expiry
+      } else {
+        base = new Date(); // no prior expiry — start from today
+      }
+      const newExpiry = new Date(base);
       newExpiry.setFullYear(newExpiry.getFullYear() + 1);
 
       await storage.updateUser(userId, {
