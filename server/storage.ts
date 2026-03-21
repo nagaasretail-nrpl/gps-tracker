@@ -511,8 +511,14 @@ export class DbStorage implements IStorage {
     try {
       const result = await db.select().from(appSettings);
       return result ?? [];
-    } catch {
-      return [];
+    } catch (err) {
+      // The neon-http driver returns null instead of [] for empty tables,
+      // causing a TypeError when drizzle calls .map() on the result.
+      // Treat this specific case as an empty result; re-throw real DB errors.
+      if (err instanceof TypeError && String(err.message).includes("map")) {
+        return [];
+      }
+      throw err;
     }
   }
 
@@ -520,8 +526,12 @@ export class DbStorage implements IStorage {
     try {
       const result = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
       return result?.[0];
-    } catch {
-      return undefined;
+    } catch (err) {
+      // Same neon-http null bug as getSettings — empty table returns null.
+      if (err instanceof TypeError && String(err.message).includes("map")) {
+        return undefined;
+      }
+      throw err;
     }
   }
 
