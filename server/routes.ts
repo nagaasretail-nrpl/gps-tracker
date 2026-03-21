@@ -213,12 +213,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stopCount: number; avgSpeedKmh: number;
       }
 
+      function isValidGpsPoint(loc: LocRow): boolean {
+        const lat = parseFloat(String(loc.latitude));
+        const lng = parseFloat(String(loc.longitude));
+        if (!isFinite(lat) || !isFinite(lng)) return false;
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+        if (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001) return false;
+        const spd = parseFloat(String(loc.speed || "0")) || 0;
+        if (spd > 300) return false;
+        return true;
+      }
+
       function detectSegments(locs: LocRow[], vid: string) {
         const SPEED_THRESHOLD = 3;
         const STOP_GAP_MS = 5 * 60 * 1000;
         const IDLE_MIN_MS = 2 * 60 * 1000;
+        const MAX_LEG_SPEED_KMH = 200;
 
-        const sorted = [...locs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const sorted = [...locs]
+          .filter(isValidGpsPoint)
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         const segments: TripSegment[] = [];
 
         function finishSegment(pts: LocRow[]) {
@@ -230,7 +244,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const spd = parseFloat(String(pts[i].speed || "0")) || 0;
             const ts = new Date(pts[i].timestamp).getTime();
             if (i > 0) {
-              distKm += haversine(parseFloat(String(pts[i-1].latitude)), parseFloat(String(pts[i-1].longitude)), parseFloat(String(pts[i].latitude)), parseFloat(String(pts[i].longitude)));
+              const legDist = haversine(parseFloat(String(pts[i-1].latitude)), parseFloat(String(pts[i-1].longitude)), parseFloat(String(pts[i].latitude)), parseFloat(String(pts[i].longitude)));
+              const timeDiffH = (ts - new Date(pts[i-1].timestamp).getTime()) / 3_600_000;
+              const impliedSpeed = timeDiffH > 0 ? legDist / timeDiffH : 9999;
+              if (impliedSpeed <= MAX_LEG_SPEED_KMH) distKm += legDist;
               if (spd < SPEED_THRESHOLD) {
                 if (idleStart == null) idleStart = new Date(pts[i - 1].timestamp).getTime();
               } else {
