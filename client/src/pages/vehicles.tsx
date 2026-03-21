@@ -103,9 +103,19 @@ type ImportRow = {
   _error?: string;
 };
 
+function parseImei(raw: unknown): string {
+  if (typeof raw === "number") {
+    // Excel auto-converts numeric cells — recover integer string
+    const s = Math.round(raw).toString();
+    // IMEIs are 15 digits; if 14 chars, leading zero was stripped by Excel
+    return s.length === 14 ? "0" + s : s;
+  }
+  return String(raw ?? "").trim();
+}
+
 function parseImportRow(raw: Record<string, unknown>, idx: number): ImportRow {
   const name = String(raw["Name"] ?? "").trim();
-  const imei = String(raw["IMEI"] ?? "").trim();
+  const imei = parseImei(raw["IMEI"]);
 
   if (!name) return { name, deviceId: imei, _valid: false, _error: `Row ${idx + 1}: Name is required` };
   if (!imei) return { name, deviceId: imei, _valid: false, _error: `Row ${idx + 1}: IMEI is required` };
@@ -138,8 +148,24 @@ function parseImportRow(raw: Record<string, unknown>, idx: number): ImportRow {
   };
 }
 
-function downloadXlsx(data: Record<string, unknown>[], filename: string) {
+function downloadXlsx(data: Record<string, unknown>[], filename: string, textCols?: string[]) {
   const ws = XLSX.utils.json_to_sheet(data);
+  // Force specified columns to text format so Excel doesn't mangle numeric values like IMEIs
+  if (textCols && data.length > 0) {
+    const headers = Object.keys(data[0]);
+    textCols.forEach((col) => {
+      const colIdx = headers.indexOf(col);
+      if (colIdx === -1) return;
+      const colLetter = XLSX.utils.encode_col(colIdx);
+      for (let r = 1; r <= data.length; r++) {
+        const cellAddr = `${colLetter}${r + 1}`;
+        if (ws[cellAddr]) {
+          ws[cellAddr].t = "s"; // force string type
+          ws[cellAddr].z = "@"; // text format
+        }
+      }
+    });
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Vehicles");
   XLSX.writeFile(wb, filename);
@@ -368,7 +394,7 @@ export default function Vehicles() {
       "Fuel Rate per Liter": v.fuelRatePerLiter ?? "",
       "Tank Capacity (L)": v.fuelTankCapacity ?? "",
     }));
-    downloadXlsx(rows, "vehicles.xlsx");
+    downloadXlsx(rows, "vehicles.xlsx", ["IMEI", "Device Phone"]);
     toast({ description: `Exported ${rows.length} vehicle(s) to vehicles.xlsx${searchQuery ? " (filtered)" : ""}` });
   };
 
@@ -412,7 +438,7 @@ export default function Vehicles() {
         "Tank Capacity (L)": 120,
       },
     ];
-    downloadXlsx(rows, "vehicles_sample.xlsx");
+    downloadXlsx(rows, "vehicles_sample.xlsx", ["IMEI", "Device Phone"]);
     toast({ description: "Sample template downloaded as vehicles_sample.xlsx" });
   };
 
