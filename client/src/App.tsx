@@ -115,8 +115,6 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
           />
         ) : null
       } />
-      <Route path="/terms" component={Terms} />
-      <Route path="/privacy" component={Privacy} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -194,6 +192,8 @@ function PublicOrAuthApp() {
       setIsLoading(false);
       return;
     }
+    // Reset loading before re-checking auth (e.g. when navigating away from legal pages)
+    setIsLoading(true);
     const checkAuth = async () => {
       try {
         const response = await fetch("/api/auth/me", {
