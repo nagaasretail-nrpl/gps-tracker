@@ -139,6 +139,7 @@ export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   createdAt: true,
 }).extend({
   fuelEfficiency: z.coerce.number().positive().nullable().optional(),
+  fuelType: z.enum(["petrol", "diesel", "cng", "electric"]).nullable().optional(),
 });
 
 export const updateVehicleSchema = z.object({

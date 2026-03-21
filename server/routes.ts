@@ -117,7 +117,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const vehicle = await storage.createVehicle(validatedData);
       res.status(201).json(vehicle);
     } catch (error) {
-      res.status(400).json({ error: "Invalid vehicle data" });
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid vehicle data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create vehicle", details: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -136,7 +139,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(vehicle);
     } catch (error) {
-      res.status(400).json({ error: "Invalid vehicle data", details: error instanceof Error ? error.message : String(error) });
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid vehicle data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update vehicle", details: error instanceof Error ? error.message : String(error) });
     }
   });
 
