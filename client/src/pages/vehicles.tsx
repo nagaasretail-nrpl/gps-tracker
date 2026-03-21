@@ -285,9 +285,9 @@ export default function Vehicles() {
           driverName: r.driverName ?? null,
           licensePlate: r.licensePlate ?? null,
           fuelType: r.fuelType ?? null,
-          fuelEfficiency: r.fuelEfficiency != null ? String(r.fuelEfficiency) : null,
-          fuelRatePerLiter: r.fuelRatePerLiter != null ? String(r.fuelRatePerLiter) : null,
-          fuelTankCapacity: r.fuelTankCapacity != null ? String(r.fuelTankCapacity) : null,
+          fuelEfficiency: r.fuelEfficiency ?? null,
+          fuelRatePerLiter: r.fuelRatePerLiter ?? null,
+          fuelTankCapacity: r.fuelTankCapacity ?? null,
         }));
       return await apiRequest("POST", "/api/vehicles/bulk", { vehicles: payload });
     },
