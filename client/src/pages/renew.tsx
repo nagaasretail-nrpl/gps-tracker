@@ -223,6 +223,30 @@ export default function Renew({ user, onRenewed }: RenewProps) {
             </div>
           )}
 
+          {/* Vehicle / plan info — always shown once loaded, regardless of gateway config */}
+          {(vehicleCount !== null || planName || renewalAmount !== null) && gatewayConfigured !== null && (
+            <div className="rounded-md bg-muted p-3 text-sm space-y-1">
+              {vehicleCount !== null && (
+                <p className="text-muted-foreground">
+                  Vehicles in your account:{" "}
+                  <span className="font-medium text-foreground" data-testid="text-vehicle-count">{vehicleCount}</span>
+                </p>
+              )}
+              {planName && (
+                <p className="text-muted-foreground">
+                  Your plan:{" "}
+                  <span className="font-medium text-foreground" data-testid="text-plan-name">{planName}</span>
+                </p>
+              )}
+              {renewalAmount !== null && (
+                <p className="text-muted-foreground">
+                  Renewal amount:{" "}
+                  <span className="font-semibold text-foreground" data-testid="text-renewal-amount">₹{renewalAmount.toLocaleString("en-IN")}</span>
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Gateway configured — show pay flow */}
           {gatewayConfigured === true && (
             <div className="space-y-4">
@@ -236,28 +260,6 @@ export default function Renew({ user, onRenewed }: RenewProps) {
               )}
 
               <div className="rounded-md bg-muted p-3 text-sm space-y-2">
-                {(vehicleCount !== null || planName) && (
-                  <div className="space-y-1 pb-2 border-b border-border">
-                    {vehicleCount !== null && (
-                      <p className="text-muted-foreground">
-                        Vehicles in your account:{" "}
-                        <span className="font-medium text-foreground" data-testid="text-vehicle-count">{vehicleCount}</span>
-                      </p>
-                    )}
-                    {planName && (
-                      <p className="text-muted-foreground">
-                        Your plan:{" "}
-                        <span className="font-medium text-foreground" data-testid="text-plan-name">{planName}</span>
-                      </p>
-                    )}
-                    {renewalAmount && (
-                      <p className="text-muted-foreground">
-                        Renewal amount:{" "}
-                        <span className="font-semibold text-foreground" data-testid="text-renewal-amount">₹{renewalAmount.toLocaleString("en-IN")}</span>
-                      </p>
-                    )}
-                  </div>
-                )}
                 <p className="font-medium">What you get with renewal:</p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
                   <li>Full access to all GPS tracking features</li>
