@@ -34,7 +34,7 @@ export function getVehicleImg(type: string): string | null {
     case "truck":
     case "van":
     case "bus":        return deliveryImg;
-    default:           return carImg;
+    default:           return null;
   }
 }
 

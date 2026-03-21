@@ -57,6 +57,7 @@ const addVehicleFormSchema = insertVehicleSchema.extend({
   fuelType: z.enum(["petrol", "diesel", "cng", "electric", "none"]).nullable().optional(),
   fuelRatePerLiter: z.coerce.number().positive("Must be a positive number").nullable().optional(),
   fuelTankCapacity: z.coerce.number().positive("Must be a positive number").nullable().optional(),
+  devicePhone: z.string().nullable().optional(),
 });
 
 const iconColors = [
@@ -76,6 +77,7 @@ export default function Vehicles() {
   const [editFuelEfficiency, setEditFuelEfficiency] = useState<string>("");
   const [editFuelRatePerLiter, setEditFuelRatePerLiter] = useState<string>("");
   const [editFuelTankCapacity, setEditFuelTankCapacity] = useState<string>("");
+  const [editDevicePhone, setEditDevicePhone] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedGt06Id, setCopiedGt06Id] = useState<string | null>(null);
   const [setupExpanded, setSetupExpanded] = useState(false);
@@ -124,6 +126,7 @@ export default function Vehicles() {
       fuelEfficiency: null,
       fuelRatePerLiter: null,
       fuelTankCapacity: null,
+      devicePhone: null,
     },
   });
 
@@ -170,8 +173,8 @@ export default function Vehicles() {
   });
 
   const editMutation = useMutation({
-    mutationFn: async ({ id, name, deviceId, iconColor, type, fuelType, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity }: { id: string; name: string; deviceId: string; iconColor: string; type: string; fuelType: string | null; fuelEfficiency: number | null; fuelRatePerLiter: number | null; fuelTankCapacity: number | null }) => {
-      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId, iconColor, type, fuelType: fuelType || null, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity });
+    mutationFn: async ({ id, name, deviceId, iconColor, type, fuelType, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity, devicePhone }: { id: string; name: string; deviceId: string; iconColor: string; type: string; fuelType: string | null; fuelEfficiency: number | null; fuelRatePerLiter: number | null; fuelTankCapacity: number | null; devicePhone: string | null }) => {
+      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId, iconColor, type, fuelType: fuelType || null, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity, devicePhone });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
@@ -193,6 +196,7 @@ export default function Vehicles() {
     setEditFuelEfficiency(v.fuelEfficiency != null ? String(v.fuelEfficiency) : "");
     setEditFuelRatePerLiter(v.fuelRatePerLiter != null ? String(v.fuelRatePerLiter) : "");
     setEditFuelTankCapacity(v.fuelTankCapacity != null ? String(v.fuelTankCapacity) : "");
+    setEditDevicePhone(v.devicePhone ?? "");
     setSetupExpanded(false);
   };
 
@@ -471,6 +475,25 @@ export default function Vehicles() {
                   )}
                 />
 
+                <FormField
+                  control={form.control}
+                  name="devicePhone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Device Phone <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          value={field.value ?? ""}
+                          placeholder="SIM phone number on tracker"
+                          data-testid="input-add-device-phone"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <div className="flex justify-end gap-2 pt-4">
                   <Button
                     type="button"
@@ -517,6 +540,17 @@ export default function Vehicles() {
                 data-testid="input-edit-device-id"
               />
               <p className="text-xs text-muted-foreground">Must exactly match the tracker's IMEI.</p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-device-phone">Device Phone <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Input
+                id="edit-device-phone"
+                value={editDevicePhone}
+                onChange={e => setEditDevicePhone(e.target.value)}
+                placeholder="SIM phone number on tracker"
+                data-testid="input-edit-device-phone"
+              />
+              <p className="text-xs text-muted-foreground">SIM card number installed in the GPS tracker.</p>
             </div>
             <div className="space-y-2">
               <Label>Icon Type</Label>
@@ -731,6 +765,7 @@ export default function Vehicles() {
                   fuelEfficiency: editFuelEfficiency !== "" ? parseFloat(editFuelEfficiency) : null,
                   fuelRatePerLiter: editFuelRatePerLiter !== "" ? parseFloat(editFuelRatePerLiter) : null,
                   fuelTankCapacity: editFuelTankCapacity !== "" ? parseFloat(editFuelTankCapacity) : null,
+                  devicePhone: editDevicePhone.trim() !== "" ? editDevicePhone.trim() : null,
                 })}
                 data-testid="button-save-edit-vehicle"
               >
@@ -805,11 +840,18 @@ export default function Vehicles() {
                   className="w-9 h-9 rounded-lg bg-neutral-900 flex items-center justify-center shrink-0 overflow-hidden"
                   data-testid={`dot-vehicle-${vehicle.id}`}
                 >
-                  <img
-                    src={getVehicleImg(vehicle.type ?? "car") ?? undefined}
-                    alt={vehicle.type ?? "car"}
-                    className="w-8 h-8 object-contain"
-                  />
+                  {getVehicleImg(vehicle.type ?? "car") ? (
+                    <img
+                      src={getVehicleImg(vehicle.type ?? "car")!}
+                      alt={vehicle.type ?? "car"}
+                      className="w-8 h-8 object-contain"
+                    />
+                  ) : (
+                    <span
+                      dangerouslySetInnerHTML={{ __html: getMarkerSvg(vehicle.type ?? "car", vehicle.iconColor ?? "#2563eb", 0) }}
+                      className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
+                    />
+                  )}
                 </div>
 
                 {/* Name */}

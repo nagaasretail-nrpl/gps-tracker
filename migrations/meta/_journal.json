@@ -50,6 +50,13 @@
       "when": 1742724000000,
       "tag": "0006_admin_phone_update",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1742810400000,
+      "tag": "0007_device_phone",
+      "breakpoints": true
     }
   ]
 }
