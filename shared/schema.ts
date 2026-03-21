@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, integer, jsonb, boolean, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, integer, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -130,13 +130,15 @@ export const vehicles = pgTable("vehicles", {
   driverName: text("driver_name"),
   licensePlate: text("license_plate"),
   fuelType: text("fuel_type"), // petrol, diesel, cng, electric; null = not set
-  fuelEfficiency: real("fuel_efficiency"), // km/L (or km/kWh for electric); null = not set
+  fuelEfficiency: decimal("fuel_efficiency", { precision: 5, scale: 2 }), // km/L (or km/kWh for electric); null = not set
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   id: true,
   createdAt: true,
+}).extend({
+  fuelEfficiency: z.coerce.number().positive().nullable().optional(),
 });
 
 export const updateVehicleSchema = z.object({

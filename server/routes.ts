@@ -123,7 +123,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/vehicles/:id", requireAdmin, async (req, res) => {
     try {
-      const updates = updateVehicleSchema.parse(req.body);
+      const parsed = updateVehicleSchema.parse(req.body);
+      const updates = {
+        ...parsed,
+        fuelEfficiency: parsed.fuelEfficiency !== undefined
+          ? (parsed.fuelEfficiency === null ? null : String(parsed.fuelEfficiency))
+          : undefined,
+      };
       const vehicle = await storage.updateVehicle(req.params.id, updates);
       if (!vehicle) {
         return res.status(404).json({ error: "Vehicle not found" });

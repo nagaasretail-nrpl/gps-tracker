@@ -212,12 +212,24 @@ export class DbStorage implements IStorage {
   }
 
   async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> {
-    const result = await db.insert(vehicles).values(insertVehicle).returning();
-    return result[0];
+    const fe = insertVehicle.fuelEfficiency != null ? String(insertVehicle.fuelEfficiency) : null;
+    await neonSql`INSERT INTO vehicles (id, name, device_id, type, status, icon_color, driver_name, license_plate, fuel_type, fuel_efficiency)
+      VALUES (gen_random_uuid(), ${insertVehicle.name}, ${insertVehicle.deviceId}, ${insertVehicle.type ?? "car"}, ${insertVehicle.status ?? "offline"}, ${insertVehicle.iconColor ?? "#2563eb"}, ${insertVehicle.driverName ?? null}, ${insertVehicle.licensePlate ?? null}, ${insertVehicle.fuelType ?? null}, ${fe})`;
+    const rows = await db.select().from(vehicles).where(eq(vehicles.deviceId, insertVehicle.deviceId));
+    return rows[0];
   }
 
   async updateVehicle(id: string, updates: Partial<Vehicle>): Promise<Vehicle | undefined> {
-    await db.update(vehicles).set(updates).where(eq(vehicles.id, id));
+    if (Object.keys(updates).length === 0) return undefined;
+    const set: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      if (val === null) {
+        set[key] = sql`NULL`;
+      } else {
+        set[key] = val;
+      }
+    }
+    await db.update(vehicles).set(set).where(eq(vehicles.id, id));
     const rows = await db.select().from(vehicles).where(eq(vehicles.id, id));
     return rows[0];
   }

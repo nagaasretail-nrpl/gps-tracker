@@ -46,7 +46,7 @@ const FUEL_TYPE_OPTIONS = [
   { value: "electric", label: "Electric" },
 ] as const;
 
-type FuelTypeValue = typeof FUEL_TYPE_OPTIONS[number]["value"] | "";
+type FuelTypeValue = typeof FUEL_TYPE_OPTIONS[number]["value"] | "" | "none";
 
 function fuelEfficiencyLabel(fuelType: FuelTypeValue): string {
   return fuelType === "electric" ? "Efficiency (km/kWh)" : "Efficiency (km/L)";
@@ -54,6 +54,7 @@ function fuelEfficiencyLabel(fuelType: FuelTypeValue): string {
 
 const addVehicleFormSchema = insertVehicleSchema.extend({
   fuelEfficiency: z.coerce.number().positive("Must be a positive number").nullable().optional(),
+  fuelType: z.enum(["petrol", "diesel", "cng", "electric", "none"]).nullable().optional(),
 });
 
 const iconColors = [
@@ -182,13 +183,13 @@ export default function Vehicles() {
     setEditDeviceId(v.deviceId);
     setEditIconColor(v.iconColor || "#2563eb");
     setEditType(v.type || "car");
-    setEditFuelType((v.fuelType as FuelTypeValue) || "");
+    setEditFuelType(v.fuelType ? (v.fuelType as FuelTypeValue) : "none");
     setEditFuelEfficiency(v.fuelEfficiency != null ? String(v.fuelEfficiency) : "");
     setSetupExpanded(false);
   };
 
   const onSubmit = (data: AddVehicleForm) => {
-    addMutation.mutate(data);
+    addMutation.mutate({ ...data, fuelType: (data.fuelType === "none" ? null : data.fuelType) ?? null });
   };
 
   const getStatusBadge = (status: string) => {
@@ -373,6 +374,7 @@ export default function Vehicles() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          <SelectItem value="none">Not set</SelectItem>
                           {FUEL_TYPE_OPTIONS.map(opt => (
                             <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                           ))}
@@ -530,6 +532,7 @@ export default function Vehicles() {
                   <SelectValue placeholder="Not set" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Not set</SelectItem>
                   {FUEL_TYPE_OPTIONS.map(opt => (
                     <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                   ))}
@@ -624,7 +627,7 @@ export default function Vehicles() {
                   deviceId: editDeviceId.trim(),
                   iconColor: editIconColor,
                   type: editType,
-                  fuelType: editFuelType || null,
+                  fuelType: (editFuelType === "none" || editFuelType === "") ? null : editFuelType as string,
                   fuelEfficiency: editFuelEfficiency !== "" ? parseFloat(editFuelEfficiency) : null,
                 })}
                 data-testid="button-save-edit-vehicle"
