@@ -66,7 +66,8 @@ function RouteGuard({ user, path, component: Component }: {
 
   const requiredMenu = PROTECTED_ROUTES[path];
   if (requiredMenu && !requiredMenu.some((r) => allowedMenus.includes(r))) {
-    navigate("/");
+    // Redirect to the user's first allowed menu (avoids infinite redirect loops)
+    navigate(allowedMenus[0] ?? "/profile");
     return null;
   }
 
@@ -99,7 +100,7 @@ function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean;
       <Route path="/pois" component={() => <RouteGuard user={currentUser} path="/pois" component={Pois} />} />
       <Route path="/reports" component={() => <RouteGuard user={currentUser} path="/reports" component={Reports} />} />
       <Route path="/vehicles" component={() => <RouteGuard user={currentUser} path="/vehicles" component={Vehicles} />} />
-      <Route path="/profile" component={Profile} />
+      <Route path="/profile" component={() => <RouteGuard user={currentUser} path="/profile" component={Profile} />} />
       <Route path="/admin-users" component={AdminUsers} />
       <Route path="/admin-settings" component={AdminSettings} />
       <Route component={NotFound} />

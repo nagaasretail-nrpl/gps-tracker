@@ -150,18 +150,22 @@ export default function AdminUsers() {
     if (!state) return;
     const current = state.allowedMenus;
     if (current === null) {
+      // Currently unrestricted — uncheck one menu to start restricting
       updateEditState(userId, { allowedMenus: ALL_MENU_URLS.filter((u) => u !== menuUrl) });
     } else if (current.includes(menuUrl)) {
       const next = current.filter((u) => u !== menuUrl);
-      updateEditState(userId, { allowedMenus: next });
+      // When last menu is unchecked, reset to null (unrestricted = all menus)
+      updateEditState(userId, { allowedMenus: next.length === 0 ? null : next });
     } else {
       const next = [...current, menuUrl];
+      // When all menus are checked, collapse back to null (unrestricted)
       updateEditState(userId, { allowedMenus: next.length >= ALL_MENU_URLS.length ? null : next });
     }
   };
 
   const toggleAllMenus = (userId: string, checkAll: boolean) => {
-    updateEditState(userId, { allowedMenus: checkAll ? null : [] });
+    // Both "Allow all" and reset → null (unrestricted). "Restrict all" → full list then uncheck as needed.
+    updateEditState(userId, { allowedMenus: checkAll ? null : null });
   };
 
   const handleStatusChange = (userId: string, newStatus: string) => {
@@ -582,23 +586,16 @@ export default function AdminUsers() {
 
                         {menuPanelOpen && (
                           <div className="px-3 py-3 bg-background space-y-3">
-                            {/* Select all / clear all */}
+                            {/* Allow all shortcut */}
                             <div className="flex items-center gap-3 pb-1 border-b">
+                              <span className="text-xs text-muted-foreground">Quick actions:</span>
                               <button
                                 type="button"
                                 className="text-xs text-primary underline-offset-2 hover:underline"
                                 onClick={() => toggleAllMenus(user.id, true)}
-                                data-testid={`button-menu-select-all-${user.id}`}
+                                data-testid={`button-menu-allow-all-${user.id}`}
                               >
-                                Select all
-                              </button>
-                              <button
-                                type="button"
-                                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-                                onClick={() => toggleAllMenus(user.id, false)}
-                                data-testid={`button-menu-clear-all-${user.id}`}
-                              >
-                                Clear all
+                                Allow all menus
                               </button>
                             </div>
 
