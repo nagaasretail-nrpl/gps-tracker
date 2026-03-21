@@ -51,6 +51,7 @@ export default function History() {
   const [loadTrigger, setLoadTrigger] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState<1 | 2 | 3>(1);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
 
@@ -171,9 +172,9 @@ export default function History() {
         }
         return prev + 1;
       });
-    }, 500);
+    }, Math.round(500 / playbackSpeed));
     return () => clearInterval(interval);
-  }, [isPlaying, validActiveDateLocations.length]);
+  }, [isPlaying, validActiveDateLocations.length, playbackSpeed]);
 
   const formatDateKey = (key: string) => {
     try {
@@ -189,6 +190,7 @@ export default function History() {
 
   const handleSelectForMap = (key: string) => {
     setSelectedDate(key);
+    setPlaybackSpeed(1);
     if (!expandedDates[key]) {
       setExpandedDates((prev) => ({ ...prev, [key]: true }));
     }
@@ -419,7 +421,7 @@ export default function History() {
                   <Button
                     size="icon"
                     variant="outline"
-                    onClick={() => { setCurrentIndex(0); setIsPlaying(false); }}
+                    onClick={() => { setCurrentIndex(0); setIsPlaying(false); setPlaybackSpeed(1); }}
                     data-testid="button-restart"
                   >
                     <SkipBack className="h-4 w-4" />
@@ -432,6 +434,18 @@ export default function History() {
                   >
                     {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                   </Button>
+                  {([1, 2, 3] as const).map((s) => (
+                    <Button
+                      key={s}
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setPlaybackSpeed(s)}
+                      data-testid={`button-speed-${s}x`}
+                      className={`px-2 text-xs font-semibold toggle-elevate${playbackSpeed === s ? " toggle-elevated" : ""}`}
+                    >
+                      {s}×
+                    </Button>
+                  ))}
                   <div className="flex-1">
                     <Slider
                       value={[currentIndex]}
