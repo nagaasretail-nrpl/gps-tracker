@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,59 +6,132 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Car, Clock, MapPin, TrendingUp, Calendar as CalendarIcon, Navigation, Gauge } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Car,
+  Clock,
+  MapPin,
+  Calendar as CalendarIcon,
+  Navigation,
+  Gauge,
+  TimerOff,
+  ParkingCircle,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { format, subDays } from "date-fns";
-import type { Trip, Vehicle } from "@shared/schema";
+import type { Vehicle } from "@shared/schema";
+
+interface TripSegment {
+  vehicleId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  startLat: number;
+  startLng: number;
+  startAddress: string | null;
+  endLat: number;
+  endLng: number;
+  endAddress: string | null;
+  distanceKm: number;
+  durationSec: number;
+  idleTimeSec: number;
+  stopCount: number;
+  avgSpeedKmh: number;
+}
+
+function formatDuration(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function formatDistance(km: number): string {
+  return `${km.toFixed(1)} km`;
+}
+
+function formatCoords(lat: number, lng: number): string {
+  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDay(dateStr: string): string {
+  try {
+    const d = new Date(dateStr + "T12:00:00");
+    return format(d, "EEE, d MMM yyyy");
+  } catch {
+    return dateStr;
+  }
+}
 
 export default function Trips() {
   const [selectedVehicle, setSelectedVehicle] = useState<string>("all");
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-    from: subDays(new Date(), 30),
+    from: subDays(new Date(), 7),
     to: new Date(),
   });
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 
-  const { data: vehicles } = useQuery<Vehicle[]>({
-    queryKey: ["/api/vehicles"],
+  const { data: vehicles } = useQuery<Vehicle[]>({ queryKey: ["/api/vehicles"] });
+
+  const qparams = new URLSearchParams({
+    startDate: dateRange.from.toISOString(),
+    endDate: dateRange.to.toISOString(),
+    ...(selectedVehicle !== "all" ? { vehicleId: selectedVehicle } : {}),
   });
 
-  const { data: trips, isLoading } = useQuery<Trip[]>({
-    queryKey: ["/api/trips", {
-      vehicleId: selectedVehicle !== "all" ? selectedVehicle : undefined,
-      startDate: dateRange.from.toISOString(),
-      endDate: dateRange.to.toISOString(),
-    }],
+  const { data: segments, isLoading } = useQuery<TripSegment[]>({
+    queryKey: ["/api/locations/trips", selectedVehicle, dateRange.from.toISOString(), dateRange.to.toISOString()],
+    queryFn: async () => {
+      const res = await fetch(`/api/locations/trips?${qparams}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load trips");
+      return res.json();
+    },
+    staleTime: 60000,
   });
 
-  const lastTrip = trips?.[0];
-  const totalDistance = trips?.reduce((sum, trip) => sum + parseFloat(trip.distance || "0"), 0) || 0;
-  const totalDuration = trips?.reduce((sum, trip) => sum + (trip.duration || 0), 0) || 0;
+  const getVehicleName = (vid: string) => vehicles?.find(v => v.id === vid)?.name ?? vid;
+  const getVehicleColor = (vid: string) => vehicles?.find(v => v.id === vid)?.iconColor ?? "#2563eb";
 
-  const formatDuration = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return `${hours}h ${minutes}m`;
-  };
+  const grouped = useMemo(() => {
+    if (!segments) return {};
+    const out: Record<string, Record<string, TripSegment[]>> = {};
+    for (const seg of segments) {
+      if (!out[seg.vehicleId]) out[seg.vehicleId] = {};
+      if (!out[seg.vehicleId][seg.date]) out[seg.vehicleId][seg.date] = [];
+      out[seg.vehicleId][seg.date].push(seg);
+    }
+    for (const vid in out) {
+      for (const day in out[vid]) {
+        out[vid][day].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+      }
+    }
+    return out;
+  }, [segments]);
 
-  const formatDistance = (distance: number) => {
-    return `${distance.toFixed(1)} km`;
-  };
+  const vehicleIds = Object.keys(grouped);
 
-  const getVehicleName = (vehicleId: string) => {
-    return vehicles?.find(v => v.id === vehicleId)?.name || "Unknown Vehicle";
-  };
+  const totalTrips = segments?.length ?? 0;
+  const totalDistance = segments?.reduce((s, t) => s + t.distanceKm, 0) ?? 0;
+  const totalDuration = segments?.reduce((s, t) => s + t.durationSec, 0) ?? 0;
+  const avgSpeed = segments && segments.length > 0
+    ? segments.reduce((s, t) => s + t.avgSpeedKmh, 0) / segments.length
+    : 0;
+
+  const toggleDay = (key: string) => setExpandedDays(p => ({ ...p, [key]: !p[key] }));
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold mb-2" data-testid="text-page-title">Trip History</h1>
-          <p className="text-sm text-muted-foreground">
-            View and analyze vehicle trips with detailed statistics
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold mb-1" data-testid="text-page-title">Trip History</h1>
+        <p className="text-sm text-muted-foreground">Per-vehicle daily trip segments with start/end, distance, idle time and stops</p>
       </div>
 
-      {/* Filters */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row gap-4">
@@ -70,15 +143,12 @@ export default function Trips() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Vehicles</SelectItem>
-                  {vehicles?.map((vehicle) => (
-                    <SelectItem key={vehicle.id} value={vehicle.id}>
-                      {vehicle.name}
-                    </SelectItem>
+                  {vehicles?.map(v => (
+                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
             <div className="flex-1">
               <label className="text-sm font-medium mb-2 block">Date Range</label>
               <Popover>
@@ -90,33 +160,23 @@ export default function Trips() {
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <div className="p-3 space-y-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => setDateRange({ from: subDays(new Date(), 7), to: new Date() })}
-                      data-testid="button-filter-7-days"
-                    >
-                      Last 7 Days
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => setDateRange({ from: subDays(new Date(), 30), to: new Date() })}
-                      data-testid="button-filter-30-days"
-                    >
-                      Last 30 Days
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => setDateRange({ from: subDays(new Date(), 90), to: new Date() })}
-                      data-testid="button-filter-90-days"
-                    >
-                      Last 90 Days
-                    </Button>
+                    {[
+                      { label: "Today", days: 0 },
+                      { label: "Last 7 Days", days: 7 },
+                      { label: "Last 30 Days", days: 30 },
+                      { label: "Last 90 Days", days: 90 },
+                    ].map(({ label, days }) => (
+                      <Button
+                        key={label}
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => setDateRange({ from: days === 0 ? new Date(new Date().setHours(0,0,0,0)) : subDays(new Date(), days), to: new Date() })}
+                        data-testid={`button-filter-${label.toLowerCase().replace(" ", "-")}`}
+                      >
+                        {label}
+                      </Button>
+                    ))}
                   </div>
                 </PopoverContent>
               </Popover>
@@ -125,19 +185,17 @@ export default function Trips() {
         </CardContent>
       </Card>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Trips</CardTitle>
-            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <Navigation className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-trips">{trips?.length || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">In selected period</p>
+            <div className="text-2xl font-bold" data-testid="text-total-trips">{totalTrips}</div>
+            <p className="text-xs text-muted-foreground mt-1">Segments in period</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Distance</CardTitle>
@@ -148,7 +206,6 @@ export default function Trips() {
             <p className="text-xs text-muted-foreground mt-1">Across all trips</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Duration</CardTitle>
@@ -156,169 +213,154 @@ export default function Trips() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-total-duration">{formatDuration(totalDuration)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total driving time</p>
+            <p className="text-xs text-muted-foreground mt-1">Moving time</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg Speed</CardTitle>
             <Gauge className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-avg-speed">
-              {trips && trips.length > 0
-                ? (trips.reduce((sum, t) => sum + parseFloat(t.avgSpeed || "0"), 0) / trips.length).toFixed(1)
-                : "0.0"} km/h
-            </div>
+            <div className="text-2xl font-bold" data-testid="text-avg-speed">{avgSpeed.toFixed(1)} km/h</div>
             <p className="text-xs text-muted-foreground mt-1">Average across trips</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Last Trip Details */}
-      {lastTrip && (
-        <Card className="border-primary/50">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-primary" />
-                Last Trip
-              </CardTitle>
-              <Badge variant="default" className="bg-primary">Most Recent</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="flex items-center gap-3">
-                <Car className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Vehicle</p>
-                  <p className="font-semibold" data-testid="text-last-trip-vehicle">{getVehicleName(lastTrip.vehicleId)}</p>
+      {isLoading ? (
+        <div className="space-y-4" data-testid="loading-trips">
+          {[1, 2, 3].map(i => (
+            <Card key={i}>
+              <CardContent className="pt-6">
+                <Skeleton className="h-6 w-1/3 mb-4" />
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : vehicleIds.length === 0 ? (
+        <div className="text-center py-16" data-testid="empty-state-trips">
+          <MapPin className="h-14 w-14 text-muted-foreground/40 mx-auto mb-4" />
+          <h3 className="font-semibold text-lg mb-2">No trips found</h3>
+          <p className="text-sm text-muted-foreground">No location data with movement was recorded for the selected vehicle and date range.</p>
+          <p className="text-xs text-muted-foreground mt-1">Try expanding the date range or selecting a different vehicle.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {vehicleIds.map(vid => {
+            const color = getVehicleColor(vid);
+            const name = getVehicleName(vid);
+            const days = Object.keys(grouped[vid]).sort().reverse();
+            const vehicleTotal = days.reduce((s, d) => s + grouped[vid][d].length, 0);
+            return (
+              <div key={vid} data-testid={`section-vehicle-${vid}`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  <Car className="h-4 w-4 text-muted-foreground" />
+                  <h2 className="font-semibold text-base">{name}</h2>
+                  <Badge variant="secondary" className="ml-1">{vehicleTotal} trip{vehicleTotal !== 1 ? "s" : ""}</Badge>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-3">
-                <Navigation className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Distance</p>
-                  <p className="font-semibold" data-testid="text-last-trip-distance">{formatDistance(parseFloat(lastTrip.distance || "0"))}</p>
-                </div>
-              </div>
+                <div className="space-y-3 pl-5">
+                  {days.map(day => {
+                    const dayKey = `${vid}-${day}`;
+                    const daySegs = grouped[vid][day];
+                    const isOpen = expandedDays[dayKey] !== false;
+                    const dayDist = daySegs.reduce((s, t) => s + t.distanceKm, 0);
+                    return (
+                      <div key={day} data-testid={`section-day-${dayKey}`}>
+                        <button
+                          type="button"
+                          className="flex items-center gap-2 w-full text-left py-1.5 hover-elevate rounded-md px-1"
+                          onClick={() => toggleDay(dayKey)}
+                          data-testid={`button-toggle-day-${dayKey}`}
+                        >
+                          {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                          <span className="font-medium text-sm">{formatDay(day)}</span>
+                          <span className="text-xs text-muted-foreground ml-auto">{daySegs.length} trip{daySegs.length !== 1 ? "s" : ""} · {formatDistance(dayDist)}</span>
+                        </button>
 
-              <div className="flex items-center gap-3">
-                <Clock className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Duration</p>
-                  <p className="font-semibold" data-testid="text-last-trip-duration">{formatDuration(lastTrip.duration || 0)}</p>
-                </div>
-              </div>
+                        {isOpen && (
+                          <div className="mt-2 space-y-2 pl-5">
+                            {daySegs.map((seg, idx) => (
+                              <Card key={idx} data-testid={`card-trip-${vid}-${day}-${idx}`}>
+                                <CardContent className="pt-4 pb-4 px-4">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <Badge variant="outline" className="font-semibold text-xs">Trip {idx + 1}</Badge>
+                                    <span className="text-xs text-muted-foreground">
+                                      {formatTime(seg.startTime)} – {formatTime(seg.endTime)}
+                                    </span>
+                                  </div>
 
-              <div className="flex items-center gap-3">
-                <Gauge className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg Speed</p>
-                  <p className="font-semibold" data-testid="text-last-trip-avg-speed">{parseFloat(lastTrip.avgSpeed || "0").toFixed(1)} km/h</p>
-                </div>
-              </div>
-            </div>
+                                  <div className="space-y-2 mb-3">
+                                    <div className="flex items-start gap-2">
+                                      <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-green-600 dark:text-green-400" />
+                                      <div className="min-w-0">
+                                        <p className="text-xs text-muted-foreground">Start</p>
+                                        <p className="text-sm font-medium truncate" data-testid={`text-trip-start-${vid}-${day}-${idx}`}>
+                                          {seg.startAddress || formatCoords(seg.startLat, seg.startLng)}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">{formatCoords(seg.startLat, seg.startLng)}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-start gap-2">
+                                      <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
+                                      <div className="min-w-0">
+                                        <p className="text-xs text-muted-foreground">End</p>
+                                        <p className="text-sm font-medium truncate" data-testid={`text-trip-end-${vid}-${day}-${idx}`}>
+                                          {seg.endAddress || formatCoords(seg.endLat, seg.endLng)}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">{formatCoords(seg.endLat, seg.endLng)}</p>
+                                      </div>
+                                    </div>
+                                  </div>
 
-            <div className="mt-4 pt-4 border-t">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Started</p>
-                  <p className="font-medium" data-testid="text-last-trip-start-time">{format(new Date(lastTrip.startTime), "PPp")}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Ended</p>
-                  <p className="font-medium" data-testid="text-last-trip-end-time">
-                    {lastTrip.endTime ? format(new Date(lastTrip.endTime), "PPp") : "In progress"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Past Trips List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Past Trips</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-3" data-testid="loading-trips">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="p-4 rounded-lg border bg-card animate-pulse">
-                  <div className="h-6 bg-muted rounded w-1/3 mb-3"></div>
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="h-4 bg-muted rounded"></div>
-                    <div className="h-4 bg-muted rounded"></div>
-                    <div className="h-4 bg-muted rounded"></div>
-                    <div className="h-4 bg-muted rounded"></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : trips && trips.length > 0 ? (
-            <div className="space-y-3">
-              {trips.map((trip, index) => (
-                <div
-                  key={trip.id}
-                  className={`p-4 rounded-lg border hover-elevate cursor-pointer ${
-                    index === 0 ? "bg-primary/5 border-primary/30" : "bg-card"
-                  }`}
-                  data-testid={`card-trip-${trip.id}`}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <Car className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="font-semibold" data-testid={`text-trip-vehicle-${trip.id}`}>{getVehicleName(trip.vehicleId)}</p>
-                        <p className="text-sm text-muted-foreground" data-testid={`text-trip-start-time-${trip.id}`}>
-                          {format(new Date(trip.startTime), "MMM dd, yyyy 'at' h:mm a")}
-                        </p>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t">
+                                    <div className="flex items-center gap-1.5">
+                                      <Navigation className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                      <div>
+                                        <p className="text-xs text-muted-foreground">Distance</p>
+                                        <p className="text-sm font-semibold" data-testid={`text-trip-distance-${vid}-${day}-${idx}`}>{formatDistance(seg.distanceKm)}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <TimerOff className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                      <div>
+                                        <p className="text-xs text-muted-foreground">Idle</p>
+                                        <p className="text-sm font-semibold" data-testid={`text-trip-idle-${vid}-${day}-${idx}`}>{formatDuration(seg.idleTimeSec)}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <ParkingCircle className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                      <div>
+                                        <p className="text-xs text-muted-foreground">Stops</p>
+                                        <p className="text-sm font-semibold" data-testid={`text-trip-stops-${vid}-${day}-${idx}`}>{seg.stopCount}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <Gauge className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                      <div>
+                                        <p className="text-xs text-muted-foreground">Avg Speed</p>
+                                        <p className="text-sm font-semibold" data-testid={`text-trip-speed-${vid}-${day}-${idx}`}>{seg.avgSpeedKmh.toFixed(1)} km/h</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    {index === 0 && <Badge variant="outline" data-testid="badge-latest-trip">Latest</Badge>}
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Distance</p>
-                      <p className="font-semibold" data-testid={`text-trip-distance-${trip.id}`}>{formatDistance(parseFloat(trip.distance || "0"))}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Duration</p>
-                      <p className="font-semibold" data-testid={`text-trip-duration-${trip.id}`}>{formatDuration(trip.duration || 0)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Avg Speed</p>
-                      <p className="font-semibold" data-testid={`text-trip-avg-speed-${trip.id}`}>{parseFloat(trip.avgSpeed || "0").toFixed(1)} km/h</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Max Speed</p>
-                      <p className="font-semibold" data-testid={`text-trip-max-speed-${trip.id}`}>{parseFloat(trip.maxSpeed || "0").toFixed(1)} km/h</p>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12" data-testid="empty-state-trips">
-              <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="font-semibold text-lg mb-2">No trips found</h3>
-              <p className="text-sm text-muted-foreground">
-                No trips recorded for the selected vehicle and date range.
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Try selecting a different vehicle or expanding the date range.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

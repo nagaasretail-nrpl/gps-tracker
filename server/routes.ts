@@ -186,6 +186,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/locations/trips", requireAuth, async (req, res) => {
+    try {
+      const { vehicleId, startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+      }
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+
+      function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+
+      type LocRow = Awaited<ReturnType<typeof storage.getLocationHistory>>[number];
+
+      function detectSegments(locs: LocRow[], vid: string) {
+        const SPEED_THRESHOLD = 3;
+        const STOP_GAP_MS = 5 * 60 * 1000;
+        const IDLE_MIN_MS = 2 * 60 * 1000;
+
+        const sorted = [...locs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const segments: object[] = [];
+
+        function finishSegment(pts: LocRow[]) {
+          if (pts.length < 2) return;
+          const s = pts[0], e = pts[pts.length - 1];
+          let distKm = 0, idleMs = 0, stopCount = 0, speedSum = 0, speedCount = 0;
+          let idleStart: number | null = null;
+          for (let i = 0; i < pts.length; i++) {
+            const spd = parseFloat(String(pts[i].speed || "0")) || 0;
+            const ts = new Date(pts[i].timestamp).getTime();
+            if (i > 0) {
+              distKm += haversine(parseFloat(String(pts[i-1].latitude)), parseFloat(String(pts[i-1].longitude)), parseFloat(String(pts[i].latitude)), parseFloat(String(pts[i].longitude)));
+              if (spd < SPEED_THRESHOLD) {
+                if (idleStart == null) idleStart = new Date(pts[i - 1].timestamp).getTime();
+              } else {
+                if (idleStart != null) {
+                  const dur = ts - idleStart;
+                  idleMs += dur;
+                  if (dur >= IDLE_MIN_MS) stopCount++;
+                  idleStart = null;
+                }
+                speedSum += spd;
+                speedCount++;
+              }
+            }
+          }
+          if (idleStart != null) {
+            const dur = new Date(e.timestamp).getTime() - idleStart;
+            idleMs += dur;
+            if (dur >= IDLE_MIN_MS) stopCount++;
+          }
+          const startTs = new Date(s.timestamp);
+          const endTs = new Date(e.timestamp);
+          const dateKey = startTs.toISOString().slice(0, 10);
+          segments.push({
+            vehicleId: vid,
+            date: dateKey,
+            startTime: startTs.toISOString(),
+            endTime: endTs.toISOString(),
+            startLat: parseFloat(String(s.latitude)),
+            startLng: parseFloat(String(s.longitude)),
+            startAddress: s.address || null,
+            endLat: parseFloat(String(e.latitude)),
+            endLng: parseFloat(String(e.longitude)),
+            endAddress: e.address || null,
+            distanceKm: Math.round(distKm * 100) / 100,
+            durationSec: Math.round((endTs.getTime() - startTs.getTime()) / 1000),
+            idleTimeSec: Math.round(idleMs / 1000),
+            stopCount,
+            avgSpeedKmh: speedCount > 0 ? Math.round(speedSum / speedCount * 10) / 10 : 0,
+          });
+        }
+
+        let segPts: LocRow[] = [];
+        let lowSpeedSince: number | null = null;
+
+        for (const loc of sorted) {
+          const spd = parseFloat(String(loc.speed || "0")) || 0;
+          const ts = new Date(loc.timestamp).getTime();
+          if (segPts.length === 0) {
+            if (spd >= SPEED_THRESHOLD) { segPts = [loc]; lowSpeedSince = null; }
+          } else {
+            segPts.push(loc);
+            if (spd < SPEED_THRESHOLD) {
+              if (lowSpeedSince == null) lowSpeedSince = ts;
+              else if (ts - lowSpeedSince >= STOP_GAP_MS) {
+                let endIdx = segPts.length - 1;
+                while (endIdx > 0 && (parseFloat(String(segPts[endIdx].speed || "0")) || 0) < SPEED_THRESHOLD) endIdx--;
+                finishSegment(segPts.slice(0, endIdx + 1));
+                segPts = []; lowSpeedSince = null;
+              }
+            } else { lowSpeedSince = null; }
+          }
+        }
+
+        if (segPts.length >= 2) {
+          let endIdx = segPts.length - 1;
+          while (endIdx > 0 && (parseFloat(String(segPts[endIdx].speed || "0")) || 0) < SPEED_THRESHOLD) endIdx--;
+          finishSegment(segPts.slice(0, endIdx + 1));
+        }
+
+        return segments;
+      }
+
+      let vehicleIds: string[];
+      if (vehicleId && vehicleId !== "all") {
+        vehicleIds = [vehicleId as string];
+      } else {
+        const allVehicles = await storage.getVehicles();
+        vehicleIds = allVehicles.map(v => v.id);
+      }
+
+      const allSegments: object[] = [];
+      await Promise.all(vehicleIds.map(async (vid) => {
+        const locs = await storage.getLocationHistory(vid, start, end);
+        const segs = detectSegments(locs, vid);
+        allSegments.push(...segs);
+      }));
+
+      res.json(allSegments);
+    } catch (error) {
+      console.error("Failed to compute trip segments:", error);
+      res.status(500).json({ error: "Failed to compute trip segments" });
+    }
+  });
+
   app.post("/api/locations", requireAuth, async (req, res) => {
     try {
       const validatedData = insertLocationSchema.parse(req.body);
