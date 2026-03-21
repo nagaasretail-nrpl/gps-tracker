@@ -203,7 +203,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
     if (daysLeft >= 0 && daysLeft <= 30) {
       setShowExpiryAlert(true);
     }
-  }, [userFetched, currentUser?.id]);
+  }, [userFetched, currentUser?.id, currentUser?.role, currentUser?.status, currentUser?.subscriptionExpiry]);
 
   const style = {
     "--sidebar-width": "16rem",
