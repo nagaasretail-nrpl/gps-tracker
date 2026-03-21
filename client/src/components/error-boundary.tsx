@@ -49,7 +49,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <p className="text-sm text-muted-foreground">
                 An unexpected error occurred while loading this page. You can try reloading or navigating back to the dashboard.
               </p>
-              {this.state.errorMessage && (
+              {import.meta.env.DEV && this.state.errorMessage && (
                 <pre className="text-xs bg-muted rounded-md px-3 py-2 overflow-auto max-h-24 text-muted-foreground">
                   {this.state.errorMessage}
                 </pre>
