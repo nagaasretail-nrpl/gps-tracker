@@ -28,12 +28,10 @@ import {
   TrendingUp,
   Navigation,
   Timer,
-  Car,
   CalendarDays,
   Gauge,
   Fuel,
   Banknote,
-  Activity,
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import type { Vehicle } from "@shared/schema";
@@ -86,8 +84,24 @@ function downloadCSV(headers: string[], rows: (string | number)[][], filename: s
   window.URL.revokeObjectURL(url);
 }
 
-function downloadExcel(headers: string[], rows: (string | number)[][], filename: string) {
-  const wsData = [headers, ...rows];
+function downloadExcel(
+  headers: string[],
+  rows: (string | number)[][],
+  filename: string,
+  meta?: string[],
+  totals?: (string | number)[],
+) {
+  const wsData: (string | number)[][] = [];
+  if (meta && meta.length > 0) {
+    meta.forEach(m => wsData.push([m]));
+    wsData.push([]);
+  }
+  wsData.push(headers);
+  rows.forEach(r => wsData.push(r));
+  if (totals && totals.length > 0) {
+    wsData.push([]);
+    wsData.push(totals);
+  }
   const ws = XLSX.utils.aoa_to_sheet(wsData);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Report");
@@ -112,9 +126,12 @@ interface MileageViewProps {
   segments: TripSegment[];
   vehicles: Vehicle[];
   isLoading: boolean;
+  selectedVehicle: string;
+  startDate: Date;
+  endDate: Date;
 }
 
-function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
+function MileageView({ segments, vehicles, isLoading, selectedVehicle, startDate, endDate }: MileageViewProps) {
   const rows: MileageRow[] = useMemo(() => {
     const map = new Map<string, MileageRow>();
     for (const seg of segments) {
@@ -150,8 +167,6 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
   const totalTrips = rows.reduce((s, r) => s + r.tripCount, 0);
   const totalMovingSec = rows.reduce((s, r) => s + r.movingSec, 0);
   const totalIdleSec = rows.reduce((s, r) => s + r.idleSec, 0);
-  const vehiclesActive = rows.length;
-  const avgPerVehicle = vehiclesActive > 0 ? totalFleetKm / vehiclesActive : 0;
   const avgSpeed = rows.length > 0 ? rows.reduce((s, r) => s + r.avgSpeedKmh, 0) / rows.length : 0;
 
   const totalEstFuel = rows.reduce((s, r) => {
@@ -170,6 +185,9 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
 
   const costPerKmTotal = totalFleetKm > 0 && hasCostData ? totalEstCost / totalFleetKm : null;
 
+  const fleetRangeValues = rows.filter(r => r.fuelEfficiency && r.fuelTankCapacity).map(r => r.fuelEfficiency! * r.fuelTankCapacity!);
+  const avgFleetRange = fleetRangeValues.length > 0 ? fleetRangeValues.reduce((s, v) => s + v, 0) / fleetRangeValues.length : null;
+
   const getRowFuel = (r: MileageRow) => r.fuelEfficiency ? r.totalKm / r.fuelEfficiency : null;
   const getRowCost = (r: MileageRow) => {
     const fuel = getRowFuel(r);
@@ -182,6 +200,14 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
   const getRowRange = (r: MileageRow) => r.fuelEfficiency && r.fuelTankCapacity ? r.fuelEfficiency * r.fuelTankCapacity : null;
 
   const dateStr = format(new Date(), "yyyy-MM-dd");
+
+  const vehicleName = selectedVehicle === "all" ? "All Vehicles" : (vehicles.find(v => v.id === selectedVehicle)?.name ?? selectedVehicle);
+  const metaLines = [
+    `Mileage Report`,
+    `Vehicle: ${vehicleName}`,
+    `Date Range: ${format(startDate, "yyyy-MM-dd")} to ${format(endDate, "yyyy-MM-dd")}`,
+    `Generated: ${format(new Date(), "yyyy-MM-dd HH:mm")}`,
+  ];
 
   const buildRows = () => rows.map(r => {
     const fuel = getRowFuel(r);
@@ -204,12 +230,25 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
 
   const exportHeaders = ["Vehicle", "Trips", "Distance (km)", "Moving Time", "Idle Time", "Avg Speed (km/h)", "Est. Fuel (L)", "Est. Fuel Cost", "Cost/km", "Tank Range (km)"];
 
+  const buildTotalsRow = (): (string | number)[] => [
+    "TOTAL",
+    totalTrips,
+    `${totalFleetKm.toFixed(2)} km`,
+    formatDuration(totalMovingSec),
+    formatDuration(totalIdleSec),
+    `${avgSpeed.toFixed(1)} km/h`,
+    hasFuelData ? `${totalEstFuel.toFixed(1)} L` : "—",
+    hasCostData ? totalEstCost.toFixed(2) : "—",
+    costPerKmTotal != null ? costPerKmTotal.toFixed(3) : "—",
+    avgFleetRange != null ? `${avgFleetRange.toFixed(0)} km` : "—",
+  ];
+
   const exportCSV = () => {
     downloadCSV(exportHeaders, buildRows(), `mileage-report-${dateStr}.csv`);
   };
 
   const exportExcel = () => {
-    downloadExcel(exportHeaders, buildRows(), `mileage-report-${dateStr}.xlsx`);
+    downloadExcel(exportHeaders, buildRows(), `mileage-report-${dateStr}.xlsx`, metaLines, buildTotalsRow());
   };
 
   return (
@@ -275,23 +314,27 @@ function MileageView({ segments, vehicles, isLoading }: MileageViewProps) {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
-            <CardTitle className="text-xs font-medium">Vehicles Active</CardTitle>
-            <Car className="h-4 w-4 text-muted-foreground shrink-0" />
+            <CardTitle className="text-xs font-medium">Cost / km</CardTitle>
+            <Banknote className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardHeader>
           <CardContent>
-            {isLoading ? <Skeleton className="h-8 w-12" /> : (
-              <div className="text-2xl font-bold" data-testid="text-mileage-vehicles-active">{vehiclesActive}</div>
+            {isLoading ? <Skeleton className="h-8 w-16" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-cost-per-km">
+                {costPerKmTotal != null ? costPerKmTotal.toFixed(3) : "—"}
+              </div>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 flex-wrap">
-            <CardTitle className="text-xs font-medium">Avg Dist / Vehicle</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground shrink-0" />
+            <CardTitle className="text-xs font-medium">Tank Range</CardTitle>
+            <Gauge className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardHeader>
           <CardContent>
-            {isLoading ? <Skeleton className="h-8 w-24" /> : (
-              <div className="text-2xl font-bold" data-testid="text-mileage-avg-distance">{avgPerVehicle.toFixed(1)} km</div>
+            {isLoading ? <Skeleton className="h-8 w-20" /> : (
+              <div className="text-2xl font-bold" data-testid="text-mileage-tank-range">
+                {avgFleetRange != null ? `${avgFleetRange.toFixed(0)} km` : "—"}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -428,9 +471,12 @@ interface ActivityViewProps {
   segments: TripSegment[];
   vehicles: Vehicle[];
   isLoading: boolean;
+  selectedVehicle: string;
+  startDate: Date;
+  endDate: Date;
 }
 
-function ActivityView({ segments, vehicles, isLoading }: ActivityViewProps) {
+function ActivityView({ segments, vehicles, isLoading, selectedVehicle, startDate, endDate }: ActivityViewProps) {
   const rows: ActivityRow[] = useMemo(() => {
     const map = new Map<string, ActivityRow>();
     for (const seg of segments) {
@@ -476,8 +522,25 @@ function ActivityView({ segments, vehicles, isLoading }: ActivityViewProps) {
     distance: Math.round(r.totalKm * 10) / 10,
   }));
 
+  const totalActivityKm = rows.reduce((s, r) => s + r.totalKm, 0);
+  const totalActivityTrips = rows.reduce((s, r) => s + r.tripCount, 0);
+  const totalActivityMovingSec = rows.reduce((s, r) => s + r.movingSec, 0);
+  const totalActivityIdleSec = rows.reduce((s, r) => s + r.idleSec, 0);
+  const totalActivityFuel = rows.reduce((s, r) => r.fuelUsedL != null ? s + r.fuelUsedL : s, 0);
+  const totalActivityCost = rows.reduce((s, r) => r.fuelCost != null ? s + r.fuelCost : s, 0);
+  const hasActivityFuel = rows.some(r => r.fuelUsedL != null);
+  const hasActivityCost = rows.some(r => r.fuelCost != null);
+
   const dateStr = format(new Date(), "yyyy-MM-dd");
   const exportHeaders = ["Date", "Trips", "Moving Time", "Idle Time", "Total Distance (km)", "Vehicles Active", "Fuel Used (L)", "Fuel Cost"];
+
+  const vehicleName = selectedVehicle === "all" ? "All Vehicles" : (vehicles.find(v => v.id === selectedVehicle)?.name ?? selectedVehicle);
+  const metaLines = [
+    `Activity Report`,
+    `Vehicle: ${vehicleName}`,
+    `Date Range: ${format(startDate, "yyyy-MM-dd")} to ${format(endDate, "yyyy-MM-dd")}`,
+    `Generated: ${format(new Date(), "yyyy-MM-dd HH:mm")}`,
+  ];
 
   const buildRows = () => rows.map(r => [
     r.date,
@@ -490,8 +553,19 @@ function ActivityView({ segments, vehicles, isLoading }: ActivityViewProps) {
     r.fuelCost != null ? r.fuelCost.toFixed(2) : "—",
   ] as (string | number)[]);
 
+  const buildActivityTotalsRow = (): (string | number)[] => [
+    "TOTAL",
+    totalActivityTrips,
+    formatDuration(totalActivityMovingSec),
+    formatDuration(totalActivityIdleSec),
+    `${totalActivityKm.toFixed(2)} km`,
+    "",
+    hasActivityFuel ? `${totalActivityFuel.toFixed(1)} L` : "—",
+    hasActivityCost ? totalActivityCost.toFixed(2) : "—",
+  ];
+
   const exportCSV = () => downloadCSV(exportHeaders, buildRows(), `activity-report-${dateStr}.csv`);
-  const exportExcel = () => downloadExcel(exportHeaders, buildRows(), `activity-report-${dateStr}.xlsx`);
+  const exportExcel = () => downloadExcel(exportHeaders, buildRows(), `activity-report-${dateStr}.xlsx`, metaLines, buildActivityTotalsRow());
 
   return (
     <>
@@ -639,9 +713,12 @@ interface TripViewProps {
   segments: TripSegment[];
   vehicles: Vehicle[];
   isLoading: boolean;
+  selectedVehicle: string;
+  startDate: Date;
+  endDate: Date;
 }
 
-function TripView({ segments, vehicles, isLoading }: TripViewProps) {
+function TripView({ segments, vehicles, isLoading, selectedVehicle, startDate, endDate }: TripViewProps) {
   const totalDistance = segments.reduce((s, t) => s + t.distanceKm, 0);
   const totalMovingSec = segments.reduce((s, t) => s + Math.max(0, t.durationSec - t.idleTimeSec), 0);
   const avgSpeed = segments.length > 0
@@ -666,8 +743,43 @@ function TripView({ segments, vehicles, isLoading }: TripViewProps) {
     return fuel != null && rate && rate > 0 ? fuel * rate : null;
   };
 
+  const totalTripFuel = segments.reduce((s, seg) => {
+    const f = getTripFuel(seg);
+    return f != null ? s + f : s;
+  }, 0);
+  const totalTripCost = segments.reduce((s, seg) => {
+    const c = getTripCost(seg);
+    return c != null ? s + c : s;
+  }, 0);
+  const hasTripFuel = segments.some(seg => getTripFuel(seg) != null);
+  const hasTripCost = segments.some(seg => getTripCost(seg) != null);
+  const totalTripIdleSec = segments.reduce((s, t) => s + t.idleTimeSec, 0);
+  const totalTripStops = segments.reduce((s, t) => s + t.stopCount, 0);
+
   const dateStr = format(new Date(), "yyyy-MM-dd");
   const exportHeaders = ["Vehicle", "Date", "Start Time", "End Time", "Distance (km)", "Moving (min)", "Idle (min)", "Stops", "Avg Speed (km/h)", "Est. Fuel (L)", "Est. Fuel Cost", "Start Location", "End Location"];
+  const vehicleName = selectedVehicle === "all" ? "All Vehicles" : (vehicles.find(v => v.id === selectedVehicle)?.name ?? selectedVehicle);
+  const metaLines = [
+    `Trip Report`,
+    `Vehicle: ${vehicleName}`,
+    `Date Range: ${format(startDate, "yyyy-MM-dd")} to ${format(endDate, "yyyy-MM-dd")}`,
+    `Generated: ${format(new Date(), "yyyy-MM-dd HH:mm")}`,
+  ];
+  const buildTripTotalsRow = (): (string | number)[] => [
+    "TOTAL",
+    "",
+    "",
+    "",
+    `${totalDistance.toFixed(2)} km`,
+    Math.round(totalMovingSec / 60),
+    Math.round(totalTripIdleSec / 60),
+    totalTripStops,
+    "",
+    hasTripFuel ? `${totalTripFuel.toFixed(1)} L` : "—",
+    hasTripCost ? totalTripCost.toFixed(2) : "—",
+    "",
+    "",
+  ];
 
   const buildRows = () => segments.map(seg => {
     const vehicle = vehicles.find(v => v.id === seg.vehicleId);
@@ -699,7 +811,7 @@ function TripView({ segments, vehicles, isLoading }: TripViewProps) {
 
   const exportExcel = () => {
     if (segments.length === 0) return;
-    downloadExcel(exportHeaders, buildRows(), `trip-report-${dateStr}.xlsx`);
+    downloadExcel(exportHeaders, buildRows(), `trip-report-${dateStr}.xlsx`, metaLines, buildTripTotalsRow());
   };
 
   return (
@@ -987,11 +1099,11 @@ export default function Reports() {
 
       {/* Conditional report view */}
       {reportType === "mileage" ? (
-        <MileageView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} />
+        <MileageView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
       ) : reportType === "activity" ? (
-        <ActivityView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} />
+        <ActivityView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
       ) : (
-        <TripView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} />
+        <TripView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
       )}
     </div>
   );
