@@ -214,6 +214,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       function isValidGpsPoint(loc: LocRow): boolean {
+        if (!loc.timestamp) return false;
+        const tsMs = new Date(loc.timestamp).getTime();
+        if (!isFinite(tsMs) || tsMs <= 0) return false;
         const lat = parseFloat(String(loc.latitude));
         const lng = parseFloat(String(loc.longitude));
         if (!isFinite(lat) || !isFinite(lng)) return false;
