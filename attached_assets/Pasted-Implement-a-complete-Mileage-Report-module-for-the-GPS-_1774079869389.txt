@@ -1,0 +1,230 @@
+Implement a complete Mileage Report module for the GPS Tracker system.
+
+Goal:
+Create a mileage report for each vehicle using GPS location history, with trip detection, distance calculation, idle time, estimated fuel usage, fuel cost, and estimated range.
+
+==================================================
+1. VEHICLE MASTER CHANGES
+==================================================
+
+Update vehicle master data and database schema to include these fields:
+
+- fuel_efficiency_kmpl DECIMAL(10,2) NULL
+- fuel_rate_per_liter DECIMAL(10,2) NULL
+- fuel_tank_capacity_liters DECIMAL(10,2) NULL
+
+Rules:
+- fuel_efficiency_kmpl is used for estimated fuel calculation
+- fuel_rate_per_liter is used for estimated fuel cost calculation
+- fuel_tank_capacity_liters is used for estimated max range calculation
+- all 3 fields should be editable in vehicle create/edit form
+- show proper labels:
+  - Fuel Efficiency (KM/L)
+  - Fuel Rate (per Liter)
+  - Fuel Tank Capacity (Liters)
+
+==================================================
+2. REPORT INPUTS
+==================================================
+
+Create a Mileage Report page with filters:
+
+- vehicle
+- date from
+- date to
+
+Optional filters:
+- trip-wise / day-wise view
+
+==================================================
+3. DATA SOURCE
+==================================================
+
+Use GPS location history table for the selected vehicle and date range.
+Each GPS ping contains:
+- latitude
+- longitude
+- speed
+- timestamp
+
+Ignore records with missing latitude, longitude, or timestamp.
+
+Sort all pings by timestamp ascending.
+
+==================================================
+4. TRIP DETECTION LOGIC
+==================================================
+
+Split GPS pings into trip segments.
+
+Trip rules:
+- if time gap between consecutive pings is greater than configurable threshold, start a new trip
+- default trip gap threshold = 20 minutes
+- trim low-speed pings at start and end of each trip
+- default movement threshold = 2 km/h
+- only keep actual movement portion of trip
+- ignore trip if after trimming there are less than 2 valid pings
+
+==================================================
+5. DISTANCE CALCULATION
+==================================================
+
+For each trip:
+- calculate distance between consecutive GPS points using Haversine formula
+- sum all valid legs to get trip distance in KM
+
+Use glitch filter:
+- compute implied speed from each leg using distance / time difference
+- if implied speed > 200 km/h, ignore that leg as GPS glitch
+
+==================================================
+6. IDLE TIME LOGIC
+==================================================
+
+Within each trip:
+- if speed remains below 2 km/h continuously for more than 3 minutes, count that as idle time
+- total idle time should be accumulated per trip
+
+Moving time:
+- moving_time = trip_duration - idle_time
+- if negative, set to 0
+
+==================================================
+7. FUEL CALCULATIONS
+==================================================
+
+If vehicle.fuel_efficiency_kmpl is available and > 0:
+- estimated_fuel_used_liters = total_km / fuel_efficiency_kmpl
+
+If vehicle.fuel_rate_per_liter is available and estimated fuel exists:
+- estimated_fuel_cost = estimated_fuel_used_liters * fuel_rate_per_liter
+
+If vehicle.fuel_tank_capacity_liters is available and fuel_efficiency_kmpl exists:
+- estimated_full_tank_range_km = fuel_tank_capacity_liters * fuel_efficiency_kmpl
+
+Also calculate:
+- cost_per_km = estimated_fuel_cost / total_km (if total_km > 0)
+
+Round all report values to 2 decimals.
+
+==================================================
+8. REPORT OUTPUT
+==================================================
+
+Create both summary view and trip-wise detail view.
+
+A. Summary cards:
+- Total Trips
+- Total KM
+- Total Duration
+- Total Idle Time
+- Total Moving Time
+- Average Speed
+- Estimated Fuel Used
+- Estimated Fuel Cost
+- Estimated Full Tank Range
+- Cost Per KM
+
+B. Trip-wise table columns:
+- Trip No
+- Start Time
+- End Time
+- Trip Duration
+- Idle Time
+- Moving Time
+- Distance KM
+- Avg Speed
+- Estimated Fuel Used
+- Estimated Fuel Cost
+
+C. Day-wise grouping (optional if easy):
+- Date
+- Trips
+- Total KM
+- Total Idle Time
+- Total Moving Time
+- Fuel Used
+- Fuel Cost
+
+==================================================
+9. FORMULAS
+==================================================
+
+Use these formulas exactly:
+
+- trip_distance_km = sum(haversine_distance_of_each_valid_leg)
+- trip_duration = trip_end_time - trip_start_time
+- moving_time = trip_duration - idle_time
+- avg_speed = trip_distance_km / moving_time_in_hours
+- estimated_fuel_used_liters = total_km / fuel_efficiency_kmpl
+- estimated_fuel_cost = estimated_fuel_used_liters * fuel_rate_per_liter
+- estimated_full_tank_range_km = fuel_tank_capacity_liters * fuel_efficiency_kmpl
+- cost_per_km = estimated_fuel_cost / total_km
+
+==================================================
+10. BACKEND REQUIREMENTS
+==================================================
+
+Create clean backend service functions:
+
+- getMileageReport(vehicleId, fromDate, toDate)
+- segmentTrips(pings)
+- calculateHaversineDistance(lat1, lon1, lat2, lon2)
+- calculateIdleTime(pings)
+- calculateTripMetrics(trip, vehicle)
+
+Use TypeScript.
+Keep code modular and production-ready.
+
+==================================================
+11. FRONTEND REQUIREMENTS
+==================================================
+
+On frontend:
+- add Mileage Report menu
+- add filter form
+- add summary cards
+- add trip-wise table
+- show blank or "-" if fuel data is not configured
+- show validation message if no GPS data found
+
+==================================================
+12. EXPORT
+==================================================
+
+Add export options:
+- Export CSV
+- Export Excel
+
+Export should include:
+- vehicle name
+- report date range
+- trip details
+- summary totals
+
+==================================================
+13. SAFETY / EDGE CASES
+==================================================
+
+Handle these cases:
+- no pings found
+- only 1 ping found
+- missing speed values (treat as 0 if needed)
+- duplicate timestamps
+- GPS jumps
+- zero fuel efficiency
+- division by zero
+
+==================================================
+14. FINAL TASK
+==================================================
+
+Please do all of the following:
+1. update schema/model
+2. update vehicle create/edit UI
+3. create mileage report backend logic
+4. create mileage report page UI
+5. add export support
+6. make code ready to run without placeholder pseudo-code
+7. show me all changed files with full code
+8. mention where to paste each file if a file does not already exist
