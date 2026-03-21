@@ -288,6 +288,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk create vehicles
+  app.post("/api/vehicles/bulk", requireAdmin, async (req, res) => {
+    try {
+      const bodySchema = z.object({ vehicles: z.array(insertVehicleSchema) });
+      const { vehicles: rows } = bodySchema.parse(req.body);
+      let created = 0;
+      const errors: string[] = [];
+      for (const row of rows) {
+        try {
+          await storage.createVehicle(row);
+          created++;
+        } catch (err) {
+          errors.push(`Row "${row.name}" (${row.deviceId}): ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      res.status(201).json({ created, errors });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid data", details: error.errors });
+      }
+      res.status(500).json({ error: "Bulk create failed", details: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   app.patch("/api/vehicles/:id", requireAdmin, async (req, res) => {
     try {
       const parsed = updateVehicleSchema.parse(req.body);
