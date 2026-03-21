@@ -118,10 +118,10 @@ app.use((req, res, next) => {
           });
           log(`✓ Created: ${demoUser.phone} / ${demoUser.password}`);
         } else {
-          // Ensure existing demo users have their phone number set
-          if (!existing.phone) {
+          // Ensure existing demo users have the correct current phone number
+          if (existing.phone !== demoUser.phone) {
             await storage.updateUser(existing.id, { phone: demoUser.phone });
-            log(`✓ Updated phone for existing user: ${demoUser.email} → ${demoUser.phone}`);
+            log(`✓ Updated phone for existing user: ${existing.phone || existing.email} → ${demoUser.phone}`);
           } else {
             log(`✓ Already exists: ${demoUser.phone}`);
           }

@@ -43,6 +43,13 @@
       "when": 1742637600000,
       "tag": "0005_phone_login",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1742724000000,
+      "tag": "0006_admin_phone_update",
+      "breakpoints": true
     }
   ]
 }
