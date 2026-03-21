@@ -8,6 +8,13 @@
       "when": 1773926829314,
       "tag": "0000_clammy_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1774065671971,
+      "tag": "0001_opposite_master_mold",
+      "breakpoints": true
     }
   ]
 }

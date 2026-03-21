@@ -1,0 +1,1 @@
+ALTER TABLE "vehicles" ADD COLUMN "fuel_efficiency" real;
