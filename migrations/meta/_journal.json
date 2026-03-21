@@ -29,6 +29,13 @@
       "when": 1774069289828,
       "tag": "0003_fuel_efficiency_decimal",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1742551200000,
+      "tag": "0004_fuel_rate_tank",
+      "breakpoints": true
     }
   ]
 }
