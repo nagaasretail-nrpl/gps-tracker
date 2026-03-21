@@ -27,7 +27,7 @@ export default function Privacy() {
             <Shield className="h-5 w-5 text-primary" />
             <div>
               <h1 className="text-2xl font-bold">Privacy Policy</h1>
-              <p className="text-xs text-muted-foreground">NagaasRetail Pvt Ltd · Last updated: January 2025</p>
+              <p className="text-xs text-muted-foreground">Nagaas Retail Private Limited · Last updated: January 2025</p>
             </div>
           </div>
         </div>
@@ -37,7 +37,7 @@ export default function Privacy() {
         <div className="space-y-6">
           <Section title="1. Introduction">
             <p>
-              <strong className="text-foreground">NagaasRetail Pvt Ltd</strong> ("Company", "we", "us", "our") operates the GPS Fleet Tracker platform accessible at <strong className="text-foreground">nistagps.com</strong>. We are committed to protecting your personal information and your right to privacy.
+              <strong className="text-foreground">Nagaas Retail Private Limited</strong> ("Company", "we", "us", "our") operates the GPS Fleet Tracker platform accessible at <strong className="text-foreground">nistagps.com</strong>. We are committed to protecting your personal information and your right to privacy.
             </p>
             <p>
               This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Service. It applies to all users including fleet operators, administrators, drivers, and sub-users. By using the Service, you consent to the practices described in this Policy.
@@ -109,7 +109,7 @@ export default function Privacy() {
               </li>
             </ul>
             <p>
-              We may disclose your information if required by law, court order, or government authority, or to protect the rights, property, or safety of NagaasRetail Pvt Ltd, our users, or others.
+              We may disclose your information if required by law, court order, or government authority, or to protect the rights, property, or safety of Nagaas Retail Private Limited, our users, or others.
             </p>
           </Section>
 
@@ -185,7 +185,7 @@ export default function Privacy() {
           <Section title="11. Contact Us">
             <p>For privacy-related inquiries, data requests, or complaints:</p>
             <div className="pl-2 space-y-1">
-              <p><strong className="text-foreground">NagaasRetail Pvt Ltd — Privacy Officer</strong></p>
+              <p><strong className="text-foreground">Nagaas Retail Private Limited — Privacy Officer</strong></p>
               <p>Tamil Nadu, India</p>
               <p>Email: <strong className="text-foreground">privacy@nagaasretail.com</strong></p>
               <p>Support: <strong className="text-foreground">support@nagaasretail.com</strong></p>
@@ -204,7 +204,7 @@ export default function Privacy() {
         <Separator />
 
         <p className="text-center text-xs text-muted-foreground pb-4">
-          © 2025 NagaasRetail Pvt Ltd. All Rights Reserved.
+          © 2025 Nagaas Retail Private Limited. All Rights Reserved.
         </p>
       </div>
     </div>

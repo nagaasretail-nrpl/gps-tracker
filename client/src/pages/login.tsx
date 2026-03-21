@@ -113,7 +113,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           <span className="text-muted-foreground/40">·</span>
           <Link href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-login-privacy">Privacy Policy</Link>
         </div>
-        <span data-testid="text-login-copyright">© 2025 NagaasRetail Pvt Ltd. All Rights Reserved.</span>
+        <span data-testid="text-login-copyright">© 2025 Nagaas Retail Private Limited. All Rights Reserved.</span>
       </div>
     </div>
   );

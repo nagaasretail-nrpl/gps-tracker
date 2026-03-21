@@ -27,7 +27,7 @@ export default function Terms() {
             <FileText className="h-5 w-5 text-primary" />
             <div>
               <h1 className="text-2xl font-bold">Terms and Conditions</h1>
-              <p className="text-xs text-muted-foreground">NagaasRetail Pvt Ltd · Last updated: January 2025</p>
+              <p className="text-xs text-muted-foreground">Nagaas Retail Private Limited · Last updated: January 2025</p>
             </div>
           </div>
         </div>
@@ -37,7 +37,7 @@ export default function Terms() {
         <div className="space-y-6">
           <Section title="1. Acceptance of Terms">
             <p>
-              By accessing or using the GPS Fleet Tracker service ("Service") provided by <strong className="text-foreground">NagaasRetail Pvt Ltd</strong> ("Company", "we", "us", or "our"), you ("User", "you") agree to be bound by these Terms and Conditions ("Terms"). If you do not agree to these Terms, you must not use the Service.
+              By accessing or using the GPS Fleet Tracker service ("Service") provided by <strong className="text-foreground">Nagaas Retail Private Limited</strong> ("Company", "we", "us", or "our"), you ("User", "you") agree to be bound by these Terms and Conditions ("Terms"). If you do not agree to these Terms, you must not use the Service.
             </p>
             <p>
               These Terms apply to all users of the Service, including fleet operators, administrators, and sub-users. By creating an account or making a payment, you confirm that you have read, understood, and accepted these Terms.
@@ -46,7 +46,7 @@ export default function Terms() {
 
           <Section title="2. Description of Service">
             <p>
-              NagaasRetail Pvt Ltd provides a cloud-based GPS fleet tracking and management platform ("GPS Fleet Tracker") accessible via the web application hosted at <strong className="text-foreground">nistagps.com</strong>. The Service includes:
+              Nagaas Retail Private Limited provides a cloud-based GPS fleet tracking and management platform ("GPS Fleet Tracker") accessible via the web application hosted at <strong className="text-foreground">nistagps.com</strong>. The Service includes:
             </p>
             <ul className="list-disc list-inside space-y-1 pl-2">
               <li>Real-time vehicle location tracking using GT06N GPS devices</li>
@@ -77,12 +77,12 @@ export default function Terms() {
 
           <Section title="4. Subscription and Payment Terms">
             <p>
-              Access to the Service requires an active subscription. Subscriptions are billed on an annual basis in Indian Rupees (INR). The subscription fee is set by NagaasRetail Pvt Ltd and may be updated from time to time with reasonable notice.
+              Access to the Service requires an active subscription. Subscriptions are billed on an annual basis in Indian Rupees (INR). The subscription fee is set by Nagaas Retail Private Limited and may be updated from time to time with reasonable notice.
             </p>
             <p><strong className="text-foreground">Payment Processing:</strong> All payments are processed securely through Razorpay Payment Gateway. By making a payment, you also agree to Razorpay's Terms of Service and Privacy Policy.</p>
             <p><strong className="text-foreground">Renewal:</strong> Subscriptions do <strong className="text-foreground">not</strong> auto-renew. You will need to manually renew your subscription before or after it expires by completing a payment via the renewal page. We may send reminder notifications before your subscription expires, but renewal is always initiated by you.</p>
             <p><strong className="text-foreground">Subscription Expiry:</strong> Upon expiry of your subscription, access to the Service will be suspended. You may renew your subscription at any time via the renewal payment page.</p>
-            <p><strong className="text-foreground">Refund Policy:</strong> Subscription fees are non-refundable once the subscription period has commenced. In cases of technical failure attributable to NagaasRetail Pvt Ltd that results in extended service unavailability (more than 72 continuous hours), a pro-rata credit may be considered at our sole discretion. To request a refund consideration, contact us at <strong className="text-foreground">support@nagaasretail.com</strong>.</p>
+            <p><strong className="text-foreground">Refund Policy:</strong> Subscription fees are non-refundable once the subscription period has commenced. In cases of technical failure attributable to Nagaas Retail Private Limited that results in extended service unavailability (more than 72 continuous hours), a pro-rata credit may be considered at our sole discretion. To request a refund consideration, contact us at <strong className="text-foreground">support@nagaasretail.com</strong>.</p>
             <p><strong className="text-foreground">Pricing Changes:</strong> We reserve the right to change subscription prices. Any price changes will be communicated at least 30 days in advance and will apply from the next renewal cycle.</p>
           </Section>
 
@@ -92,7 +92,7 @@ export default function Terms() {
               <li>Use the Service for surveillance of individuals without their knowledge or consent in violation of applicable law</li>
               <li>Reverse-engineer, decompile, or attempt to extract source code from the Service</li>
               <li>Use the Service to transmit malicious code, spam, or harmful content</li>
-              <li>Resell or sub-license the Service without prior written consent from NagaasRetail Pvt Ltd</li>
+              <li>Resell or sub-license the Service without prior written consent from Nagaas Retail Private Limited</li>
               <li>Exceed reasonable usage limits or attempt to overload our systems</li>
               <li>Violate any applicable Indian or international law while using the Service</li>
             </ul>
@@ -109,10 +109,10 @@ export default function Terms() {
 
           <Section title="7. Intellectual Property">
             <p>
-              All intellectual property rights in the Service — including software, design, trademarks, logos, and content — belong to NagaasRetail Pvt Ltd or its licensors. These Terms do not grant you any rights to our intellectual property except the limited right to use the Service as described herein.
+              All intellectual property rights in the Service — including software, design, trademarks, logos, and content — belong to Nagaas Retail Private Limited or its licensors. These Terms do not grant you any rights to our intellectual property except the limited right to use the Service as described herein.
             </p>
             <p>
-              "NagaasRetail", "GPS Fleet Tracker", and related names and logos are trademarks of NagaasRetail Pvt Ltd. You must not use these marks without our prior written permission.
+              "Nagaas Retail", "GPS Fleet Tracker", and related names and logos are trademarks of Nagaas Retail Private Limited. You must not use these marks without our prior written permission.
             </p>
           </Section>
 
@@ -127,7 +127,7 @@ export default function Terms() {
 
           <Section title="9. Limitation of Liability">
             <p>
-              To the maximum extent permitted by applicable law, NagaasRetail Pvt Ltd shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of profits, data, goodwill, or business opportunities, arising from your use of the Service.
+              To the maximum extent permitted by applicable law, Nagaas Retail Private Limited shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of profits, data, goodwill, or business opportunities, arising from your use of the Service.
             </p>
             <p>
               Our total aggregate liability to you for any claim arising out of or related to these Terms or the Service shall not exceed the subscription fees paid by you in the three (3) months immediately preceding the event giving rise to the claim.
@@ -161,7 +161,7 @@ export default function Terms() {
           <Section title="13. Contact Us">
             <p>If you have any questions about these Terms, please contact:</p>
             <div className="pl-2 space-y-1">
-              <p><strong className="text-foreground">NagaasRetail Pvt Ltd</strong></p>
+              <p><strong className="text-foreground">Nagaas Retail Private Limited</strong></p>
               <p>Tamil Nadu, India</p>
               <p>Email: <strong className="text-foreground">support@nagaasretail.com</strong></p>
               <p>Website: <strong className="text-foreground">nistagps.com</strong></p>
@@ -172,7 +172,7 @@ export default function Terms() {
         <Separator />
 
         <p className="text-center text-xs text-muted-foreground pb-4">
-          © 2025 NagaasRetail Pvt Ltd. All Rights Reserved.
+          © 2025 Nagaas Retail Private Limited. All Rights Reserved.
         </p>
       </div>
     </div>
