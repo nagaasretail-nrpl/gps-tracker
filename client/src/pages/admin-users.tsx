@@ -172,7 +172,8 @@ export default function AdminUsers() {
     const updates: Partial<EditState> = { status: newStatus };
     if (newStatus === "active") {
       const currentExpiry = state?.subscriptionExpiry ?? "";
-      const isBlankOrPast = !currentExpiry || new Date(currentExpiry) < new Date();
+      const today = new Date().toISOString().split("T")[0];
+      const isBlankOrPast = !currentExpiry || currentExpiry < today;
       if (isBlankOrPast) {
         updates.subscriptionExpiry = oneYearFromNow();
       }
@@ -394,7 +395,7 @@ export default function AdminUsers() {
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Menu className="h-3 w-3" />
                             {restrictedMenuCount !== null && restrictedMenuCount > 0
-                              ? `${restrictedMenuCount} menu${restrictedMenuCount !== 1 ? "s" : ""} restricted`
+                              ? `${restrictedMenuCount} menu${restrictedMenuCount !== 1 ? "s" : ""} allowed`
                               : "All menus"}
                           </span>
                         </div>
