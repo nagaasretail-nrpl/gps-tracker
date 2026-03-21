@@ -27,6 +27,7 @@ import Trips from "@/pages/trips";
 import Profile from "@/pages/profile";
 import AdminUsers from "@/pages/admin-users";
 import AdminSettings from "@/pages/admin-settings";
+import Renew from "@/pages/renew";
 import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -80,18 +81,7 @@ function RouteGuard({ user, userLoaded, path, component: Component }: {
   return <Component />;
 }
 
-function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean; onLoginSuccess: () => void }) {
-  const { data: authData, isFetched: userFetched } = useQuery<{ user: UserWithoutPassword }>({
-    queryKey: ["/api/auth/me"],
-    enabled: isAuthenticated,
-  });
-
-  const currentUser = authData?.user ?? null;
-
-  if (!isAuthenticated) {
-    return <Login onLoginSuccess={onLoginSuccess} />;
-  }
-
+function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPassword | null; userFetched: boolean }) {
   const guard = (path: string, Component: React.ComponentType) => () => (
     <RouteGuard user={currentUser} userLoaded={userFetched} path={path} component={Component} />
   );
@@ -115,6 +105,65 @@ function Router({ isAuthenticated, onLoginSuccess }: { isAuthenticated: boolean;
       <Route path="/admin-settings" component={AdminSettings} />
       <Route component={NotFound} />
     </Switch>
+  );
+}
+
+function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
+  const { data: authData, isFetched: userFetched } = useQuery<{ user: UserWithoutPassword }>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  const currentUser = authData?.user ?? null;
+
+  const style = {
+    "--sidebar-width": "16rem",
+    "--sidebar-width-icon": "3rem",
+  };
+
+  // Full-screen renew page for inactive non-admin users (no sidebar)
+  if (userFetched && currentUser && currentUser.status === "inactive" && currentUser.role !== "admin") {
+    return (
+      <Renew
+        user={currentUser}
+        onRenewed={() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+        }}
+      />
+    );
+  }
+
+  return (
+    <SidebarProvider style={style as React.CSSProperties}>
+      <div className="flex h-screen w-full">
+        <AppSidebar />
+        <div className="flex flex-col flex-1 relative">
+          <header className="sticky top-0 z-20 flex items-center justify-between h-14 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <SidebarTrigger data-testid="button-sidebar-toggle" className="hover-elevate" />
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={async () => {
+                  await fetch("/api/auth/logout", {
+                    method: "POST",
+                    credentials: "include",
+                  });
+                  onLogout();
+                }}
+                data-testid="button-logout"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          </header>
+          <main className="flex-1 overflow-auto">
+            <MainRoutes currentUser={currentUser} userFetched={userFetched} />
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
   );
 }
 
@@ -150,49 +199,17 @@ function App() {
     );
   }
 
-  const style = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3rem",
-  };
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <ThemeProvider>
           {isAuthenticated ? (
-            <SidebarProvider style={style as React.CSSProperties}>
-              <div className="flex h-screen w-full">
-                <AppSidebar />
-                <div className="flex flex-col flex-1 relative">
-                  <header className="sticky top-0 z-20 flex items-center justify-between h-14 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                    <SidebarTrigger data-testid="button-sidebar-toggle" className="hover-elevate" />
-                    <div className="flex items-center gap-2">
-                      <ThemeToggle />
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={async () => {
-                          await fetch("/api/auth/logout", {
-                            method: "POST",
-                            credentials: "include",
-                          });
-                          setIsAuthenticated(false);
-                        }}
-                        data-testid="button-logout"
-                        title="Logout"
-                      >
-                        <LogOut className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </header>
-                  <main className="flex-1 overflow-auto">
-                    <Router isAuthenticated={isAuthenticated} onLoginSuccess={() => setIsAuthenticated(true)} />
-                  </main>
-                </div>
-              </div>
-            </SidebarProvider>
+            <AuthenticatedApp onLogout={() => {
+              queryClient.invalidateQueries();
+              setIsAuthenticated(false);
+            }} />
           ) : (
-            <Router isAuthenticated={isAuthenticated} onLoginSuccess={() => {
+            <Login onLoginSuccess={() => {
               queryClient.invalidateQueries();
               setIsAuthenticated(true);
             }} />

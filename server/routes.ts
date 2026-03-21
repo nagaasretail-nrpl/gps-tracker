@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
@@ -8,6 +8,8 @@ import { getActiveConnections } from "./gt06-server";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
 import { z } from "zod";
+import crypto from "crypto";
+import Razorpay from "razorpay";
 import {
   insertVehicleSchema,
   updateVehicleSchema,
@@ -27,9 +29,110 @@ import {
 // In-memory log of unrecognised device IDs (last 20 attempts)
 const unknownDeviceLog: { deviceId: string; lat: number; lng: number; speed: number; seenAt: string }[] = [];
 
+// Auto-expiry middleware: after requireAuth, auto-set non-admin users to inactive
+// when their subscriptionExpiry has passed. Skip for /api/auth/* and /api/payments/*.
+async function checkSubscriptionExpiry(req: Request, res: Response, next: NextFunction) {
+  if (!req.isAuthenticated()) return next();
+  const user = req.user as { id: string; role: string; subscriptionExpiry?: Date | null };
+  if (user.role === "admin") return next();
+  if (!user.subscriptionExpiry) return next();
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiry = new Date(user.subscriptionExpiry);
+  expiry.setHours(0, 0, 0, 0);
+
+  if (expiry < today) {
+    // Mark inactive (fire-and-forget, do not block the request)
+    storage.updateUser(user.id, { status: "inactive" }).catch((err) =>
+      console.error("[expiry] Failed to set user inactive:", err)
+    );
+  }
+  next();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes (public)
   app.use("/api/auth", authRoutes);
+
+  // Apply subscription expiry check to all authenticated API routes
+  // (skips /api/auth/* and /api/payments/* which are handled separately)
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith("/auth/") || req.path.startsWith("/payments/")) return next();
+    return checkSubscriptionExpiry(req, res, next);
+  });
+
+  // Payment routes (require auth but skip expiry check so inactive users can pay)
+  app.post("/api/payments/create-order", requireAuth, async (req, res) => {
+    try {
+      const keyId = (await storage.getSetting("razorpay_key_id"))?.value || "";
+      const keySecret = (await storage.getSetting("razorpay_key_secret"))?.value || "";
+      const amountSetting = (await storage.getSetting("renewal_amount"))?.value || "";
+
+      if (!keyId || !keySecret || !amountSetting) {
+        return res.status(503).json({ error: "Payment gateway not configured. Contact administrator." });
+      }
+
+      const amount = parseInt(amountSetting, 10);
+      if (isNaN(amount) || amount <= 0) {
+        return res.status(503).json({ error: "Invalid renewal amount configured." });
+      }
+
+      const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const order = await razorpay.orders.create({
+        amount: amount * 100, // paise
+        currency: "INR",
+        receipt: `renewal_${(req.user as { id: string }).id}_${Date.now()}`,
+      });
+
+      res.json({ orderId: order.id, amount: order.amount, currency: order.currency, keyId });
+    } catch (error) {
+      console.error("[payments] create-order error:", error);
+      res.status(500).json({ error: "Failed to create payment order" });
+    }
+  });
+
+  app.post("/api/payments/verify", requireAuth, async (req, res) => {
+    try {
+      const schema = z.object({
+        razorpayOrderId: z.string().min(1),
+        razorpayPaymentId: z.string().min(1),
+        razorpaySignature: z.string().min(1),
+      });
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = schema.parse(req.body);
+
+      const keySecret = (await storage.getSetting("razorpay_key_secret"))?.value || "";
+      if (!keySecret) {
+        return res.status(503).json({ error: "Payment gateway not configured." });
+      }
+
+      const expectedSignature = crypto
+        .createHmac("sha256", keySecret)
+        .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+        .digest("hex");
+
+      if (expectedSignature !== razorpaySignature) {
+        return res.status(400).json({ error: "Payment signature verification failed" });
+      }
+
+      const userId = (req.user as { id: string }).id;
+      const newExpiry = new Date();
+      newExpiry.setFullYear(newExpiry.getFullYear() + 1);
+
+      await storage.updateUser(userId, {
+        status: "active",
+        subscriptionExpiry: newExpiry,
+      });
+
+      res.json({ ok: true, newExpiry: newExpiry.toISOString() });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      console.error("[payments] verify error:", error);
+      res.status(500).json({ error: "Payment verification failed" });
+    }
+  });
 
   // Return recent unknown device IDs — useful for diagnosing IMEI mismatches
   app.get("/api/device/unknown", requireAuth, (_req, res) => {
