@@ -10,7 +10,6 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
-import { ErrorBoundary } from "@/components/error-boundary";
 import Login from "@/pages/login";
 import Tracking from "@/pages/tracking";
 import Dashboard from "@/pages/dashboard";
@@ -124,9 +123,7 @@ function App() {
                     </div>
                   </header>
                   <main className="flex-1 overflow-auto">
-                    <ErrorBoundary>
-                      <Router isAuthenticated={isAuthenticated} onLoginSuccess={() => setIsAuthenticated(true)} />
-                    </ErrorBoundary>
+                    <Router isAuthenticated={isAuthenticated} onLoginSuccess={() => setIsAuthenticated(true)} />
                   </main>
                 </div>
               </div>
