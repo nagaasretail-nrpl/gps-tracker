@@ -205,13 +205,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       type LocRow = Awaited<ReturnType<typeof storage.getLocationHistory>>[number];
 
+      interface TripSegment {
+        vehicleId: string; date: string; startTime: string; endTime: string;
+        startLat: number; startLng: number; startAddress: string | null;
+        endLat: number; endLng: number; endAddress: string | null;
+        distanceKm: number; durationSec: number; idleTimeSec: number;
+        stopCount: number; avgSpeedKmh: number;
+      }
+
       function detectSegments(locs: LocRow[], vid: string) {
         const SPEED_THRESHOLD = 3;
         const STOP_GAP_MS = 5 * 60 * 1000;
         const IDLE_MIN_MS = 2 * 60 * 1000;
 
         const sorted = [...locs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        const segments: object[] = [];
+        const segments: TripSegment[] = [];
 
         function finishSegment(pts: LocRow[]) {
           if (pts.length < 2) return;
@@ -303,7 +311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         vehicleIds = allVehicles.map(v => v.id);
       }
 
-      const allSegments: object[] = [];
+      const allSegments: TripSegment[] = [];
       await Promise.all(vehicleIds.map(async (vid) => {
         const locs = await storage.getLocationHistory(vid, start, end);
         const segs = detectSegments(locs, vid);
