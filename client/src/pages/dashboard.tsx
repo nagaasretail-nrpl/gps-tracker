@@ -13,6 +13,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis
 import type { Vehicle, Location } from "@shared/schema";
 import { format } from "date-fns";
 import { useEffect, useState } from "react";
+import { getVehicleImg } from "@/lib/vehicleIcons";
 
 interface FleetEvent {
   id: string;
@@ -486,6 +487,7 @@ export default function Dashboard() {
                     : STATUS_COLORS.offline;
                   const segsToday = todaySegments?.filter(s => s.vehicleId === v.id) ?? [];
                   const kmToday = segsToday.reduce((s, t) => s + t.distanceKm, 0);
+                  const vehicleImg = getVehicleImg(v.type ?? "car");
 
                   return (
                     <div
@@ -495,10 +497,20 @@ export default function Dashboard() {
                     >
                       <div className="flex items-center justify-between gap-2 mb-1.5">
                         <div className="flex items-center gap-2 min-w-0">
-                          {v.status === "active"
-                            ? <PulseDot color={dotColor} />
-                            : <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-                          }
+                          <div className="relative shrink-0">
+                            <div className={`w-10 h-10 rounded-lg bg-neutral-900 flex items-center justify-center overflow-hidden ${v.status !== "active" ? "opacity-40" : ""}`}>
+                              <img
+                                src={vehicleImg ?? undefined}
+                                alt={v.type ?? "car"}
+                                className="w-9 h-9 object-contain"
+                              />
+                            </div>
+                            {v.status === "active" && (
+                              <span className="absolute -bottom-0.5 -right-0.5">
+                                <PulseDot color={dotColor} />
+                              </span>
+                            )}
+                          </div>
                           <div className="min-w-0">
                             <p className="text-sm font-semibold truncate">{v.name}</p>
                             <p className="text-[11px] text-muted-foreground">

@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { VEHICLE_TYPE_OPTIONS, getMarkerSvg } from "@/lib/vehicleIcons";
+import { VEHICLE_TYPE_OPTIONS, getMarkerSvg, getVehicleImg } from "@/lib/vehicleIcons";
 
 const FUEL_TYPE_OPTIONS = [
   { value: "petrol", label: "Petrol" },
@@ -280,20 +280,26 @@ export default function Vehicles() {
                       <FormItem>
                         <FormLabel>Icon Type</FormLabel>
                         <FormControl>
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-5 gap-1.5">
                             {VEHICLE_TYPE_OPTIONS.map((vt) => (
                               <button
                                 key={vt.value}
                                 type="button"
                                 onClick={() => field.onChange(vt.value)}
                                 data-testid={`button-add-type-${vt.value}`}
-                                className={`flex flex-col items-center gap-1 p-2 rounded-md border-2 transition-colors ${field.value === vt.value ? "border-primary bg-primary/10" : "border-border hover:border-muted-foreground/40"}`}
+                                className={`flex flex-col items-center gap-1 p-1.5 rounded-md border-2 transition-colors ${field.value === vt.value ? "border-primary bg-primary/10" : "border-border hover:border-muted-foreground/40"}`}
                               >
-                                <span
-                                  dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, currentColor, 0) }}
-                                  className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
-                                />
-                                <span className="text-[10px] text-muted-foreground leading-none">{vt.label}</span>
+                                {vt.img ? (
+                                  <div className="w-8 h-8 rounded-md bg-neutral-900 flex items-center justify-center overflow-hidden pointer-events-none">
+                                    <img src={vt.img} alt={vt.label} className="w-7 h-7 object-contain" />
+                                  </div>
+                                ) : (
+                                  <span
+                                    dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, currentColor, 0) }}
+                                    className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
+                                  />
+                                )}
+                                <span className="text-[9px] text-muted-foreground leading-none">{vt.label}</span>
                               </button>
                             ))}
                           </div>
@@ -460,20 +466,26 @@ export default function Vehicles() {
             </div>
             <div className="space-y-2">
               <Label>Icon Type</Label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-1.5">
                 {VEHICLE_TYPE_OPTIONS.map(vt => (
                   <button
                     key={vt.value}
                     type="button"
                     onClick={() => setEditType(vt.value)}
                     data-testid={`button-edit-type-${vt.value}`}
-                    className={`flex flex-col items-center gap-1 p-2 rounded-md border-2 transition-colors ${editType === vt.value ? "border-primary bg-primary/10" : "border-border hover:border-muted-foreground/40"}`}
+                    className={`flex flex-col items-center gap-1 p-1.5 rounded-md border-2 transition-colors ${editType === vt.value ? "border-primary bg-primary/10" : "border-border hover:border-muted-foreground/40"}`}
                   >
-                    <span
-                      dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, editIconColor, 0) }}
-                      className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
-                    />
-                    <span className="text-[10px] text-muted-foreground leading-none">{vt.label}</span>
+                    {vt.img ? (
+                      <div className="w-8 h-8 rounded-md bg-neutral-900 flex items-center justify-center overflow-hidden pointer-events-none">
+                        <img src={vt.img} alt={vt.label} className="w-7 h-7 object-contain" />
+                      </div>
+                    ) : (
+                      <span
+                        dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, editIconColor, 0) }}
+                        className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
+                      />
+                    )}
+                    <span className="text-[9px] text-muted-foreground leading-none">{vt.label}</span>
                   </button>
                 ))}
               </div>
@@ -698,12 +710,17 @@ export default function Vehicles() {
                 className="flex items-center gap-3 px-4 py-3 min-h-[48px]"
                 data-testid={`row-vehicle-${vehicle.id}`}
               >
-                {/* Color dot */}
+                {/* Vehicle icon */}
                 <div
-                  className="w-3 h-3 rounded-full shrink-0"
-                  style={{ backgroundColor: vehicle.iconColor || "#2563eb" }}
+                  className="w-9 h-9 rounded-lg bg-neutral-900 flex items-center justify-center shrink-0 overflow-hidden"
                   data-testid={`dot-vehicle-${vehicle.id}`}
-                />
+                >
+                  <img
+                    src={getVehicleImg(vehicle.type ?? "car") ?? undefined}
+                    alt={vehicle.type ?? "car"}
+                    className="w-8 h-8 object-contain"
+                  />
+                </div>
 
                 {/* Name */}
                 <span
