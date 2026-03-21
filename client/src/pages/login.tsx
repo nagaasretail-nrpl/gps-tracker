@@ -107,12 +107,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       </Card>
 
       {/* Legal footer */}
-      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-x-3">
+          <Link href="/terms" className="hover:text-foreground transition-colors" data-testid="link-login-terms">Terms &amp; Conditions</Link>
+          <span className="text-muted-foreground/40">·</span>
+          <Link href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-login-privacy">Privacy Policy</Link>
+        </div>
         <span data-testid="text-login-copyright">© 2025 NagaasRetail Pvt Ltd. All Rights Reserved.</span>
-        <span className="text-muted-foreground/40">·</span>
-        <Link href="/terms" className="hover:text-foreground transition-colors" data-testid="link-login-terms">Terms &amp; Conditions</Link>
-        <span className="text-muted-foreground/40">·</span>
-        <Link href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-login-privacy">Privacy Policy</Link>
       </div>
     </div>
   );
