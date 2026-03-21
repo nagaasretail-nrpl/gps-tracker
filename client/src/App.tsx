@@ -179,6 +179,9 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   );
 }
 
+// PublicOrAuthApp handles public legal routes (/terms, /privacy) before any auth check,
+// so unauthenticated users can read legal pages without being redirected to login.
+// Auth state is managed here rather than inside a nested Router to keep a single entry point.
 function PublicOrAuthApp() {
   const [isTermsMatch] = useRoute("/terms");
   const [isPrivacyMatch] = useRoute("/privacy");
