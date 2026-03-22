@@ -161,6 +161,19 @@ function parseLocation(data: Buffer): ParsedLocation | null {
     return null;
   }
 
+  // Reject South Indian Ocean ghost coordinates.
+  // When GPS signal is weak the latSouth protocol bit can be incorrectly set,
+  // flipping an Indian-longitude coordinate into the southern hemisphere ocean.
+  // All valid Indian-fleet positions have lat > 0; lat < 0 with Indian-Ocean
+  // longitude (60–105°E) is physically impossible and indicates a bad fix.
+  if (lat < 0 && lng > 60 && lng < 105) {
+    console.warn(
+      `[GT06] Discarding location: south Indian Ocean ghost coord ` +
+      `(${lat.toFixed(5)}, ${lng.toFixed(5)}) — latSouth bit likely misset`
+    );
+    return null;
+  }
+
   // Use server receive time — GPS device time can have timezone/BCD issues
   const timestamp = new Date();
 
