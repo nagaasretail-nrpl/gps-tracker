@@ -13,6 +13,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Plus, Trash2, Copy, Check, Radio, Globe, Signal, AlertCircle,
   Pencil, ChevronDown, ChevronRight, Search, Upload, Download,
   FileSpreadsheet, X, AlertTriangle,
@@ -188,6 +198,7 @@ export default function Vehicles() {
   const [setupExpanded, setSetupExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
   const [importRows, setImportRows] = useState<ImportRow[]>([]);
   const [importFileName, setImportFileName] = useState("");
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -1110,7 +1121,7 @@ export default function Vehicles() {
                   <Button variant="ghost" size="icon" onClick={() => openEdit(vehicle)} data-testid={`button-edit-${vehicle.id}`} title="Edit vehicle">
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(vehicle.id)} disabled={deleteMutation.isPending} data-testid={`button-delete-${vehicle.id}`} title="Delete vehicle" className="text-destructive">
+                  <Button variant="ghost" size="icon" onClick={() => setVehicleToDelete(vehicle)} disabled={deleteMutation.isPending} data-testid={`button-delete-${vehicle.id}`} title="Delete vehicle" className="text-destructive">
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -1139,6 +1150,34 @@ export default function Vehicles() {
           </CardContent>
         </Card>
       )}
+      {/* Delete vehicle confirmation dialog */}
+      <AlertDialog open={!!vehicleToDelete} onOpenChange={(open) => { if (!open) setVehicleToDelete(null); }}>
+        <AlertDialogContent data-testid="dialog-delete-vehicle-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Vehicle?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete{" "}
+              <span className="font-medium text-foreground">{vehicleToDelete?.name}</span>.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-delete-vehicle-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-delete-vehicle-confirm"
+              onClick={() => {
+                if (vehicleToDelete) {
+                  deleteMutation.mutate(vehicleToDelete.id);
+                  setVehicleToDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

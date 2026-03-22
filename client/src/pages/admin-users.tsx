@@ -9,6 +9,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -107,6 +117,7 @@ export default function AdminUsers() {
   const [newUser, setNewUser] = useState({ name: "", phone: "", password: "", role: "user" });
   const [openMenuPanels, setOpenMenuPanels] = useState<Record<string, boolean>>({});
   const [vehicleSearches, setVehicleSearches] = useState<Record<string, string>>({});
+  const [userToDelete, setUserToDelete] = useState<UserWithoutPassword | null>(null);
 
   const { data: users = [], isLoading } = useQuery<UserWithoutPassword[]>({
     queryKey: ["/api/users"],
@@ -416,7 +427,7 @@ export default function AdminUsers() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => deleteMutation.mutate(user.id)}
+                        onClick={() => setUserToDelete(user)}
                         disabled={deleteMutation.isPending}
                         data-testid={`button-delete-user-${user.id}`}
                         title="Delete user"
@@ -685,6 +696,35 @@ export default function AdminUsers() {
           })
         )}
       </div>
+
+      {/* Delete user confirmation dialog */}
+      <AlertDialog open={!!userToDelete} onOpenChange={(open) => { if (!open) setUserToDelete(null); }}>
+        <AlertDialogContent data-testid="dialog-delete-user-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete User?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete{" "}
+              <span className="font-medium text-foreground">{userToDelete?.name}</span>.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-delete-user-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-delete-user-confirm"
+              onClick={() => {
+                if (userToDelete) {
+                  deleteMutation.mutate(userToDelete.id);
+                  setUserToDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

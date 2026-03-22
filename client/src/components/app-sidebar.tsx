@@ -31,6 +31,7 @@ import {
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { User as UserType } from "@shared/schema";
+import { usePWAInstall } from "@/hooks/usePWAInstall";
 
 const nistaLogo = "/nista-logo.png";
 
@@ -65,6 +66,7 @@ const userMenuItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { canInstall, promptInstall } = usePWAInstall();
 
   const { data: authData } = useQuery<{ user: UserWithoutPassword }>({
     queryKey: ["/api/auth/me"],
@@ -152,22 +154,21 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
       </SidebarContent>
-      <SidebarFooter className="border-t px-2 py-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              isActive={location === "/install"}
-              data-testid="link-install-app"
-            >
-              <Link href="/install">
+      {canInstall && (
+        <SidebarFooter className="border-t px-2 py-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={promptInstall}
+                data-testid="button-install-app"
+              >
                 <Download className="h-4 w-4" />
                 <span>Install App</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      )}
     </Sidebar>
   );
 }
