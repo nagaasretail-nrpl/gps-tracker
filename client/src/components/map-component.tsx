@@ -126,7 +126,6 @@ export function MapComponent({
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const overlaysRef = useRef<MapOverlay[]>([]);
   const vehicleMarkersRef = useRef<Map<string, google.maps.Marker>>(new Map());
-  const vehicleInfoWindowsRef = useRef<Map<string, google.maps.InfoWindow>>(new Map());
   const openInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const hasFittedRef = useRef(false);
@@ -264,25 +263,11 @@ export function MapComponent({
             scaledSize: new google.maps.Size(40, 40),
           };
 
-      const infoContent = `
-        <div style="min-width:200px;font-family:sans-serif;font-size:13px;">
-          <p style="font-weight:600;margin:0 0 6px">${esc(vehicle.name)}</p>
-          <p style="margin:3px 0"><b>Speed:</b> ${speed.toFixed(0)} km/h</p>
-          <p style="margin:3px 0"><b>Status:</b> ${esc(vehicle.status)}</p>
-          <p style="margin:3px 0"><b>Coords:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
-          <p style="margin:3px 0"><b>Heading:</b> ${heading.toFixed(0)}&deg;</p>
-          <p style="margin:3px 0"><b>Location:</b> ${esc(location.address) || "Unknown"}</p>
-          <p style="margin:3px 0;font-size:11px;color:#666;">Last update: ${esc(new Date(location.timestamp).toLocaleString())}</p>
-        </div>
-      `;
-
       const existingMarker = vehicleMarkersRef.current.get(vehicle.id);
       if (existingMarker) {
         existingMarker.setPosition({ lat, lng });
         existingMarker.setIcon(markerIcon);
         existingMarker.setTitle(vehicle.name);
-        const existingInfoWindow = vehicleInfoWindowsRef.current.get(vehicle.id);
-        if (existingInfoWindow) existingInfoWindow.setContent(infoContent);
       } else {
         const marker = new google.maps.Marker({
           position: { lat, lng },
@@ -290,15 +275,10 @@ export function MapComponent({
           title: vehicle.name,
           icon: markerIcon,
         });
-        const infoWindow = new google.maps.InfoWindow({ content: infoContent });
         marker.addListener("click", () => {
-          if (openInfoWindowRef.current) openInfoWindowRef.current.close();
-          infoWindow.open(map, marker);
-          openInfoWindowRef.current = infoWindow;
           if (onVehicleClick) onVehicleClick(vehicle.id);
         });
         vehicleMarkersRef.current.set(vehicle.id, marker);
-        vehicleInfoWindowsRef.current.set(vehicle.id, infoWindow);
       }
 
       boundsForFit.extend({ lat, lng });
@@ -309,8 +289,6 @@ export function MapComponent({
       if (!currentVehicleIds.has(vid)) {
         marker.setMap(null);
         vehicleMarkersRef.current.delete(vid);
-        const iw = vehicleInfoWindowsRef.current.get(vid);
-        if (iw) { iw.close(); vehicleInfoWindowsRef.current.delete(vid); }
       }
     });
 
@@ -531,8 +509,6 @@ export function MapComponent({
     return () => {
       vehicleMarkersRef.current.forEach((m) => m.setMap(null));
       vehicleMarkersRef.current.clear();
-      vehicleInfoWindowsRef.current.forEach((iw) => iw.close());
-      vehicleInfoWindowsRef.current.clear();
     };
   }, []);
 

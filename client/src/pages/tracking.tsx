@@ -4,7 +4,7 @@ import { MapComponent } from "@/components/map-component";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Circle, Wifi, WifiOff, List, X } from "lucide-react";
+import { Search, Circle, Wifi, WifiOff, List, X, Gauge, MapPin, Navigation, Clock } from "lucide-react";
 import type { Vehicle, Location } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,6 +30,7 @@ interface ActiveConnection {
 export default function Tracking() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
+  const [mapPopupVehicleId, setMapPopupVehicleId] = useState<string | null>(null);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
@@ -349,7 +350,11 @@ export default function Tracking() {
             center={mapCenter}
             zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
             className="h-full w-full"
-            onVehicleClick={(id) => setSelectedVehicle((prev) => (prev === id ? null : id))}
+            onVehicleClick={(id) => {
+              setMapPopupVehicleId((prev) => (prev === id ? null : id));
+              setSelectedVehicle((prev) => (prev === id ? null : id));
+            }}
+            onMapClick={() => setMapPopupVehicleId(null)}
             routePolylines={routePolylines}
             bearingData={bearingData}
             focusVehicleId={selectedVehicle}
@@ -367,6 +372,104 @@ export default function Tracking() {
         >
           <List className="h-4 w-4" />
         </Button>
+
+        {/* Floating vehicle detail popup — appears on map when icon is tapped */}
+        {(() => {
+          const popupVehicle = vehicles?.find((v) => v.id === mapPopupVehicleId);
+          const popupLocation = mapPopupVehicleId
+            ? latestLocations?.find((l) => l.vehicleId === mapPopupVehicleId)
+            : null;
+          if (!popupVehicle) return null;
+          const speed = parseFloat(String(popupLocation?.speed ?? "0")).toFixed(0);
+          const lat = popupLocation ? parseFloat(String(popupLocation.latitude)).toFixed(5) : null;
+          const lng = popupLocation ? parseFloat(String(popupLocation.longitude)).toFixed(5) : null;
+          const connected = (activeConnections ?? []).some((c) => c.imei === popupVehicle.deviceId);
+          return (
+            <div
+              className="absolute bottom-6 right-4 z-40 w-72 max-w-[calc(100vw-2rem)]"
+              data-testid="map-vehicle-popup"
+            >
+              <Card className="shadow-xl border">
+                <CardContent className="p-0">
+                  {/* Header */}
+                  <div
+                    className="flex items-center justify-between px-4 py-3 rounded-t-md"
+                    style={{ backgroundColor: popupVehicle.iconColor ?? "hsl(var(--primary))" }}
+                  >
+                    <div className="flex items-center gap-2">
+                      {connected ? (
+                        <Wifi className="h-3.5 w-3.5 text-white/90" />
+                      ) : (
+                        <WifiOff className="h-3.5 w-3.5 text-white/60" />
+                      )}
+                      <span className="font-semibold text-white text-sm truncate max-w-[160px]">
+                        {popupVehicle.name}
+                      </span>
+                    </div>
+                    <button
+                      className="p-1 rounded text-white/80 hover:bg-white/20 transition-colors"
+                      onClick={() => setMapPopupVehicleId(null)}
+                      data-testid="button-close-map-popup"
+                      aria-label="Close vehicle popup"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Detail rows */}
+                  <div className="px-4 py-3 space-y-2">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Gauge className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-muted-foreground">Speed</span>
+                      <span className="ml-auto font-medium">{speed} km/h</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Circle
+                        className={`h-3.5 w-3.5 shrink-0 fill-current ${getStatusColor(popupVehicle.status)}`}
+                      />
+                      <span className="text-muted-foreground">Status</span>
+                      <Badge
+                        variant={getStatusBadge(popupVehicle.status)}
+                        className="ml-auto text-xs"
+                        data-testid={`popup-status-${popupVehicle.id}`}
+                      >
+                        {popupVehicle.status}
+                      </Badge>
+                    </div>
+                    {lat && lng && (
+                      <div className="flex items-start gap-2 text-sm">
+                        <Navigation className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                        <span className="text-muted-foreground">Coords</span>
+                        <span className="ml-auto font-mono text-xs text-right">
+                          {lat},<br />{lng}
+                        </span>
+                      </div>
+                    )}
+                    {popupLocation?.address && (
+                      <div className="flex items-start gap-2 text-sm">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                        <span className="text-muted-foreground text-xs leading-snug line-clamp-2">
+                          {String(popupLocation.address)}
+                        </span>
+                      </div>
+                    )}
+                    {popupLocation && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground text-xs">
+                          {formatTimestamp(popupLocation.timestamp)}
+                        </span>
+                      </div>
+                    )}
+                    {!popupLocation && (
+                      <p className="text-xs text-muted-foreground py-1">Waiting for GPS signal…</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
