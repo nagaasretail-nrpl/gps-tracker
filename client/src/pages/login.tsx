@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin } from "lucide-react";
+
+const nistaLogo = "/nista-logo.png";
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -61,9 +62,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-orange-50 to-white dark:from-slate-950 dark:to-slate-900 p-4 gap-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-2">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <MapPin className="h-8 w-8 text-orange-500" />
-            <h1 className="text-2xl font-bold">GPS Tracker</h1>
+          <div className="flex items-center justify-center mb-4">
+            <img
+              src={nistaLogo}
+              alt="NistaGPS"
+              className="h-14 w-auto object-contain"
+              data-testid="img-nista-logo-login"
+            />
           </div>
           <CardTitle>Login</CardTitle>
           <CardDescription>

@@ -1,5 +1,4 @@
 import { 
-  Map, 
   Radio, 
   History, 
   Shield, 
@@ -30,6 +29,8 @@ import {
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { User as UserType } from "@shared/schema";
+
+const nistaLogo = "/nista-logo.png";
 
 type UserWithoutPassword = Omit<UserType, "password">;
 
@@ -111,12 +112,13 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="p-6">
-        <div className="flex items-center gap-2">
-          <Map className="h-6 w-6 text-primary" />
-          <span className="text-lg font-semibold">GPS Tracker</span>
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">Personal + Fleet</p>
+      <SidebarHeader className="px-4 py-3 border-b">
+        <img
+          src={nistaLogo}
+          alt="NistaGPS"
+          className="h-10 w-auto object-contain"
+          data-testid="img-nista-logo-sidebar"
+        />
       </SidebarHeader>
       <SidebarContent>
         {renderGroup("Personal Tracking", visiblePersonal)}

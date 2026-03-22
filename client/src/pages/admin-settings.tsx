@@ -168,7 +168,7 @@ export default function AdminSettings() {
         <Settings className="h-6 w-6 text-primary" />
         <div>
           <h1 className="text-2xl font-bold">System Settings</h1>
-          <p className="text-sm text-muted-foreground">Configure system-wide settings for GPS Tracker</p>
+          <p className="text-sm text-muted-foreground">Configure system-wide settings for NistaGPS</p>
         </div>
       </div>
 
