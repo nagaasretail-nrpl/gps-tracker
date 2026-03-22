@@ -30,7 +30,7 @@ interface ActiveConnection {
 export default function Tracking() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
-  const [mobileListOpen, setMobileListOpen] = useState(false);
+  const [mobileListOpen, setMobileListOpen] = useState(true);
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -335,16 +335,10 @@ export default function Tracking() {
         {vehicleListPanel}
       </div>
 
-      {/* Mobile overlay drawer */}
+      {/* Mobile full-screen vehicle list */}
       {mobileListOpen && (
-        <div className="md:hidden absolute inset-0 z-50 flex">
-          <div className="w-80 max-w-[85vw] flex flex-col border-r shadow-lg">
-            {vehicleListPanel}
-          </div>
-          <div
-            className="flex-1 bg-black/30"
-            onClick={() => setMobileListOpen(false)}
-          />
+        <div className="md:hidden absolute inset-0 z-50 flex flex-col">
+          {vehicleListPanel}
         </div>
       )}
 
@@ -370,17 +364,39 @@ export default function Tracking() {
           />
         )}
 
-        {/* Mobile toggle button */}
-        <Button
-          size="icon"
-          variant="secondary"
-          className="md:hidden absolute top-3 left-3 z-40 shadow-md"
-          onClick={() => setMobileListOpen(true)}
-          data-testid="button-open-vehicle-list"
-          aria-label="Open vehicle list"
-        >
-          <List className="h-4 w-4" />
-        </Button>
+        {/* Mobile controls (only when list is closed) */}
+        {!mobileListOpen && (
+          <>
+            {/* Small list button at top-left */}
+            <Button
+              size="icon"
+              variant="secondary"
+              className="md:hidden absolute top-3 left-3 z-40 shadow-md"
+              onClick={() => setMobileListOpen(true)}
+              data-testid="button-open-vehicle-list"
+              aria-label="Open vehicle list"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+
+            {/* Bottom pill showing selected vehicle and change button */}
+            {selectedVehicle ? (
+              <div className="md:hidden absolute bottom-4 left-4 right-4 z-40">
+                <Button
+                  variant="secondary"
+                  className="w-full shadow-lg justify-between"
+                  onClick={() => setMobileListOpen(true)}
+                  data-testid="button-change-vehicle"
+                >
+                  <span className="truncate flex-1 text-left font-semibold text-sm">
+                    {vehicles?.find((v) => v.id === selectedVehicle)?.name ?? "Selected Vehicle"}
+                  </span>
+                  <span className="text-xs text-muted-foreground shrink-0 ml-2">Change Vehicle</span>
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );
