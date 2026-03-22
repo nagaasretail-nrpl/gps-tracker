@@ -273,6 +273,11 @@ export default function Tracking() {
                         </span>
                       </div>
                     </div>
+                    {vehicle.licensePlate && (
+                      <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate" data-testid={`text-plate-${vehicle.id}`}>
+                        {vehicle.licensePlate}
+                      </p>
+                    )}
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span
                         className="w-1.5 h-1.5 rounded-full flex-shrink-0"

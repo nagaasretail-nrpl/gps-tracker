@@ -186,19 +186,12 @@ export default function Dashboard() {
   const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
 
   const active = vehicles?.filter(v => {
+    if (v.status !== "active") return false;
     const loc = latestLocations?.find(l => l.vehicleId === v.id);
-    if (!loc) return false;
-    const isRecent = new Date(loc.timestamp).getTime() > thirtyMinAgo;
-    return isRecent && parseFloat(String(loc.speed ?? "0")) > 2;
+    return loc ? new Date(loc.timestamp).getTime() > thirtyMinAgo : false;
   }).length ?? 0;
 
-  const stopped = vehicles?.filter(v => {
-    const loc = latestLocations?.find(l => l.vehicleId === v.id);
-    if (!loc) return false;
-    const isRecent = new Date(loc.timestamp).getTime() > thirtyMinAgo;
-    return isRecent && parseFloat(String(loc.speed ?? "0")) <= 2;
-  }).length ?? 0;
-
+  const stopped = vehicles?.filter(v => v.status === "stopped").length ?? 0;
   const offline = total - active - stopped;
 
   const pieData = [
@@ -207,7 +200,10 @@ export default function Dashboard() {
     { name: "Offline", value: offline, color: STATUS_COLORS.offline },
   ].filter(d => d.value > 0);
 
-  const onlineCount = active + stopped;
+  const onlineCount = vehicles?.filter(v => {
+    const loc = latestLocations?.find(l => l.vehicleId === v.id);
+    return loc ? new Date(loc.timestamp).getTime() > thirtyMinAgo : false;
+  }).length ?? 0;
 
   const todayKm = todaySegments?.reduce((s, t) => s + t.distanceKm, 0) ?? 0;
   const todayIdleSec = todaySegments?.reduce((s, t) => s + t.idleTimeSec, 0) ?? 0;
