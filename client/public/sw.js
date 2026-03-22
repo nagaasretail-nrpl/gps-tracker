@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gps-tracker-v1';
+const CACHE_NAME = 'nistagps-v1';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',

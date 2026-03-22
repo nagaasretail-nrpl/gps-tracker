@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { Download, X } from "lucide-react";
+import { usePWAInstall } from "@/hooks/usePWAInstall";
 
 import nistaLogo from "@assets/image_1774170648070.png";
 
@@ -15,7 +17,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const { toast } = useToast();
+  const { canInstall, promptInstall } = usePWAInstall();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,6 +61,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       setIsLoading(false);
     }
   };
+
+  const showBanner = canInstall && !bannerDismissed;
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-orange-50 to-white dark:from-slate-950 dark:to-slate-900 p-4 gap-4">
@@ -120,6 +126,41 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         </div>
         <span data-testid="text-login-copyright">© 2025 Nagaas Retail Private Limited. All Rights Reserved.</span>
       </div>
+
+      {/* PWA Install Banner — only shows when browser is ready to prompt */}
+      {showBanner && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-between gap-3 px-4 py-3 bg-background border-t shadow-lg"
+          data-testid="banner-pwa-install"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex-shrink-0 h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center">
+              <Download className="h-4 w-4 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-tight">Install NistaGPS App</p>
+              <p className="text-xs text-muted-foreground truncate">Add to home screen for quick access</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              size="sm"
+              onClick={promptInstall}
+              data-testid="button-pwa-install"
+            >
+              Install
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setBannerDismissed(true)}
+              data-testid="button-pwa-dismiss"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

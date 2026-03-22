@@ -38,32 +38,13 @@
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js')
             .then((registration) => {
-              console.log('Service Worker registered:', registration);
+              console.log('NistaGPS Service Worker registered:', registration);
             })
             .catch((error) => {
               console.log('Service Worker registration failed:', error);
             });
         });
-
-        // Handle PWA installation prompt
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-          e.preventDefault();
-          deferredPrompt = e;
-          // Show install button if needed
-          console.log('PWA install prompt ready');
-        });
-
-        // Listen for app installed event
-        window.addEventListener('appinstalled', () => {
-          console.log('PWA was installed');
-          deferredPrompt = null;
-        });
       }
-
-      // Detect if running as PWA
-      const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-      console.log('Running as PWA:', isPWA);
     </script>
   </body>
 </html>
