@@ -45,7 +45,7 @@ type MapOverlay =
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Escape HTML special characters to prevent XSS in InfoWindow content */
+/** Escape HTML for InfoWindow content */
 function esc(str: string | null | undefined): string {
   if (!str) return "";
   return str
@@ -54,6 +54,15 @@ function esc(str: string | null | undefined): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+/** Escape text for embedding inside SVG attributes/content */
+function escSvg(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function computeBearing(
@@ -70,7 +79,7 @@ function computeBearing(
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-/** Build styled HTML for the vehicle InfoWindow */
+/** Build styled HTML for the vehicle InfoWindow popup */
 function buildVehicleInfoHtml(
   vehicle: Vehicle,
   location: Location,
@@ -84,20 +93,137 @@ function buildVehicleInfoHtml(
   const timeStr = ts.toLocaleString();
   const address = String(location.address ?? "").trim();
   return `
-    <div style="min-width:220px;max-width:280px;font-family:sans-serif;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.18);">
-      <div style="background:${headerColor};color:#fff;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <span style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${esc(vehicle.name)}</span>
+    <div style="min-width:230px;max-width:290px;font-family:sans-serif;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.18);">
+      <div style="background:${headerColor};color:#fff;padding:10px 14px;">
+        <span style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">${esc(vehicle.name)}</span>
       </div>
-      <div style="background:#fff;padding:10px 12px;font-size:12px;line-height:1.7;color:#222;">
-        ${address ? `<div><b style="color:#555;min-width:70px;display:inline-block;">Address:</b> ${esc(address)}</div>` : ""}
-        <div><b style="color:#555;min-width:70px;display:inline-block;">Position:</b> <span style="color:#1a6bc7;font-family:monospace;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span></div>
-        <div><b style="color:#555;min-width:70px;display:inline-block;">Speed:</b> ${speed.toFixed(0)} km/h</div>
-        <div><b style="color:#555;min-width:80px;display:inline-block;">Heading:</b> ${heading.toFixed(0)}&deg;</div>
-        <div><b style="color:#555;min-width:80px;display:inline-block;">Status:</b> ${esc(vehicle.status)}</div>
-        <div style="color:#888;font-size:11px;margin-top:4px;"><b style="color:#555;min-width:80px;display:inline-block;">Last update:</b> ${esc(timeStr)}</div>
+      <div style="background:#fff;padding:10px 14px;font-size:12px;line-height:1.75;color:#222;">
+        ${address ? `<div><b style="color:#666;min-width:85px;display:inline-block;">Address:</b> ${esc(address)}</div>` : ""}
+        <div><b style="color:#666;min-width:85px;display:inline-block;">Position:</b> <span style="color:#1a6bc7;font-family:monospace;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span></div>
+        <div><b style="color:#666;min-width:85px;display:inline-block;">Speed:</b> ${speed.toFixed(0)} km/h</div>
+        <div><b style="color:#666;min-width:85px;display:inline-block;">Heading:</b> ${heading.toFixed(0)}&deg;</div>
+        <div><b style="color:#666;min-width:85px;display:inline-block;">Status:</b> ${esc(vehicle.status)}</div>
+        <div style="color:#888;font-size:11px;margin-top:4px;"><b style="color:#666;min-width:85px;display:inline-block;">Last update:</b> ${esc(timeStr)}</div>
       </div>
     </div>
   `;
+}
+
+// ── PNG base64 cache (module-level singleton) ─────────────────────────────
+// We embed PNGs as base64 inside composite SVG markers so that
+// data: URI SVGs can reference them (cross-origin-safe).
+
+const _pngBase64Cache = new Map<string, string>();
+
+async function _fetchBase64(url: string): Promise<string> {
+  if (_pngBase64Cache.has(url)) return _pngBase64Cache.get(url)!;
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        _pngBase64Cache.set(url, result);
+        resolve(result);
+      };
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return "";
+  }
+}
+
+async function preloadVehicleImages(urls: string[]): Promise<void> {
+  await Promise.all(urls.filter(Boolean).map(_fetchBase64));
+}
+
+// ── Composite marker icon builders ────────────────────────────────────────
+
+const ICON_W = 44;
+const ICON_H = 44;
+const LABEL_GAP = 6;
+const LABEL_H = 22;
+const LABEL_PAD_X = 8;
+const FONT_SIZE = 11;
+
+/** Approximate pixel width of a label string at FONT_SIZE px in sans-serif */
+function approxTextWidth(text: string): number {
+  return Math.ceil(text.length * FONT_SIZE * 0.58) + LABEL_PAD_X * 2;
+}
+
+/**
+ * Build a composite Google Maps icon that shows the PNG vehicle image on the
+ * left and a white pill label (name + speed) to the right.
+ * Requires the PNG base64 data URL to already be in cache.
+ */
+function buildPngCompositeIcon(
+  pngUrl: string,
+  labelText: string,
+): google.maps.Icon {
+  const base64 = _pngBase64Cache.get(pngUrl) ?? "";
+  const labelW = Math.max(80, approxTextWidth(labelText));
+  const totalW = ICON_W + LABEL_GAP + labelW;
+  const labelX = ICON_W + LABEL_GAP;
+  const labelY = (ICON_H - LABEL_H) / 2;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${ICON_H}">
+    ${base64 ? `<image href="${base64}" x="0" y="0" width="${ICON_W}" height="${ICON_H}"/>` : ""}
+    <rect x="${labelX}" y="${labelY}" width="${labelW}" height="${LABEL_H}" rx="3"
+      fill="rgba(255,255,255,0.95)" stroke="#bbb" stroke-width="0.8"/>
+    <text x="${labelX + labelW / 2}" y="${ICON_H / 2}"
+      text-anchor="middle" dominant-baseline="middle"
+      font-size="${FONT_SIZE}" font-weight="600" font-family="sans-serif" fill="#111"
+    >${escSvg(labelText)}</text>
+  </svg>`;
+
+  return {
+    url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
+    anchor: new google.maps.Point(22, 22), // center of the vehicle icon area
+    size: new google.maps.Size(totalW, ICON_H),
+    scaledSize: new google.maps.Size(totalW, ICON_H),
+  };
+}
+
+/**
+ * Build a composite Google Maps icon that inlines an SVG vehicle icon on the
+ * left and adds a white pill label (name + speed) to the right.
+ */
+function buildSvgCompositeIcon(
+  vehicleSvgStr: string,
+  labelText: string,
+  anchorX: number,
+  anchorY: number,
+): google.maps.Icon {
+  const SVG_W = 40;
+  const SVG_H = 40;
+  const labelW = Math.max(80, approxTextWidth(labelText));
+  const totalW = SVG_W + LABEL_GAP + labelW;
+  const labelX = SVG_W + LABEL_GAP;
+  const labelY = (SVG_H - LABEL_H) / 2;
+
+  // Strip outer <svg ...> tags so we can nest the content inside our composite SVG
+  const innerContent = vehicleSvgStr
+    .replace(/^<svg[^>]*>/, "")
+    .replace(/<\/svg>\s*$/, "");
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${SVG_H}">
+    <svg width="${SVG_W}" height="${SVG_H}" viewBox="0 0 ${SVG_W} ${SVG_H}">${innerContent}</svg>
+    <rect x="${labelX}" y="${labelY}" width="${labelW}" height="${LABEL_H}" rx="3"
+      fill="rgba(255,255,255,0.95)" stroke="#bbb" stroke-width="0.8"/>
+    <text x="${labelX + labelW / 2}" y="${SVG_H / 2}"
+      text-anchor="middle" dominant-baseline="middle"
+      font-size="${FONT_SIZE}" font-weight="600" font-family="sans-serif" fill="#111"
+    >${escSvg(labelText)}</text>
+  </svg>`;
+
+  return {
+    url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
+    anchor: new google.maps.Point(anchorX, anchorY),
+    size: new google.maps.Size(totalW, SVG_H),
+    scaledSize: new google.maps.Size(totalW, SVG_H),
+  };
 }
 
 // ── Script loader (singleton, works even if component remounts) ────────────
@@ -106,16 +232,12 @@ let _loadPromise: Promise<void> | null = null;
 let _loadedKey: string | null = null;
 
 function loadGoogleMapsScript(apiKey: string): Promise<void> {
-  // Check if the library is already available at runtime.
   if (window.google?.maps?.Map) return Promise.resolve();
-
-  // If already loading with same key, reuse the promise.
   if (_loadPromise && _loadedKey === apiKey) return _loadPromise;
 
   _loadedKey = apiKey;
   _loadPromise = new Promise<void>((resolve, reject) => {
     const callbackName = `__gmaps_${Date.now()}`;
-    // Use the Window index signature (declared above) for the dynamic callback.
     window[callbackName] = () => {
       delete window[callbackName];
       resolve();
@@ -162,6 +284,8 @@ export function MapComponent({
   const hasFittedRef = useRef(false);
   const [status, setStatus] = useState<MapStatus>("loading");
   const [mapType, setMapType] = useState<"streets" | "satellite">("streets");
+  // Triggers marker rebuild after PNG base64 images finish pre-loading
+  const [imagesLoaded, setImagesLoaded] = useState(false);
 
   // ── 1. Load Google Maps API key and initialize map ──────────────────────
 
@@ -209,6 +333,16 @@ export function MapComponent({
       hasFittedRef.current = false;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 1b. Pre-load vehicle PNG images as base64 once map is ready ──────────
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    // Collect unique PNG URLs for all vehicle types
+    const types = ["car", "hatchback", "taxi", "tricycle", "truck", "van", "bus"];
+    const urls = types.map((t) => getVehicleImg(t)).filter(Boolean) as string[];
+    preloadVehicleImages(urls).then(() => setImagesLoaded(true));
+  }, [status]);
 
   // ── 2a. Always-on map click: close open InfoWindow unconditionally ────────
 
@@ -296,29 +430,34 @@ export function MapComponent({
       }
 
       const iconType = vehicle.type ?? "car";
-      const [anchorX] = getIconAnchor(iconType);
-      const pngImg = getVehicleImg(iconType);
+      const [anchorX, anchorY] = getIconAnchor(iconType);
+      const pngUrl = getVehicleImg(iconType);
 
-      // Anchor at BOTTOM-CENTER of icon so label appears below and
-      // the geographic point aligns with the bottom of the icon (like a map pin).
-      const markerIcon = pngImg
-        ? {
-            url: pngImg,
-            anchor: new google.maps.Point(22, 44), // bottom-center of 44×44 px PNG
-            size: new google.maps.Size(44, 44),
-            scaledSize: new google.maps.Size(44, 44),
-          }
-        : {
-            url: `data:image/svg+xml,${encodeURIComponent(getMarkerSvg(iconType, markerColor, heading))}`,
-            anchor: new google.maps.Point(anchorX, 40), // bottom of 40×40 SVG
-            size: new google.maps.Size(40, 40),
-            scaledSize: new google.maps.Size(40, 40),
-          };
+      // Label text: "Name (speed km/h)" — matching the reference app format
+      const displayName =
+        vehicle.name.length > 14 ? vehicle.name.slice(0, 13) + "…" : vehicle.name;
+      const labelText = `${displayName} (${speed.toFixed(0)} km/h)`;
 
-      // Label: vehicle name + speed shown below the icon
-      const labelText = `${vehicle.name} \u00b7 ${speed.toFixed(0)} km/h`;
+      // Build composite marker icon (vehicle image + label pill to the right)
+      let markerIcon: google.maps.Icon;
+      if (pngUrl && _pngBase64Cache.has(pngUrl)) {
+        // PNG vehicle: embed base64 image + label in one SVG
+        markerIcon = buildPngCompositeIcon(pngUrl, labelText);
+      } else if (pngUrl) {
+        // PNG vehicle but base64 not loaded yet — fall back to plain PNG icon
+        markerIcon = {
+          url: pngUrl,
+          anchor: new google.maps.Point(22, 22),
+          size: new google.maps.Size(44, 44),
+          scaledSize: new google.maps.Size(44, 44),
+        };
+      } else {
+        // SVG-only vehicle type: inline SVG content + label
+        const svgStr = getMarkerSvg(iconType, markerColor, heading);
+        markerIcon = buildSvgCompositeIcon(svgStr, labelText, anchorX, anchorY);
+      }
 
-      // Build InfoWindow content
+      // Build InfoWindow popup content
       const infoHtml = buildVehicleInfoHtml(vehicle, location, speed, lat, lng, heading);
 
       const existingMarker = vehicleMarkersRef.current.get(vehicle.id);
@@ -326,14 +465,6 @@ export function MapComponent({
         existingMarker.setPosition({ lat, lng });
         existingMarker.setIcon(markerIcon);
         existingMarker.setTitle(vehicle.name);
-        existingMarker.setLabel({
-          text: labelText,
-          className: "map-vehicle-label",
-          color: "#111111",
-          fontFamily: "sans-serif",
-          fontSize: "11px",
-          fontWeight: "600",
-        });
         const existingIW = vehicleInfoWindowsRef.current.get(vehicle.id);
         if (existingIW) existingIW.setContent(infoHtml);
       } else {
@@ -342,14 +473,6 @@ export function MapComponent({
           map,
           title: vehicle.name,
           icon: markerIcon,
-          label: {
-            text: labelText,
-            className: "map-vehicle-label",
-            color: "#111111",
-            fontFamily: "sans-serif",
-            fontSize: "11px",
-            fontWeight: "600",
-          },
         });
 
         const infoWindow = new google.maps.InfoWindow({
@@ -358,7 +481,6 @@ export function MapComponent({
         });
 
         marker.addListener("click", () => {
-          // Close any previously open InfoWindow
           if (openInfoWindowRef.current && openInfoWindowRef.current !== infoWindow) {
             openInfoWindowRef.current.close();
           }
@@ -398,7 +520,7 @@ export function MapComponent({
       }
       hasFittedRef.current = true;
     }
-  }, [status, vehicles, locations, bearingData, routePolylines, onVehicleClick]);
+  }, [status, vehicles, locations, bearingData, routePolylines, onVehicleClick, imagesLoaded]);
 
   // ── 3b. Render non-vehicle overlays (polylines, geofences, routes, POIs) ──
 
@@ -406,48 +528,35 @@ export function MapComponent({
     const map = mapInstanceRef.current;
     if (!map || status !== "ready") return;
 
-    // Clear previous non-vehicle overlays
     overlaysRef.current.forEach((o) => {
-      if (o instanceof google.maps.InfoWindow) {
-        o.close();
-      } else {
-        o.setMap(null);
-      }
+      if (o instanceof google.maps.InfoWindow) o.close();
+      else o.setMap(null);
     });
     overlaysRef.current = [];
 
     // ── Route polylines (vehicle history trails) ──────────────────────────
     routePolylines.forEach(({ vehicleId: trailVehicleId, coords, color }) => {
       if (coords.length < 2) return;
-
       const isSelected = focusVehicleId === trailVehicleId;
       const lineColor = color ?? "#3b82f6";
-
       const path = coords.map(([lat, lng]) => ({ lat, lng }));
       const poly = new google.maps.Polyline({
-        path,
-        map,
+        path, map,
         strokeColor: lineColor,
         strokeWeight: isSelected ? 4 : 2,
         strokeOpacity: isSelected ? 0.85 : 0.35,
       });
       overlaysRef.current.push(poly);
 
-      // Draw small waypoint dots along the trail
       if (isSelected) {
         coords.forEach(([lat, lng], idx) => {
-          const isLast = idx === coords.length - 1;
-          if (isLast) return; // skip last — that's the vehicle marker itself
+          if (idx === coords.length - 1) return;
           const dotMarker = new google.maps.Marker({
-            position: { lat, lng },
-            map,
+            position: { lat, lng }, map,
             icon: {
               path: google.maps.SymbolPath.CIRCLE,
-              fillColor: lineColor,
-              fillOpacity: idx === 0 ? 0.3 : 0.6,
-              strokeColor: lineColor,
-              strokeWeight: 1,
-              strokeOpacity: 0.5,
+              fillColor: lineColor, fillOpacity: idx === 0 ? 0.3 : 0.6,
+              strokeColor: lineColor, strokeWeight: 1, strokeOpacity: 0.5,
               scale: idx === 0 ? 3 : 4,
             },
             clickable: false,
@@ -459,80 +568,46 @@ export function MapComponent({
 
     // ── Geofence polygons ─────────────────────────────────────────────────
     geofences.forEach((geofence) => {
-      if (geofence.type === "polygon") {
-        const coords = geofence.coordinates as unknown as [number, number][];
-        if (!Array.isArray(coords) || coords.length < 3) return;
-
-        const path = coords.map(([lat, lng]) => ({ lat, lng }));
-        const color = geofence.color ?? "#10b981";
-
-        const polygon = new google.maps.Polygon({
-          paths: path,
-          map,
-          strokeColor: color,
-          strokeWeight: 2,
-          strokeOpacity: 0.8,
-          fillColor: color,
-          fillOpacity: 0.2,
-        });
-
-        const centroid = {
-          lat: coords.reduce((s, c) => s + c[0], 0) / coords.length,
-          lng: coords.reduce((s, c) => s + c[1], 0) / coords.length,
-        };
-
-        const infoContent = `
-          <div style="font-family:sans-serif;font-size:13px;">
-            <p style="font-weight:600;margin:0 0 4px">${esc(geofence.name)}</p>
-            ${geofence.description ? `<p style="margin:0;color:#666;">${esc(geofence.description)}</p>` : ""}
-          </div>
-        `;
-        const infoWindow = new google.maps.InfoWindow({ content: infoContent, position: centroid });
-
-        polygon.addListener("click", () => {
-          if (openInfoWindowRef.current) openInfoWindowRef.current.close();
-          infoWindow.open(map);
-          openInfoWindowRef.current = infoWindow;
-        });
-
-        overlaysRef.current.push(polygon);
-        overlaysRef.current.push(infoWindow);
-      }
+      if (geofence.type !== "polygon") return;
+      const coords = geofence.coordinates as unknown as [number, number][];
+      if (!Array.isArray(coords) || coords.length < 3) return;
+      const path = coords.map(([lat, lng]) => ({ lat, lng }));
+      const color = geofence.color ?? "#10b981";
+      const polygon = new google.maps.Polygon({
+        paths: path, map,
+        strokeColor: color, strokeWeight: 2, strokeOpacity: 0.8,
+        fillColor: color, fillOpacity: 0.2,
+      });
+      const centroid = {
+        lat: coords.reduce((s, c) => s + c[0], 0) / coords.length,
+        lng: coords.reduce((s, c) => s + c[1], 0) / coords.length,
+      };
+      const infoContent = `<div style="font-family:sans-serif;font-size:13px;"><p style="font-weight:600;margin:0 0 4px">${esc(geofence.name)}</p>${geofence.description ? `<p style="margin:0;color:#666;">${esc(geofence.description)}</p>` : ""}</div>`;
+      const infoWindow = new google.maps.InfoWindow({ content: infoContent, position: centroid });
+      polygon.addListener("click", () => {
+        if (openInfoWindowRef.current) openInfoWindowRef.current.close();
+        infoWindow.open(map);
+        openInfoWindowRef.current = infoWindow;
+      });
+      overlaysRef.current.push(polygon, infoWindow);
     });
 
     // ── Named route polylines ─────────────────────────────────────────────
     routes.forEach((route) => {
       const coords = route.coordinates as unknown as [number, number][];
       if (!Array.isArray(coords) || coords.length < 2) return;
-
       const path = coords.map(([lat, lng]) => ({ lat, lng }));
       const color = route.color ?? "#3b82f6";
-
-      const poly = new google.maps.Polyline({
-        path,
-        map,
-        strokeColor: color,
-        strokeWeight: 3,
-        strokeOpacity: 0.85,
-      });
-
-      const infoContent = `
-        <div style="font-family:sans-serif;font-size:13px;">
-          <p style="font-weight:600;margin:0 0 4px">${esc(route.name)}</p>
-          ${route.description ? `<p style="margin:0;color:#666;">${esc(route.description)}</p>` : ""}
-        </div>
-      `;
+      const poly = new google.maps.Polyline({ path, map, strokeColor: color, strokeWeight: 3, strokeOpacity: 0.85 });
+      const infoContent = `<div style="font-family:sans-serif;font-size:13px;"><p style="font-weight:600;margin:0 0 4px">${esc(route.name)}</p>${route.description ? `<p style="margin:0;color:#666;">${esc(route.description)}</p>` : ""}</div>`;
       const infoWindow = new google.maps.InfoWindow({ content: infoContent });
-
       poly.addListener("click", (e: google.maps.MapMouseEvent) => {
         if (openInfoWindowRef.current) openInfoWindowRef.current.close();
         if (e.latLng) infoWindow.setPosition(e.latLng);
         infoWindow.open(map);
         openInfoWindowRef.current = infoWindow;
       });
-
-      overlaysRef.current.push(poly);
-      overlaysRef.current.push(infoWindow);
+      overlaysRef.current.push(poly, infoWindow);
     });
 
     // ── POI markers ───────────────────────────────────────────────────────
@@ -540,58 +615,35 @@ export function MapComponent({
       const lat = parseFloat(poi.latitude);
       const lng = parseFloat(poi.longitude);
       if (isNaN(lat) || isNaN(lng)) return;
-
       const marker = new google.maps.Marker({
-        position: { lat, lng },
-        map,
-        title: poi.name,
+        position: { lat, lng }, map, title: poi.name,
         icon: {
           url: `data:image/svg+xml,${encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24">
-              <circle cx="12" cy="10" r="5" fill="#f59e0b" stroke="white" stroke-width="1.5"/>
-              <path d="M12 24 L7 14 Q12 16 17 14 Z" fill="#f59e0b" stroke="white" stroke-width="1"/>
-            </svg>`
+            `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="10" r="5" fill="#f59e0b" stroke="white" stroke-width="1.5"/><path d="M12 24 L7 14 Q12 16 17 14 Z" fill="#f59e0b" stroke="white" stroke-width="1"/></svg>`
           )}`,
           anchor: new google.maps.Point(14, 24),
           size: new google.maps.Size(28, 28),
           scaledSize: new google.maps.Size(28, 28),
         },
       });
-
-      const infoContent = `
-        <div style="font-family:sans-serif;font-size:13px;">
-          <p style="font-weight:600;margin:0 0 4px">${esc(poi.name)}</p>
-          ${poi.description ? `<p style="margin:3px 0;color:#666;">${esc(poi.description)}</p>` : ""}
-          ${poi.category ? `<p style="margin:3px 0;"><b>Category:</b> ${esc(poi.category)}</p>` : ""}
-        </div>
-      `;
+      const infoContent = `<div style="font-family:sans-serif;font-size:13px;"><p style="font-weight:600;margin:0 0 4px">${esc(poi.name)}</p>${poi.description ? `<p style="margin:3px 0;color:#666;">${esc(poi.description)}</p>` : ""}${poi.category ? `<p style="margin:3px 0;"><b>Category:</b> ${esc(poi.category)}</p>` : ""}</div>`;
       const infoWindow = new google.maps.InfoWindow({ content: infoContent });
-
       marker.addListener("click", () => {
         if (openInfoWindowRef.current) openInfoWindowRef.current.close();
         infoWindow.open(map, marker);
         openInfoWindowRef.current = infoWindow;
       });
-
-      overlaysRef.current.push(marker);
-      overlaysRef.current.push(infoWindow);
+      overlaysRef.current.push(marker, infoWindow);
     });
-  }, [
-    status, geofences, routes, pois,
-    routePolylines, focusVehicleId,
-  ]);
+  }, [status, geofences, routes, pois, routePolylines, focusVehicleId]);
 
-  // Update vehicle markers on location/vehicle changes (no blink)
-  useEffect(() => {
-    updateVehicleMarkers();
-  }, [updateVehicleMarkers]);
+  // Update vehicle markers on location/vehicle/image changes
+  useEffect(() => { updateVehicleMarkers(); }, [updateVehicleMarkers]);
 
   // Render non-vehicle overlays when their data changes
-  useEffect(() => {
-    renderOverlays();
-  }, [renderOverlays]);
+  useEffect(() => { renderOverlays(); }, [renderOverlays]);
 
-  // Clear vehicle markers on map unmount
+  // Cleanup vehicle markers on unmount
   useEffect(() => {
     return () => {
       vehicleMarkersRef.current.forEach((m) => m.setMap(null));
@@ -614,22 +666,6 @@ export function MapComponent({
       mapInstanceRef.current.setZoom(15);
     }
   }, [focusVehicleId, locations, status]);
-
-  // ── 5. Fit bounds to route polylines (history) ───────────────────────────
-
-  useEffect(() => {
-    if (!mapInstanceRef.current || focusVehicleId || status !== "ready") return;
-    if (!window.google?.maps) return;
-
-    const allCoords = routePolylines.flatMap((r) => r.coords);
-    if (allCoords.length < 2) return;
-
-    const bounds = new google.maps.LatLngBounds();
-    allCoords.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
-    if (!bounds.isEmpty()) {
-      mapInstanceRef.current.fitBounds(bounds);
-    }
-  }, [routePolylines, focusVehicleId, status]);
 
   // ── Control handlers ─────────────────────────────────────────────────────
 
@@ -665,21 +701,18 @@ export function MapComponent({
 
   return (
     <div className={`relative ${className}`}>
-      {/* Map container — always rendered so ref is attached */}
       <div
         ref={mapRef}
         className="w-full h-full rounded-md"
         style={{ display: status === "ready" ? "block" : "none" }}
       />
 
-      {/* Loading state */}
       {status === "loading" && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-md">
           <p className="text-sm text-muted-foreground animate-pulse">Loading map…</p>
         </div>
       )}
 
-      {/* No API key */}
       {status === "no-key" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-muted rounded-md">
           <MapPinOff className="h-10 w-10 text-muted-foreground" />
@@ -688,14 +721,12 @@ export function MapComponent({
         </div>
       )}
 
-      {/* Error state */}
       {status === "error" && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-md">
           <p className="text-sm text-muted-foreground">Failed to load map</p>
         </div>
       )}
 
-      {/* Map controls */}
       {status === "ready" && (
         <div className="absolute right-3 bottom-24 flex flex-col gap-1 z-10">
           <Button size="icon" variant="secondary" onClick={handleZoomIn} title="Zoom in" data-testid="button-zoom-in">
