@@ -199,6 +199,7 @@ export default function Vehicles() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
+  const [deleteVehicleConfirmText, setDeleteVehicleConfirmText] = useState("");
   const [importRows, setImportRows] = useState<ImportRow[]>([]);
   const [importFileName, setImportFileName] = useState("");
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -1151,7 +1152,7 @@ export default function Vehicles() {
         </Card>
       )}
       {/* Delete vehicle confirmation dialog */}
-      <AlertDialog open={!!vehicleToDelete} onOpenChange={(open) => { if (!open) setVehicleToDelete(null); }}>
+      <AlertDialog open={!!vehicleToDelete} onOpenChange={(open) => { if (!open) { setVehicleToDelete(null); setDeleteVehicleConfirmText(""); } }}>
         <AlertDialogContent data-testid="dialog-delete-vehicle-confirm">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Vehicle?</AlertDialogTitle>
@@ -1161,15 +1162,30 @@ export default function Vehicles() {
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="px-1 pb-2">
+            <Label className="text-sm text-muted-foreground mb-1.5 block">
+              Type <span className="font-mono font-semibold text-foreground">DELETE</span> to confirm
+            </Label>
+            <Input
+              value={deleteVehicleConfirmText}
+              onChange={(e) => setDeleteVehicleConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="font-mono"
+              data-testid="input-delete-vehicle-confirm"
+              autoComplete="off"
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-delete-vehicle-cancel">Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteVehicleConfirmText !== "DELETE"}
               data-testid="button-delete-vehicle-confirm"
               onClick={() => {
-                if (vehicleToDelete) {
+                if (vehicleToDelete && deleteVehicleConfirmText === "DELETE") {
                   deleteMutation.mutate(vehicleToDelete.id);
                   setVehicleToDelete(null);
+                  setDeleteVehicleConfirmText("");
                 }
               }}
             >

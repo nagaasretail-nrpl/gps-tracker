@@ -118,6 +118,7 @@ export default function AdminUsers() {
   const [openMenuPanels, setOpenMenuPanels] = useState<Record<string, boolean>>({});
   const [vehicleSearches, setVehicleSearches] = useState<Record<string, string>>({});
   const [userToDelete, setUserToDelete] = useState<UserWithoutPassword | null>(null);
+  const [deleteUserConfirmText, setDeleteUserConfirmText] = useState("");
 
   const { data: users = [], isLoading } = useQuery<UserWithoutPassword[]>({
     queryKey: ["/api/users"],
@@ -698,7 +699,7 @@ export default function AdminUsers() {
       </div>
 
       {/* Delete user confirmation dialog */}
-      <AlertDialog open={!!userToDelete} onOpenChange={(open) => { if (!open) setUserToDelete(null); }}>
+      <AlertDialog open={!!userToDelete} onOpenChange={(open) => { if (!open) { setUserToDelete(null); setDeleteUserConfirmText(""); } }}>
         <AlertDialogContent data-testid="dialog-delete-user-confirm">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete User?</AlertDialogTitle>
@@ -708,15 +709,30 @@ export default function AdminUsers() {
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="px-1 pb-2">
+            <Label className="text-sm text-muted-foreground mb-1.5 block">
+              Type <span className="font-mono font-semibold text-foreground">DELETE</span> to confirm
+            </Label>
+            <Input
+              value={deleteUserConfirmText}
+              onChange={(e) => setDeleteUserConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="font-mono"
+              data-testid="input-delete-user-confirm"
+              autoComplete="off"
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-delete-user-cancel">Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteUserConfirmText !== "DELETE"}
               data-testid="button-delete-user-confirm"
               onClick={() => {
-                if (userToDelete) {
+                if (userToDelete && deleteUserConfirmText === "DELETE") {
                   deleteMutation.mutate(userToDelete.id);
                   setUserToDelete(null);
+                  setDeleteUserConfirmText("");
                 }
               }}
             >
