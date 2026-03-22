@@ -93,10 +93,11 @@ async function markPaymentProcessed(paymentId: string): Promise<void> {
 
 // Returns null for admin (all vehicles allowed) or the specific allowed vehicle IDs for regular users.
 // An empty array means the user has no vehicles assigned.
+// Always fetches the persisted user from storage so role changes take effect immediately.
 async function getAllowedVehicleIds(reqUser: { id: string; role: string }): Promise<string[] | null> {
-  if (reqUser.role === "admin") return null;
   const user = await storage.getUserById(reqUser.id);
   if (!user) return [];
+  if (user.role === "admin") return null;
   return user.allowedVehicleIds ?? [];
 }
 
