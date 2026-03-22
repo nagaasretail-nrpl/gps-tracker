@@ -92,9 +92,9 @@ function buildVehicleInfoHtml(
         ${address ? `<div><b style="color:#555;min-width:70px;display:inline-block;">Address:</b> ${esc(address)}</div>` : ""}
         <div><b style="color:#555;min-width:70px;display:inline-block;">Position:</b> <span style="color:#1a6bc7;font-family:monospace;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span></div>
         <div><b style="color:#555;min-width:70px;display:inline-block;">Speed:</b> ${speed.toFixed(0)} km/h</div>
-        <div><b style="color:#555;min-width:70px;display:inline-block;">Angle:</b> ${heading.toFixed(0)}&deg;</div>
-        <div><b style="color:#555;min-width:70px;display:inline-block;">Status:</b> ${esc(vehicle.status)}</div>
-        <div style="color:#888;font-size:11px;margin-top:4px;"><b style="color:#555;min-width:70px;display:inline-block;">Time:</b> ${esc(timeStr)}</div>
+        <div><b style="color:#555;min-width:80px;display:inline-block;">Heading:</b> ${heading.toFixed(0)}&deg;</div>
+        <div><b style="color:#555;min-width:80px;display:inline-block;">Status:</b> ${esc(vehicle.status)}</div>
+        <div style="color:#888;font-size:11px;margin-top:4px;"><b style="color:#555;min-width:80px;display:inline-block;">Last update:</b> ${esc(timeStr)}</div>
       </div>
     </div>
   `;
@@ -210,7 +210,25 @@ export function MapComponent({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 2. Attach/detach map click listener when onMapClick changes ─────────
+  // ── 2a. Always-on map click: close open InfoWindow unconditionally ────────
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || status !== "ready") return;
+
+    const listener = map.addListener("click", () => {
+      if (openInfoWindowRef.current) {
+        openInfoWindowRef.current.close();
+        openInfoWindowRef.current = null;
+      }
+    });
+
+    return () => {
+      google.maps.event.removeListener(listener);
+    };
+  }, [status]);
+
+  // ── 2b. Attach/detach optional onMapClick callback listener ──────────────
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -226,11 +244,6 @@ export function MapComponent({
         "click",
         (e: google.maps.MapMouseEvent) => {
           if (e.latLng) onMapClick(e.latLng.lat(), e.latLng.lng());
-          // Close any open InfoWindow on blank map click
-          if (openInfoWindowRef.current) {
-            openInfoWindowRef.current.close();
-            openInfoWindowRef.current = null;
-          }
         }
       );
     }
@@ -303,7 +316,7 @@ export function MapComponent({
           };
 
       // Label: vehicle name + speed shown below the icon
-      const labelText = `${vehicle.name}  ${speed.toFixed(0)} km/h`;
+      const labelText = `${vehicle.name} \u00b7 ${speed.toFixed(0)} km/h`;
 
       // Build InfoWindow content
       const infoHtml = buildVehicleInfoHtml(vehicle, location, speed, lat, lng, heading);
