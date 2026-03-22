@@ -30,7 +30,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { User as UserType } from "@shared/schema";
 
-import nistaLogo from "@assets/image_1774170648070.png";
+const nistaLogo = "/nista-logo.png";
 
 type UserWithoutPassword = Omit<UserType, "password">;
 
@@ -116,7 +116,7 @@ export function AppSidebar() {
         <img
           src={nistaLogo}
           alt="NistaGPS"
-          className="h-10 w-auto object-contain mix-blend-multiply dark:mix-blend-screen"
+          className="h-10 w-auto object-contain"
           data-testid="img-nista-logo-sidebar"
         />
       </SidebarHeader>

@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Download, X } from "lucide-react";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 
-import nistaLogo from "@assets/image_1774170648070.png";
+const nistaLogo = "/nista-logo.png";
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -72,7 +72,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             <img
               src={nistaLogo}
               alt="NistaGPS"
-              className="h-14 w-auto object-contain mix-blend-multiply dark:mix-blend-screen"
+              className="h-14 w-auto object-contain"
               data-testid="img-nista-logo-login"
             />
           </div>
