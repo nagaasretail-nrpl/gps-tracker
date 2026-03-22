@@ -91,6 +91,15 @@ async function markPaymentProcessed(paymentId: string): Promise<void> {
   }
 }
 
+// Returns null for admin (all vehicles allowed) or the specific allowed vehicle IDs for regular users.
+// An empty array means the user has no vehicles assigned.
+async function getAllowedVehicleIds(reqUser: { id: string; role: string }): Promise<string[] | null> {
+  if (reqUser.role === "admin") return null;
+  const user = await storage.getUserById(reqUser.id);
+  if (!user) return [];
+  return user.allowedVehicleIds ?? [];
+}
+
 // Auto-expiry middleware: after requireAuth, auto-set non-admin users to inactive
 // when their subscriptionExpiry has passed. Skip for /api/auth/* and /api/payments/*.
 async function checkSubscriptionExpiry(req: Request, res: Response, next: NextFunction) {
@@ -319,8 +328,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Vehicles (protected routes)
   app.get("/api/vehicles", requireAuth, async (req, res) => {
     try {
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
       const vehicles = await storage.getVehicles();
-      res.json(vehicles);
+      const filtered = allowedIds === null ? vehicles : vehicles.filter(v => allowedIds.includes(v.id));
+      res.json(filtered);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch vehicles" });
     }
@@ -328,6 +339,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/vehicles/:id", requireAuth, async (req, res) => {
     try {
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (allowedIds !== null && !allowedIds.includes(req.params.id)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const vehicle = await storage.getVehicle(req.params.id);
       if (!vehicle) {
         return res.status(404).json({ error: "Vehicle not found" });
@@ -430,13 +445,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/locations", requireAuth, async (req, res) => {
     try {
       const { vehicleId, activityId, startDate, endDate } = req.query;
-      const locations = await storage.getLocations(
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (vehicleId && allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+        return res.json([]);
+      }
+      const locations = (await storage.getLocations(
         vehicleId as string,
         activityId as string,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
-      );
-      res.json(locations);
+      )) ?? [];
+      const filtered = allowedIds === null ? locations : locations.filter(l => l.vehicleId && allowedIds.includes(l.vehicleId));
+      res.json(filtered);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch locations" });
     }
@@ -444,8 +464,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/locations/latest", requireAuth, async (req, res) => {
     try {
-      const locations = await storage.getLatestLocations();
-      res.json(locations);
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      const locations = (await storage.getLatestLocations()) ?? [];
+      const filtered = allowedIds === null ? locations : locations.filter(l => l.vehicleId && allowedIds.includes(l.vehicleId));
+      res.json(filtered);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch latest locations" });
     }
@@ -456,6 +478,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { vehicleId, startDate, endDate } = req.query;
       if (!vehicleId || !startDate || !endDate) {
         return res.status(400).json({ error: "vehicleId, startDate, and endDate are required" });
+      }
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+        return res.json([]);
       }
       const locations = await storage.getLocationHistory(
         vehicleId as string,
@@ -605,12 +631,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return segments;
       }
 
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+
       let vehicleIds: string[];
       if (vehicleId && vehicleId !== "all") {
+        if (allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+          return res.json([]);
+        }
         vehicleIds = [vehicleId as string];
       } else {
         const allVehicles = await storage.getVehicles();
-        vehicleIds = allVehicles.map(v => v.id);
+        const allIds = allVehicles.map(v => v.id);
+        vehicleIds = allowedIds === null ? allIds : allIds.filter(id => allowedIds.includes(id));
       }
 
       const allSegments: TripSegment[] = [];
@@ -795,12 +827,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/trips", requireAuth, async (req, res) => {
     try {
       const { vehicleId, startDate, endDate } = req.query;
-      const trips = await storage.getTrips(
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (vehicleId && allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+        return res.json([]);
+      }
+      const trips = (await storage.getTrips(
         vehicleId as string,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
-      );
-      res.json(trips);
+      )) ?? [];
+      const filtered = allowedIds === null ? trips : trips.filter(t => t.vehicleId && allowedIds.includes(t.vehicleId));
+      res.json(filtered);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch trips" });
     }

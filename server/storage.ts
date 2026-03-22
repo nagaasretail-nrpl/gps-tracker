@@ -518,7 +518,14 @@ export class DbStorage implements IStorage {
       query = query.where(and(...conditions)) as typeof query;
     }
     
-    return await query.orderBy(desc(trips.startTime));
+    try {
+      return await query.orderBy(desc(trips.startTime));
+    } catch (err) {
+      if (err instanceof TypeError && String(err.message).includes("map")) {
+        return [];
+      }
+      throw err;
+    }
   }
 
   async createTrip(insertTrip: InsertTrip): Promise<Trip> {
