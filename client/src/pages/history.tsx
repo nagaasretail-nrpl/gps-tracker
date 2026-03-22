@@ -23,6 +23,8 @@ import {
   ChevronDown,
   ChevronRight,
   Navigation,
+  List,
+  X,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import type { Vehicle, Location } from "@shared/schema";
@@ -55,6 +57,7 @@ export default function History() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
   const [autoPlayPending, setAutoPlayPending] = useState(false);
+  const [mobileDatesOpen, setMobileDatesOpen] = useState(false);
 
   const { data: vehicles } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
@@ -328,9 +331,10 @@ export default function History() {
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 relative overflow-hidden">
+        {/* Desktop date sidebar */}
         {sortedDates.length > 0 && (
-          <div className="w-60 flex-shrink-0 border-r bg-card flex flex-col">
+          <div className="hidden md:flex w-60 flex-shrink-0 border-r bg-card flex-col">
             <div className="px-3 py-2 border-b">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 {sortedDates.length} date{sortedDates.length !== 1 ? "s" : ""} found
@@ -413,6 +417,88 @@ export default function History() {
           </div>
         )}
 
+        {/* Mobile date overlay drawer */}
+        {mobileDatesOpen && sortedDates.length > 0 && (
+          <div className="md:hidden absolute inset-0 z-50 flex">
+            <div className="w-72 max-w-[85vw] bg-card flex flex-col border-r shadow-lg">
+              <div className="px-3 py-2 border-b flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  {sortedDates.length} date{sortedDates.length !== 1 ? "s" : ""} found
+                </p>
+                <button onClick={() => setMobileDatesOpen(false)} data-testid="button-close-dates">
+                  <X className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="p-2 space-y-1">
+                  {sortedDates.map((key) => {
+                    const group = dateGroups[key];
+                    const isExpanded = !!expandedDates[key];
+                    const isActive = selectedDate === key;
+                    return (
+                      <div
+                        key={key}
+                        className={`rounded-md border overflow-hidden ${
+                          isActive ? "border-primary/40" : "border-border"
+                        }`}
+                      >
+                        <button
+                          onClick={() => toggleExpand(key)}
+                          className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 ${
+                            isActive ? "bg-primary/5" : "bg-card hover-elevate"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <CalendarIcon
+                              className={`h-3.5 w-3.5 flex-shrink-0 ${
+                                isActive ? "text-primary" : "text-muted-foreground"
+                              }`}
+                            />
+                            <div className="min-w-0">
+                              <p className={`text-sm font-medium truncate ${isActive ? "text-primary" : "text-foreground"}`}>
+                                {formatDateKey(key)}
+                              </p>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <MapPin className="h-2.5 w-2.5" />
+                                {group.length} points
+                              </p>
+                            </div>
+                          </div>
+                          {isExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                          )}
+                        </button>
+                        {isExpanded && (
+                          <div className="px-3 pb-3 pt-1 bg-card space-y-2 border-t border-border">
+                            {group.length > 0 && (
+                              <Badge variant="outline" className="text-xs font-normal">
+                                {format(new Date(group[0].timestamp), "HH:mm")}
+                                {" — "}
+                                {format(new Date(group[group.length - 1].timestamp), "HH:mm")}
+                              </Badge>
+                            )}
+                            <Button
+                              variant={isActive ? "default" : "outline"}
+                              className="w-full text-xs"
+                              onClick={() => { handleSelectForMap(key); setMobileDatesOpen(false); }}
+                            >
+                              <Navigation className="h-3.5 w-3.5 mr-1.5" />
+                              {isActive ? "Viewing Route" : "View Route on Map"}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </div>
+            <div className="flex-1 bg-black/30" onClick={() => setMobileDatesOpen(false)} />
+          </div>
+        )}
+
         <div className="flex-1 relative min-w-0">
           {locationsLoading ? (
             <Skeleton className="h-full w-full" />
@@ -436,6 +522,20 @@ export default function History() {
                 </p>
               </div>
             </div>
+          )}
+
+          {/* Mobile dates toggle */}
+          {sortedDates.length > 0 && (
+            <Button
+              size="icon"
+              variant="secondary"
+              className="md:hidden absolute top-3 left-3 z-40 shadow-md"
+              onClick={() => setMobileDatesOpen(true)}
+              data-testid="button-open-dates"
+              aria-label="Open dates panel"
+            >
+              <List className="h-4 w-4" />
+            </Button>
           )}
 
           {validActiveDateLocations.length > 0 && (

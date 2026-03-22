@@ -63,6 +63,7 @@ export interface IStorage {
   // Locations
   getLocations(vehicleId?: string, activityId?: string, startDate?: Date, endDate?: Date): Promise<Location[]>;
   getLatestLocations(): Promise<Location[]>;
+  getLatestLocationForVehicle(vehicleId: string): Promise<Location | null>;
   getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]>;
   getLocationTrail(since: Date, perVehicleLimit: number): Promise<Location[]>;
   getActivityLocationHistory(activityId: string): Promise<Location[]>;
@@ -304,6 +305,29 @@ export class DbStorage implements IStorage {
       ORDER BY vehicle_id, timestamp DESC
     `);
     return result.rows as Location[];
+  }
+
+  async getLatestLocationForVehicle(vehicleId: string): Promise<Location | null> {
+    const result = await db.execute(sql`
+      SELECT
+        id,
+        vehicle_id   AS "vehicleId",
+        activity_id  AS "activityId",
+        latitude,
+        longitude,
+        altitude,
+        speed,
+        heading,
+        accuracy,
+        address,
+        timestamp
+      FROM locations
+      WHERE vehicle_id = ${vehicleId}
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `);
+    if (!result.rows || result.rows.length === 0) return null;
+    return result.rows[0] as Location;
   }
 
   async getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]> {

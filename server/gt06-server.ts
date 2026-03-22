@@ -18,6 +18,18 @@ import { broadcastLocationUpdate, broadcastVehicleUpdate } from "./broadcaster";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
 
+// ─── Haversine distance (km) ──────────────────────────────────────────────
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ─── Active connection registry ───────────────────────────────────────────
 interface ActiveConnection {
   imei: string;
@@ -144,8 +156,8 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   }
 
   // Reject if not enough satellites for a reliable fix
-  if (satellites < 3) {
-    console.warn(`[GT06] Discarding location: only ${satellites} satellites (need ≥3)`);
+  if (satellites < 4) {
+    console.warn(`[GT06] Discarding location: only ${satellites} satellites (need ≥4)`);
     return null;
   }
 
@@ -312,6 +324,26 @@ async function handlePacket(
         // parseLocation() already logs a specific reason via console.warn.
         socket.write(buildAck(0x12, pkt.serial));
         break;
+      }
+
+      // ── Coordinate jump guard ────────────────────────────────────────────
+      // Reject coordinates that are geographically impossible jumps from the
+      // vehicle's last known valid position (e.g. ocean ghost coordinates).
+      const lastLoc = await storage.getLatestLocationForVehicle(vehicleId);
+      if (lastLoc) {
+        const prevLat = parseFloat(String(lastLoc.latitude));
+        const prevLng = parseFloat(String(lastLoc.longitude));
+        if (!isNaN(prevLat) && !isNaN(prevLng) && !(prevLat === 0 && prevLng === 0)) {
+          const jumpKm = haversineKm(prevLat, prevLng, loc.lat, loc.lng);
+          if (jumpKm > 500) {
+            console.warn(
+              `[GT06] Jump guard: discarding ${deviceImei} coord (${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}) — ` +
+              `${jumpKm.toFixed(0)} km from last known (${prevLat.toFixed(5)}, ${prevLng.toFixed(5)})`
+            );
+            socket.write(buildAck(0x12, pkt.serial));
+            break;
+          }
+        }
       }
 
       // Update last-packet time and count in the registry

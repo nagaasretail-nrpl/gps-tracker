@@ -125,6 +125,8 @@ export function MapComponent({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const overlaysRef = useRef<MapOverlay[]>([]);
+  const vehicleMarkersRef = useRef<Map<string, google.maps.Marker>>(new Map());
+  const vehicleInfoWindowsRef = useRef<Map<string, google.maps.InfoWindow>>(new Map());
   const openInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const hasFittedRef = useRef(false);
@@ -206,13 +208,135 @@ export function MapComponent({
     };
   }, [onMapClick, status]);
 
-  // ── 3. Render all overlays (markers, polylines, polygons) ───────────────
+  // ── 3a. Update vehicle markers in-place (no blink) ──────────────────────
+
+  const updateVehicleMarkers = useCallback(() => {
+    const map = mapInstanceRef.current;
+    if (!map || status !== "ready") return;
+
+    const currentVehicleIds = new Set<string>();
+    const boundsForFit = new google.maps.LatLngBounds();
+
+    locations.forEach((location) => {
+      const vehicle = vehicles.find((v) => v.id === location.vehicleId);
+      if (!vehicle) return;
+
+      const lat = parseFloat(String(location.latitude));
+      const lng = parseFloat(String(location.longitude));
+      if (isNaN(lat) || isNaN(lng)) return;
+
+      currentVehicleIds.add(vehicle.id);
+
+      const speed = parseFloat(String(location.speed ?? "0"));
+      const markerColor = speed > 2 ? "#22c55e" : (vehicle.iconColor ?? "#2563eb");
+
+      let heading = parseFloat(String(location.heading ?? "0")) || 0;
+      if (!heading) {
+        const bCoords = location.vehicleId ? bearingData[location.vehicleId] : undefined;
+        if (bCoords && bCoords.length >= 2) {
+          const prev = bCoords[bCoords.length - 2];
+          const curr = bCoords[bCoords.length - 1];
+          heading = computeBearing(prev[0], prev[1], curr[0], curr[1]);
+        } else {
+          const vehicleRoute = routePolylines.find((r) => r.vehicleId === location.vehicleId);
+          if (vehicleRoute && vehicleRoute.coords.length >= 2) {
+            const last = vehicleRoute.coords[vehicleRoute.coords.length - 1];
+            const prev = vehicleRoute.coords[vehicleRoute.coords.length - 2];
+            heading = computeBearing(prev[0], prev[1], last[0], last[1]);
+          }
+        }
+      }
+
+      const iconType = vehicle.type ?? "car";
+      const [anchorX, anchorY] = getIconAnchor(iconType);
+      const pngImg = getVehicleImg(iconType);
+      const markerIcon = pngImg
+        ? {
+            url: pngImg,
+            anchor: new google.maps.Point(22, 22),
+            size: new google.maps.Size(44, 44),
+            scaledSize: new google.maps.Size(44, 44),
+          }
+        : {
+            url: `data:image/svg+xml,${encodeURIComponent(getMarkerSvg(iconType, markerColor, heading))}`,
+            anchor: new google.maps.Point(anchorX, anchorY),
+            size: new google.maps.Size(40, 40),
+            scaledSize: new google.maps.Size(40, 40),
+          };
+
+      const infoContent = `
+        <div style="min-width:200px;font-family:sans-serif;font-size:13px;">
+          <p style="font-weight:600;margin:0 0 6px">${esc(vehicle.name)}</p>
+          <p style="margin:3px 0"><b>Speed:</b> ${speed.toFixed(0)} km/h</p>
+          <p style="margin:3px 0"><b>Status:</b> ${esc(vehicle.status)}</p>
+          <p style="margin:3px 0"><b>Coords:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
+          <p style="margin:3px 0"><b>Heading:</b> ${heading.toFixed(0)}&deg;</p>
+          <p style="margin:3px 0"><b>Location:</b> ${esc(location.address) || "Unknown"}</p>
+          <p style="margin:3px 0;font-size:11px;color:#666;">Last update: ${esc(new Date(location.timestamp).toLocaleString())}</p>
+        </div>
+      `;
+
+      const existingMarker = vehicleMarkersRef.current.get(vehicle.id);
+      if (existingMarker) {
+        existingMarker.setPosition({ lat, lng });
+        existingMarker.setIcon(markerIcon);
+        existingMarker.setTitle(vehicle.name);
+        const existingInfoWindow = vehicleInfoWindowsRef.current.get(vehicle.id);
+        if (existingInfoWindow) existingInfoWindow.setContent(infoContent);
+      } else {
+        const marker = new google.maps.Marker({
+          position: { lat, lng },
+          map,
+          title: vehicle.name,
+          icon: markerIcon,
+        });
+        const infoWindow = new google.maps.InfoWindow({ content: infoContent });
+        marker.addListener("click", () => {
+          if (openInfoWindowRef.current) openInfoWindowRef.current.close();
+          infoWindow.open(map, marker);
+          openInfoWindowRef.current = infoWindow;
+          if (onVehicleClick) onVehicleClick(vehicle.id);
+        });
+        vehicleMarkersRef.current.set(vehicle.id, marker);
+        vehicleInfoWindowsRef.current.set(vehicle.id, infoWindow);
+      }
+
+      boundsForFit.extend({ lat, lng });
+    });
+
+    // Remove markers for vehicles no longer in the locations list
+    vehicleMarkersRef.current.forEach((marker, vid) => {
+      if (!currentVehicleIds.has(vid)) {
+        marker.setMap(null);
+        vehicleMarkersRef.current.delete(vid);
+        const iw = vehicleInfoWindowsRef.current.get(vid);
+        if (iw) { iw.close(); vehicleInfoWindowsRef.current.delete(vid); }
+      }
+    });
+
+    // Initial fit to vehicle markers (only once)
+    if (currentVehicleIds.size > 0 && !hasFittedRef.current) {
+      if (currentVehicleIds.size === 1) {
+        map.setCenter(boundsForFit.getCenter()!);
+        map.setZoom(14);
+      } else {
+        map.fitBounds(boundsForFit);
+        const listener = map.addListener("idle", () => {
+          if ((map.getZoom() ?? 0) > 15) map.setZoom(15);
+          google.maps.event.removeListener(listener);
+        });
+      }
+      hasFittedRef.current = true;
+    }
+  }, [status, vehicles, locations, bearingData, routePolylines, onVehicleClick]);
+
+  // ── 3b. Render non-vehicle overlays (polylines, geofences, routes, POIs) ──
 
   const renderOverlays = useCallback(() => {
     const map = mapInstanceRef.current;
     if (!map || status !== "ready") return;
 
-    // Clear previous overlays
+    // Clear previous non-vehicle overlays
     overlaysRef.current.forEach((o) => {
       if (o instanceof google.maps.InfoWindow) {
         o.close();
@@ -226,9 +350,6 @@ export function MapComponent({
       openInfoWindowRef.current.close();
       openInfoWindowRef.current = null;
     }
-
-    const vehicleMarkers: google.maps.Marker[] = [];
-    const boundsForFit = new google.maps.LatLngBounds();
 
     // ── Route polylines (vehicle history trails) ──────────────────────────
     routePolylines.forEach(({ vehicleId: trailVehicleId, coords, color }) => {
@@ -270,101 +391,6 @@ export function MapComponent({
         });
       }
     });
-
-    // ── Vehicle location markers ──────────────────────────────────────────
-    locations.forEach((location) => {
-      const vehicle = vehicles.find((v) => v.id === location.vehicleId);
-      if (!vehicle) return;
-
-      const lat = parseFloat(String(location.latitude));
-      const lng = parseFloat(String(location.longitude));
-      if (isNaN(lat) || isNaN(lng)) return;
-
-      const speed = parseFloat(String(location.speed ?? "0"));
-      const isMoving = speed > 2;
-      const markerColor = isMoving ? "#22c55e" : (vehicle.iconColor ?? "#2563eb");
-
-      let heading = parseFloat(String(location.heading ?? "0")) || 0;
-      if (!heading) {
-        const bCoords = location.vehicleId ? bearingData[location.vehicleId] : undefined;
-        if (bCoords && bCoords.length >= 2) {
-          const prev = bCoords[bCoords.length - 2];
-          const curr = bCoords[bCoords.length - 1];
-          heading = computeBearing(prev[0], prev[1], curr[0], curr[1]);
-        } else {
-          const vehicleRoute = routePolylines.find((r) => r.vehicleId === location.vehicleId);
-          if (vehicleRoute && vehicleRoute.coords.length >= 2) {
-            const last = vehicleRoute.coords[vehicleRoute.coords.length - 1];
-            const prev = vehicleRoute.coords[vehicleRoute.coords.length - 2];
-            heading = computeBearing(prev[0], prev[1], last[0], last[1]);
-          }
-        }
-      }
-
-      const iconType = vehicle.type ?? "car";
-      const [anchorX, anchorY] = getIconAnchor(iconType);
-      const pngImg = getVehicleImg(iconType);
-      const markerIcon = pngImg
-        ? {
-            url: pngImg,
-            anchor: new google.maps.Point(22, 22),
-            size: new google.maps.Size(44, 44),
-            scaledSize: new google.maps.Size(44, 44),
-          }
-        : {
-            url: `data:image/svg+xml,${encodeURIComponent(getMarkerSvg(iconType, markerColor, heading))}`,
-            anchor: new google.maps.Point(anchorX, anchorY),
-            size: new google.maps.Size(40, 40),
-            scaledSize: new google.maps.Size(40, 40),
-          };
-      const marker = new google.maps.Marker({
-        position: { lat, lng },
-        map,
-        title: vehicle.name,
-        icon: markerIcon,
-      });
-
-      const infoContent = `
-        <div style="min-width:200px;font-family:sans-serif;font-size:13px;">
-          <p style="font-weight:600;margin:0 0 6px">${esc(vehicle.name)}</p>
-          <p style="margin:3px 0"><b>Speed:</b> ${speed.toFixed(0)} km/h</p>
-          <p style="margin:3px 0"><b>Status:</b> ${esc(vehicle.status)}</p>
-          <p style="margin:3px 0"><b>Coords:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
-          <p style="margin:3px 0"><b>Heading:</b> ${heading.toFixed(0)}&deg;</p>
-          <p style="margin:3px 0"><b>Location:</b> ${esc(location.address) || "Unknown"}</p>
-          <p style="margin:3px 0;font-size:11px;color:#666;">Last update: ${esc(new Date(location.timestamp).toLocaleString())}</p>
-        </div>
-      `;
-      const infoWindow = new google.maps.InfoWindow({ content: infoContent });
-
-      marker.addListener("click", () => {
-        if (openInfoWindowRef.current) openInfoWindowRef.current.close();
-        infoWindow.open(map, marker);
-        openInfoWindowRef.current = infoWindow;
-        if (onVehicleClick) onVehicleClick(vehicle.id);
-      });
-
-      overlaysRef.current.push(marker);
-      overlaysRef.current.push(infoWindow);
-      vehicleMarkers.push(marker);
-
-      boundsForFit.extend({ lat, lng });
-    });
-
-    // Initial fit to vehicle markers (only once)
-    if (vehicleMarkers.length > 0 && !hasFittedRef.current) {
-      if (vehicleMarkers.length === 1) {
-        map.setCenter(boundsForFit.getCenter()!);
-        map.setZoom(14);
-      } else {
-        map.fitBounds(boundsForFit);
-        const listener = map.addListener("idle", () => {
-          if ((map.getZoom() ?? 0) > 15) map.setZoom(15);
-          google.maps.event.removeListener(listener);
-        });
-      }
-      hasFittedRef.current = true;
-    }
 
     // ── Geofence polygons ─────────────────────────────────────────────────
     geofences.forEach((geofence) => {
@@ -486,14 +512,29 @@ export function MapComponent({
       overlaysRef.current.push(infoWindow);
     });
   }, [
-    status, vehicles, locations, geofences, routes, pois,
-    routePolylines, bearingData, onVehicleClick, focusVehicleId,
+    status, geofences, routes, pois,
+    routePolylines, focusVehicleId,
   ]);
 
-  // Render overlays whenever data changes
+  // Update vehicle markers on location/vehicle changes (no blink)
+  useEffect(() => {
+    updateVehicleMarkers();
+  }, [updateVehicleMarkers]);
+
+  // Render non-vehicle overlays when their data changes
   useEffect(() => {
     renderOverlays();
   }, [renderOverlays]);
+
+  // Also clear vehicle markers on map unmount
+  useEffect(() => {
+    return () => {
+      vehicleMarkersRef.current.forEach((m) => m.setMap(null));
+      vehicleMarkersRef.current.clear();
+      vehicleInfoWindowsRef.current.forEach((iw) => iw.close());
+      vehicleInfoWindowsRef.current.clear();
+    };
+  }, []);
 
   // ── 4. Focus vehicle (pan + zoom) ────────────────────────────────────────
 

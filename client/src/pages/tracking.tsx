@@ -2,8 +2,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { MapComponent } from "@/components/map-component";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Circle, Wifi, WifiOff } from "lucide-react";
+import { Search, Circle, Wifi, WifiOff, List, X } from "lucide-react";
 import type { Vehicle, Location } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,6 +30,7 @@ interface ActiveConnection {
 export default function Tracking() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
+  const [mobileListOpen, setMobileListOpen] = useState(false);
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -185,125 +187,157 @@ export default function Tracking() {
     return [20.5937, 78.9629];
   })();
 
-  return (
-    <div className="flex h-full w-full" style={{ height: "calc(100vh - 3.5rem)" }}>
-      <div className="w-72 flex-shrink-0 flex flex-col border-r bg-card">
-        <div className="p-3 border-b">
-          <h2 className="text-sm font-semibold mb-2">Vehicles</h2>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search vehicles..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-8 text-sm"
-              data-testid="input-search-vehicles"
-            />
-          </div>
+  const vehicleListPanel = (
+    <div className="flex flex-col h-full bg-card">
+      <div className="p-3 border-b flex items-center gap-2">
+        <h2 className="text-sm font-semibold flex-1">Vehicles</h2>
+        <button
+          className="md:hidden"
+          onClick={() => setMobileListOpen(false)}
+          aria-label="Close vehicle list"
+          data-testid="button-close-vehicle-list"
+        >
+          <X className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search vehicles..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 h-8 text-sm"
+            data-testid="input-search-vehicles"
+          />
         </div>
-
-        <ScrollArea className="flex-1">
-          {vehiclesLoading ? (
-            <div className="p-3 space-y-2">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-16 w-full rounded-md" />
-              ))}
-            </div>
-          ) : filteredVehicles.length === 0 ? (
-            <div className="p-6 text-center">
-              <p className="text-sm text-muted-foreground">No vehicles found</p>
-            </div>
-          ) : (
-            <div className="p-2 space-y-1">
-              {filteredVehicles.map((vehicle) => {
-                const location = getVehicleLocation(vehicle.id);
-                const isSelected = selectedVehicle === vehicle.id;
-                const connected = isDeviceConnected(vehicle);
-                return (
-                  <Card
-                    key={vehicle.id}
-                    className={`cursor-pointer hover-elevate ${
-                      isSelected ? "border-primary bg-primary/5" : ""
-                    }`}
-                    onClick={() => setSelectedVehicle(isSelected ? null : vehicle.id)}
-                    data-testid={`card-vehicle-${vehicle.id}`}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-1.5">
-                          <Circle
-                            className={`h-2.5 w-2.5 fill-current ${getStatusColor(vehicle.status)}`}
-                          />
-                          <span className="text-sm font-medium truncate max-w-[110px]">
-                            {vehicle.name}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {connected ? (
-                            <span title="Device TCP connected">
-                              <Wifi className="h-3 w-3 text-green-500" />
-                            </span>
-                          ) : (
-                            <span title="Device offline">
-                              <WifiOff className="h-3 w-3 text-muted-foreground/50" />
-                            </span>
-                          )}
-                          <Badge variant={getStatusBadge(vehicle.status)} className="text-xs">
-                            {vehicle.status}
-                          </Badge>
-                        </div>
-                      </div>
-                      {location ? (
-                        <>
-                          <p className="text-xs text-muted-foreground">
-                            Speed: {parseFloat(String(location.speed || "0")).toFixed(0)} km/h
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatTimestamp(location.timestamp)}
-                          </p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {parseFloat(String(location.latitude)).toFixed(4)},{" "}
-                            {parseFloat(String(location.longitude)).toFixed(4)}
-                          </p>
-                          {isSelected && selectedTrailCount > 1 && (
-                            <p className="text-xs mt-1" style={{ color: vehicle.iconColor ?? "#2563eb" }}>
-                              Trail: {selectedTrailCount} points (6h)
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">Waiting for GPS...</p>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </ScrollArea>
-
-        {activeConnections !== undefined && (
-          <div className="border-t p-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-              Live Connections
-            </p>
-            {activeConnections.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No devices connected</p>
-            ) : (
-              <div className="space-y-1">
-                {activeConnections.map((conn) => (
-                  <div key={conn.imei} className="text-xs flex items-center gap-1.5" data-testid={`conn-${conn.imei}`}>
-                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
-                    <span className="font-mono truncate">{conn.imei}</span>
-                    <span className="text-muted-foreground ml-auto shrink-0">{conn.packetCount}p</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
+      <ScrollArea className="flex-1">
+        {vehiclesLoading ? (
+          <div className="p-3 space-y-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-md" />
+            ))}
+          </div>
+        ) : filteredVehicles.length === 0 ? (
+          <div className="p-6 text-center">
+            <p className="text-sm text-muted-foreground">No vehicles found</p>
+          </div>
+        ) : (
+          <div className="p-2 space-y-1">
+            {filteredVehicles.map((vehicle) => {
+              const location = getVehicleLocation(vehicle.id);
+              const isSelected = selectedVehicle === vehicle.id;
+              const connected = isDeviceConnected(vehicle);
+              return (
+                <Card
+                  key={vehicle.id}
+                  className={`cursor-pointer hover-elevate ${
+                    isSelected ? "border-primary bg-primary/5" : ""
+                  }`}
+                  onClick={() => {
+                    setSelectedVehicle(isSelected ? null : vehicle.id);
+                    setMobileListOpen(false);
+                  }}
+                  data-testid={`card-vehicle-${vehicle.id}`}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <Circle
+                          className={`h-2.5 w-2.5 fill-current ${getStatusColor(vehicle.status)}`}
+                        />
+                        <span className="text-sm font-medium truncate max-w-[110px]">
+                          {vehicle.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {connected ? (
+                          <span title="Device TCP connected">
+                            <Wifi className="h-3 w-3 text-green-500" />
+                          </span>
+                        ) : (
+                          <span title="Device offline">
+                            <WifiOff className="h-3 w-3 text-muted-foreground/50" />
+                          </span>
+                        )}
+                        <Badge variant={getStatusBadge(vehicle.status)} className="text-xs">
+                          {vehicle.status}
+                        </Badge>
+                      </div>
+                    </div>
+                    {location ? (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          Speed: {parseFloat(String(location.speed || "0")).toFixed(0)} km/h
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatTimestamp(location.timestamp)}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {parseFloat(String(location.latitude)).toFixed(4)},{" "}
+                          {parseFloat(String(location.longitude)).toFixed(4)}
+                        </p>
+                        {isSelected && selectedTrailCount > 1 && (
+                          <p className="text-xs mt-1" style={{ color: vehicle.iconColor ?? "#2563eb" }}>
+                            Trail: {selectedTrailCount} points (6h)
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Waiting for GPS...</p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </ScrollArea>
+
+      {activeConnections !== undefined && (
+        <div className="border-t p-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            Live Connections
+          </p>
+          {activeConnections.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No devices connected</p>
+          ) : (
+            <div className="space-y-1">
+              {activeConnections.map((conn) => (
+                <div key={conn.imei} className="text-xs flex items-center gap-1.5" data-testid={`conn-${conn.imei}`}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                  <span className="font-mono truncate">{conn.imei}</span>
+                  <span className="text-muted-foreground ml-auto shrink-0">{conn.packetCount}p</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="relative flex h-full w-full overflow-hidden" style={{ height: "calc(100vh - 3.5rem)" }}>
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex w-72 flex-shrink-0 flex-col border-r">
+        {vehicleListPanel}
+      </div>
+
+      {/* Mobile overlay drawer */}
+      {mobileListOpen && (
+        <div className="md:hidden absolute inset-0 z-50 flex">
+          <div className="w-80 max-w-[85vw] flex flex-col border-r shadow-lg">
+            {vehicleListPanel}
+          </div>
+          <div
+            className="flex-1 bg-black/30"
+            onClick={() => setMobileListOpen(false)}
+          />
+        </div>
+      )}
+
+      {/* Map */}
       <div className="flex-1 relative">
         {locationsLoading && !latestLocations ? (
           <Skeleton className="h-full w-full" />
@@ -321,6 +355,18 @@ export default function Tracking() {
             focusVehicleId={selectedVehicle}
           />
         )}
+
+        {/* Mobile toggle button */}
+        <Button
+          size="icon"
+          variant="secondary"
+          className="md:hidden absolute top-3 left-3 z-40 shadow-md"
+          onClick={() => setMobileListOpen(true)}
+          data-testid="button-open-vehicle-list"
+          aria-label="Open vehicle list"
+        >
+          <List className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
