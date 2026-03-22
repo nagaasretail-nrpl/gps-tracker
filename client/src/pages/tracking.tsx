@@ -4,12 +4,12 @@ import { MapComponent } from "@/components/map-component";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Circle, Wifi, WifiOff, List, X, Gauge, MapPin, Navigation, Clock } from "lucide-react";
+import { Search, Wifi, WifiOff, List, X } from "lucide-react";
 import type { Vehicle, Location } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Card, CardContent } from "@/components/ui/card";
 import { filterValidGpsCoords, isBasicValidCoord } from "@/lib/gpsUtils";
+import { getVehicleImg } from "@/lib/vehicleIcons";
 
 function usePrevious<T>(value: T): T | undefined {
   const ref = useRef<T | undefined>(undefined);
@@ -30,7 +30,6 @@ interface ActiveConnection {
 export default function Tracking() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
-  const [mapPopupVehicleId, setMapPopupVehicleId] = useState<string | null>(null);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
@@ -99,7 +98,7 @@ export default function Tracking() {
       );
       const coords = filterValidGpsCoords(rawCoords);
       if (coords.length < 2) return [];
-      return [{ vehicleId: vehicle.id, coords, color: vehicle.iconColor ?? "#2563eb" }];
+      return [{ vehicleId: vehicle.id, coords, color: vehicle.iconColor ?? "#e4006e" }];
     });
   }, [vehicles, trailLocations]);
 
@@ -142,22 +141,6 @@ export default function Tracking() {
   const getVehicleLocation = (vehicleId: string) =>
     latestLocations?.find((l) => l.vehicleId === vehicleId);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active": return "text-green-500";
-      case "stopped": return "text-yellow-500";
-      default: return "text-muted-foreground";
-    }
-  };
-
-  const getStatusBadge = (status: string): "default" | "secondary" | "outline" => {
-    switch (status) {
-      case "active": return "default";
-      case "stopped": return "secondary";
-      default: return "outline";
-    }
-  };
-
   const formatTimestamp = (timestamp: Date) => {
     const diff = Date.now() - new Date(timestamp).getTime();
     if (diff < 0) return new Date(timestamp).toLocaleTimeString();
@@ -190,23 +173,26 @@ export default function Tracking() {
 
   const vehicleListPanel = (
     <div className="flex flex-col h-full bg-card">
-      <div className="p-3 border-b flex items-center gap-2">
-        <h2 className="text-sm font-semibold flex-1">Vehicles</h2>
-        <button
-          className="md:hidden"
-          onClick={() => setMobileListOpen(false)}
-          aria-label="Close vehicle list"
-          data-testid="button-close-vehicle-list"
-        >
-          <X className="h-4 w-4 text-muted-foreground" />
-        </button>
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+      {/* Header */}
+      <div className="px-3 pt-3 pb-2 border-b space-y-2">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold flex-1">Vehicles</h2>
+          <button
+            className="md:hidden"
+            onClick={() => setMobileListOpen(false)}
+            aria-label="Close vehicle list"
+            data-testid="button-close-vehicle-list"
+          >
+            <X className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Search vehicles..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-8 text-sm"
+            className="pl-8 h-8 text-sm"
             data-testid="input-search-vehicles"
           />
         </div>
@@ -214,9 +200,9 @@ export default function Tracking() {
 
       <ScrollArea className="flex-1">
         {vehiclesLoading ? (
-          <div className="p-3 space-y-2">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-16 w-full rounded-md" />
+          <div className="p-2 space-y-1">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-14 w-full rounded-md" />
             ))}
           </div>
         ) : filteredVehicles.length === 0 ? (
@@ -224,16 +210,21 @@ export default function Tracking() {
             <p className="text-sm text-muted-foreground">No vehicles found</p>
           </div>
         ) : (
-          <div className="p-2 space-y-1">
+          <div className="py-1">
             {filteredVehicles.map((vehicle) => {
               const location = getVehicleLocation(vehicle.id);
               const isSelected = selectedVehicle === vehicle.id;
               const connected = isDeviceConnected(vehicle);
+              const speed = parseFloat(String(location?.speed ?? "0")).toFixed(0);
+              const pngImg = getVehicleImg(vehicle.type ?? "car");
+              const iconColor = vehicle.iconColor ?? "#e4006e";
+              const isMoving = parseFloat(String(location?.speed ?? "0")) > 2;
+
               return (
-                <Card
+                <div
                   key={vehicle.id}
-                  className={`cursor-pointer hover-elevate ${
-                    isSelected ? "border-primary bg-primary/5" : ""
+                  className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer border-b border-border/50 hover-elevate ${
+                    isSelected ? "bg-primary/10 border-l-2 border-l-primary" : ""
                   }`}
                   onClick={() => {
                     setSelectedVehicle(isSelected ? null : vehicle.id);
@@ -241,63 +232,82 @@ export default function Tracking() {
                   }}
                   data-testid={`card-vehicle-${vehicle.id}`}
                 >
-                  <CardContent className="p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <Circle
-                          className={`h-2.5 w-2.5 fill-current ${getStatusColor(vehicle.status)}`}
-                        />
-                        <span className="text-sm font-medium truncate max-w-[110px]">
-                          {vehicle.name}
+                  {/* Vehicle type icon */}
+                  <div
+                    className="flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center overflow-hidden"
+                    style={{ backgroundColor: `${iconColor}18` }}
+                  >
+                    {pngImg ? (
+                      <img
+                        src={pngImg}
+                        alt={vehicle.type ?? "vehicle"}
+                        className="w-7 h-7 object-contain"
+                        draggable={false}
+                      />
+                    ) : (
+                      <span
+                        className="w-3.5 h-3.5 rounded-full"
+                        style={{ backgroundColor: iconColor }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-sm font-semibold truncate" data-testid={`text-vehicle-name-${vehicle.id}`}>
+                        {vehicle.name}
+                      </span>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {connected ? (
+                          <span title="Connected"><Wifi className="h-3 w-3 text-green-500" /></span>
+                        ) : (
+                          <span title="Offline"><WifiOff className="h-3 w-3 text-muted-foreground/40" /></span>
+                        )}
+                        <span
+                          className="text-xs font-medium tabular-nums"
+                          style={{ color: isMoving ? "#22c55e" : "hsl(var(--muted-foreground))" }}
+                          data-testid={`text-speed-${vehicle.id}`}
+                        >
+                          {speed} km/h
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        {connected ? (
-                          <span title="Device TCP connected">
-                            <Wifi className="h-3 w-3 text-green-500" />
-                          </span>
-                        ) : (
-                          <span title="Device offline">
-                            <WifiOff className="h-3 w-3 text-muted-foreground/50" />
-                          </span>
-                        )}
-                        <Badge variant={getStatusBadge(vehicle.status)} className="text-xs">
-                          {vehicle.status}
-                        </Badge>
-                      </div>
                     </div>
-                    {location ? (
-                      <>
-                        <p className="text-xs text-muted-foreground">
-                          Speed: {parseFloat(String(location.speed || "0")).toFixed(0)} km/h
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatTimestamp(location.timestamp)}
-                        </p>
-                        <p className="text-xs text-muted-foreground font-mono">
-                          {parseFloat(String(location.latitude)).toFixed(4)},{" "}
-                          {parseFloat(String(location.longitude)).toFixed(4)}
-                        </p>
-                        {isSelected && selectedTrailCount > 1 && (
-                          <p className="text-xs mt-1" style={{ color: vehicle.iconColor ?? "#2563eb" }}>
-                            Trail: {selectedTrailCount} points (6h)
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">Waiting for GPS...</p>
-                    )}
-                  </CardContent>
-                </Card>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span
+                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{
+                          backgroundColor:
+                            vehicle.status === "active"
+                              ? "#22c55e"
+                              : vehicle.status === "stopped"
+                              ? "#eab308"
+                              : "#9ca3af",
+                        }}
+                      />
+                      <span className="text-xs text-muted-foreground truncate">
+                        {location
+                          ? formatTimestamp(location.timestamp)
+                          : "Waiting for GPS…"}
+                      </span>
+                      {isSelected && selectedTrailCount > 1 && (
+                        <Badge variant="outline" className="text-xs ml-auto flex-shrink-0 px-1 py-0">
+                          {selectedTrailCount}pts
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
         )}
       </ScrollArea>
 
+      {/* Live connections footer */}
       {activeConnections !== undefined && (
-        <div className="border-t p-3">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+        <div className="border-t p-2.5">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
             Live Connections
           </p>
           {activeConnections.length === 0 ? (
@@ -351,10 +361,9 @@ export default function Tracking() {
             zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
             className="h-full w-full"
             onVehicleClick={(id) => {
-              setMapPopupVehicleId((prev) => (prev === id ? null : id));
               setSelectedVehicle((prev) => (prev === id ? null : id));
             }}
-            onMapClick={() => setMapPopupVehicleId(null)}
+            onMapClick={() => {}}
             routePolylines={routePolylines}
             bearingData={bearingData}
             focusVehicleId={selectedVehicle}
@@ -372,104 +381,6 @@ export default function Tracking() {
         >
           <List className="h-4 w-4" />
         </Button>
-
-        {/* Floating vehicle detail popup — appears on map when icon is tapped */}
-        {(() => {
-          const popupVehicle = vehicles?.find((v) => v.id === mapPopupVehicleId);
-          const popupLocation = mapPopupVehicleId
-            ? latestLocations?.find((l) => l.vehicleId === mapPopupVehicleId)
-            : null;
-          if (!popupVehicle) return null;
-          const speed = parseFloat(String(popupLocation?.speed ?? "0")).toFixed(0);
-          const lat = popupLocation ? parseFloat(String(popupLocation.latitude)).toFixed(5) : null;
-          const lng = popupLocation ? parseFloat(String(popupLocation.longitude)).toFixed(5) : null;
-          const connected = (activeConnections ?? []).some((c) => c.imei === popupVehicle.deviceId);
-          return (
-            <div
-              className="absolute bottom-6 right-4 z-40 w-72 max-w-[calc(100vw-2rem)]"
-              data-testid="map-vehicle-popup"
-            >
-              <Card className="shadow-xl border">
-                <CardContent className="p-0">
-                  {/* Header */}
-                  <div
-                    className="flex items-center justify-between px-4 py-3 rounded-t-md"
-                    style={{ backgroundColor: popupVehicle.iconColor ?? "hsl(var(--primary))" }}
-                  >
-                    <div className="flex items-center gap-2">
-                      {connected ? (
-                        <Wifi className="h-3.5 w-3.5 text-white/90" />
-                      ) : (
-                        <WifiOff className="h-3.5 w-3.5 text-white/60" />
-                      )}
-                      <span className="font-semibold text-white text-sm truncate max-w-[160px]">
-                        {popupVehicle.name}
-                      </span>
-                    </div>
-                    <button
-                      className="p-1 rounded text-white/80 hover:bg-white/20 transition-colors"
-                      onClick={() => setMapPopupVehicleId(null)}
-                      data-testid="button-close-map-popup"
-                      aria-label="Close vehicle popup"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  {/* Detail rows */}
-                  <div className="px-4 py-3 space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Gauge className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <span className="text-muted-foreground">Speed</span>
-                      <span className="ml-auto font-medium">{speed} km/h</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Circle
-                        className={`h-3.5 w-3.5 shrink-0 fill-current ${getStatusColor(popupVehicle.status)}`}
-                      />
-                      <span className="text-muted-foreground">Status</span>
-                      <Badge
-                        variant={getStatusBadge(popupVehicle.status)}
-                        className="ml-auto text-xs"
-                        data-testid={`popup-status-${popupVehicle.id}`}
-                      >
-                        {popupVehicle.status}
-                      </Badge>
-                    </div>
-                    {lat && lng && (
-                      <div className="flex items-start gap-2 text-sm">
-                        <Navigation className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                        <span className="text-muted-foreground">Coords</span>
-                        <span className="ml-auto font-mono text-xs text-right">
-                          {lat},<br />{lng}
-                        </span>
-                      </div>
-                    )}
-                    {popupLocation?.address && (
-                      <div className="flex items-start gap-2 text-sm">
-                        <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                        <span className="text-muted-foreground text-xs leading-snug line-clamp-2">
-                          {String(popupLocation.address)}
-                        </span>
-                      </div>
-                    )}
-                    {popupLocation && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-muted-foreground text-xs">
-                          {formatTimestamp(popupLocation.timestamp)}
-                        </span>
-                      </div>
-                    )}
-                    {!popupLocation && (
-                      <p className="text-xs text-muted-foreground py-1">Waiting for GPS signal…</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          );
-        })()}
       </div>
     </div>
   );

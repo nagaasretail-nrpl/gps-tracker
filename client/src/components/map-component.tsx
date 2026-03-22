@@ -70,6 +70,36 @@ function computeBearing(
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
+/** Build styled HTML for the vehicle InfoWindow */
+function buildVehicleInfoHtml(
+  vehicle: Vehicle,
+  location: Location,
+  speed: number,
+  lat: number,
+  lng: number,
+  heading: number
+): string {
+  const headerColor = vehicle.iconColor ?? "#e4006e";
+  const ts = new Date(location.timestamp);
+  const timeStr = ts.toLocaleString();
+  const address = String(location.address ?? "").trim();
+  return `
+    <div style="min-width:220px;max-width:280px;font-family:sans-serif;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.18);">
+      <div style="background:${headerColor};color:#fff;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${esc(vehicle.name)}</span>
+      </div>
+      <div style="background:#fff;padding:10px 12px;font-size:12px;line-height:1.7;color:#222;">
+        ${address ? `<div><b style="color:#555;min-width:70px;display:inline-block;">Address:</b> ${esc(address)}</div>` : ""}
+        <div><b style="color:#555;min-width:70px;display:inline-block;">Position:</b> <span style="color:#1a6bc7;font-family:monospace;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span></div>
+        <div><b style="color:#555;min-width:70px;display:inline-block;">Speed:</b> ${speed.toFixed(0)} km/h</div>
+        <div><b style="color:#555;min-width:70px;display:inline-block;">Angle:</b> ${heading.toFixed(0)}&deg;</div>
+        <div><b style="color:#555;min-width:70px;display:inline-block;">Status:</b> ${esc(vehicle.status)}</div>
+        <div style="color:#888;font-size:11px;margin-top:4px;"><b style="color:#555;min-width:70px;display:inline-block;">Time:</b> ${esc(timeStr)}</div>
+      </div>
+    </div>
+  `;
+}
+
 // ── Script loader (singleton, works even if component remounts) ────────────
 
 let _loadPromise: Promise<void> | null = null;
@@ -126,6 +156,7 @@ export function MapComponent({
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const overlaysRef = useRef<MapOverlay[]>([]);
   const vehicleMarkersRef = useRef<Map<string, google.maps.Marker>>(new Map());
+  const vehicleInfoWindowsRef = useRef<Map<string, google.maps.InfoWindow>>(new Map());
   const openInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const hasFittedRef = useRef(false);
@@ -195,6 +226,11 @@ export function MapComponent({
         "click",
         (e: google.maps.MapMouseEvent) => {
           if (e.latLng) onMapClick(e.latLng.lat(), e.latLng.lng());
+          // Close any open InfoWindow on blank map click
+          if (openInfoWindowRef.current) {
+            openInfoWindowRef.current.close();
+            openInfoWindowRef.current = null;
+          }
         }
       );
     }
@@ -227,7 +263,7 @@ export function MapComponent({
       currentVehicleIds.add(vehicle.id);
 
       const speed = parseFloat(String(location.speed ?? "0"));
-      const markerColor = speed > 2 ? "#22c55e" : (vehicle.iconColor ?? "#2563eb");
+      const markerColor = speed > 2 ? "#22c55e" : (vehicle.iconColor ?? "#e4006e");
 
       let heading = parseFloat(String(location.heading ?? "0")) || 0;
       if (!heading) {
@@ -247,38 +283,79 @@ export function MapComponent({
       }
 
       const iconType = vehicle.type ?? "car";
-      const [anchorX, anchorY] = getIconAnchor(iconType);
+      const [anchorX] = getIconAnchor(iconType);
       const pngImg = getVehicleImg(iconType);
+
+      // Anchor at BOTTOM-CENTER of icon so label appears below and
+      // the geographic point aligns with the bottom of the icon (like a map pin).
       const markerIcon = pngImg
         ? {
             url: pngImg,
-            anchor: new google.maps.Point(22, 22),
+            anchor: new google.maps.Point(22, 44), // bottom-center of 44×44 px PNG
             size: new google.maps.Size(44, 44),
             scaledSize: new google.maps.Size(44, 44),
           }
         : {
             url: `data:image/svg+xml,${encodeURIComponent(getMarkerSvg(iconType, markerColor, heading))}`,
-            anchor: new google.maps.Point(anchorX, anchorY),
+            anchor: new google.maps.Point(anchorX, 40), // bottom of 40×40 SVG
             size: new google.maps.Size(40, 40),
             scaledSize: new google.maps.Size(40, 40),
           };
+
+      // Label: vehicle name + speed shown below the icon
+      const labelText = `${vehicle.name}  ${speed.toFixed(0)} km/h`;
+
+      // Build InfoWindow content
+      const infoHtml = buildVehicleInfoHtml(vehicle, location, speed, lat, lng, heading);
 
       const existingMarker = vehicleMarkersRef.current.get(vehicle.id);
       if (existingMarker) {
         existingMarker.setPosition({ lat, lng });
         existingMarker.setIcon(markerIcon);
         existingMarker.setTitle(vehicle.name);
+        existingMarker.setLabel({
+          text: labelText,
+          className: "map-vehicle-label",
+          color: "#111111",
+          fontFamily: "sans-serif",
+          fontSize: "11px",
+          fontWeight: "600",
+        });
+        const existingIW = vehicleInfoWindowsRef.current.get(vehicle.id);
+        if (existingIW) existingIW.setContent(infoHtml);
       } else {
         const marker = new google.maps.Marker({
           position: { lat, lng },
           map,
           title: vehicle.name,
           icon: markerIcon,
+          label: {
+            text: labelText,
+            className: "map-vehicle-label",
+            color: "#111111",
+            fontFamily: "sans-serif",
+            fontSize: "11px",
+            fontWeight: "600",
+          },
         });
+
+        const infoWindow = new google.maps.InfoWindow({
+          content: infoHtml,
+          disableAutoPan: false,
+        });
+
         marker.addListener("click", () => {
+          // Close any previously open InfoWindow
+          if (openInfoWindowRef.current && openInfoWindowRef.current !== infoWindow) {
+            openInfoWindowRef.current.close();
+          }
+          infoWindow.open(map, marker);
+          openInfoWindowRef.current = infoWindow;
           if (onVehicleClick) onVehicleClick(vehicle.id);
         });
+
         vehicleMarkersRef.current.set(vehicle.id, marker);
+        vehicleInfoWindowsRef.current.set(vehicle.id, infoWindow);
       }
 
       boundsForFit.extend({ lat, lng });
@@ -289,6 +366,8 @@ export function MapComponent({
       if (!currentVehicleIds.has(vid)) {
         marker.setMap(null);
         vehicleMarkersRef.current.delete(vid);
+        const iw = vehicleInfoWindowsRef.current.get(vid);
+        if (iw) { iw.close(); vehicleInfoWindowsRef.current.delete(vid); }
       }
     });
 
@@ -323,11 +402,6 @@ export function MapComponent({
       }
     });
     overlaysRef.current = [];
-
-    if (openInfoWindowRef.current) {
-      openInfoWindowRef.current.close();
-      openInfoWindowRef.current = null;
-    }
 
     // ── Route polylines (vehicle history trails) ──────────────────────────
     routePolylines.forEach(({ vehicleId: trailVehicleId, coords, color }) => {
@@ -504,11 +578,13 @@ export function MapComponent({
     renderOverlays();
   }, [renderOverlays]);
 
-  // Also clear vehicle markers on map unmount
+  // Clear vehicle markers on map unmount
   useEffect(() => {
     return () => {
       vehicleMarkersRef.current.forEach((m) => m.setMap(null));
       vehicleMarkersRef.current.clear();
+      vehicleInfoWindowsRef.current.forEach((iw) => iw.close());
+      vehicleInfoWindowsRef.current.clear();
     };
   }, []);
 
@@ -586,57 +662,44 @@ export function MapComponent({
       {/* Loading state */}
       {status === "loading" && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-md">
-          <div className="text-center">
-            <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">Loading map…</p>
-          </div>
+          <p className="text-sm text-muted-foreground animate-pulse">Loading map…</p>
         </div>
       )}
 
       {/* No API key */}
       {status === "no-key" && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-md">
-          <div className="text-center max-w-xs px-6">
-            <MapPinOff className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-            <p className="text-sm font-medium text-foreground mb-1">Google Maps API key not configured</p>
-            <p className="text-xs text-muted-foreground">
-              Go to <span className="font-medium">Admin &rarr; Settings</span> and enter your Google Maps API key to enable the map.
-            </p>
-          </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-muted rounded-md">
+          <MapPinOff className="h-10 w-10 text-muted-foreground" />
+          <p className="text-sm font-medium text-muted-foreground">Google Maps API key not configured</p>
+          <p className="text-xs text-muted-foreground">Add your key in Admin → Settings</p>
         </div>
       )}
 
       {/* Error state */}
       {status === "error" && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-md">
-          <div className="text-center max-w-xs px-6">
-            <MapPinOff className="h-10 w-10 mx-auto text-destructive/60 mb-3" />
-            <p className="text-sm font-medium text-foreground mb-1">Map failed to load</p>
-            <p className="text-xs text-muted-foreground">
-              Check that your Google Maps API key is valid and has the Maps JavaScript API enabled.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">Failed to load map</p>
         </div>
       )}
 
-      {/* Controls — shown only when map is ready */}
+      {/* Map controls */}
       {status === "ready" && (
-        <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-[1000]">
-          <Button size="icon" variant="secondary" onClick={handleZoomIn} data-testid="button-zoom-in">
+        <div className="absolute right-3 bottom-24 flex flex-col gap-1 z-10">
+          <Button size="icon" variant="secondary" onClick={handleZoomIn} title="Zoom in" data-testid="button-zoom-in">
             <ZoomIn className="h-4 w-4" />
           </Button>
-          <Button size="icon" variant="secondary" onClick={handleZoomOut} data-testid="button-zoom-out">
+          <Button size="icon" variant="secondary" onClick={handleZoomOut} title="Zoom out" data-testid="button-zoom-out">
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <Button size="icon" variant="secondary" onClick={handleRecenter} data-testid="button-recenter">
+          <Button size="icon" variant="secondary" onClick={handleRecenter} title="Re-center" data-testid="button-recenter">
             <Locate className="h-4 w-4" />
           </Button>
           <Button
             size="icon"
-            variant={mapType === "satellite" ? "default" : "secondary"}
+            variant="secondary"
             onClick={toggleMapType}
-            data-testid="button-toggle-layer"
-            title={mapType === "satellite" ? "Switch to Street view" : "Switch to Satellite view"}
+            title={mapType === "streets" ? "Switch to satellite" : "Switch to map"}
+            data-testid="button-toggle-map-type"
           >
             <Layers className="h-4 w-4" />
           </Button>
