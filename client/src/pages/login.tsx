@@ -123,6 +123,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           <Link href="/terms" className="hover:text-foreground transition-colors" data-testid="link-login-terms">Terms &amp; Conditions</Link>
           <span className="text-muted-foreground/40">·</span>
           <Link href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-login-privacy">Privacy Policy</Link>
+          <span className="text-muted-foreground/40">·</span>
+          <Link href="/install" className="hover:text-foreground transition-colors flex items-center gap-1" data-testid="link-login-install">
+            <Download className="h-3 w-3" />
+            Install App
+          </Link>
         </div>
         <span data-testid="text-login-copyright">© 2025 Nagaas Retail Private Limited. All Rights Reserved.</span>
       </div>

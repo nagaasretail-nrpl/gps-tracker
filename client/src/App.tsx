@@ -38,6 +38,7 @@ import AdminSettings from "@/pages/admin-settings";
 import Renew from "@/pages/renew";
 import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
+import InstallPage from "@/pages/install";
 import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -266,13 +267,14 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
 function PublicOrAuthApp() {
   const [isTermsMatch] = useRoute("/terms");
   const [isPrivacyMatch] = useRoute("/privacy");
+  const [isInstallMatch] = useRoute("/install");
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Skip auth check for public pages — show them immediately
-    if (isTermsMatch || isPrivacyMatch) {
+    if (isTermsMatch || isPrivacyMatch || isInstallMatch) {
       setIsLoading(false);
       return;
     }
@@ -291,11 +293,12 @@ function PublicOrAuthApp() {
       }
     };
     checkAuth();
-  }, [isTermsMatch, isPrivacyMatch]);
+  }, [isTermsMatch, isPrivacyMatch, isInstallMatch]);
 
   // Always serve public pages regardless of auth state
   if (isTermsMatch) return <Terms />;
   if (isPrivacyMatch) return <Privacy />;
+  if (isInstallMatch) return <InstallPage />;
 
   if (isLoading) {
     return (
