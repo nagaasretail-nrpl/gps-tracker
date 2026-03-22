@@ -58,6 +58,7 @@ export default function History() {
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
   const [autoPlayPending, setAutoPlayPending] = useState(false);
   const [mobileDatesOpen, setMobileDatesOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(true);
 
   const { data: vehicles } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
@@ -235,99 +236,118 @@ export default function History() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-      <div className="border-b bg-card p-3 flex-shrink-0">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[160px]">
-            <Label htmlFor="vehicle" className="text-xs mb-1 block">Vehicle</Label>
-            <Select
-              value={selectedVehicle}
-              onValueChange={(v) => {
-                setSelectedVehicle(v);
+      <div className="border-b bg-card flex-shrink-0">
+        {/* Mobile filter header (toggle) */}
+        <button
+          className="md:hidden w-full flex items-center justify-between px-3 py-2 text-sm font-semibold"
+          onClick={() => setMobileFiltersOpen((o) => !o)}
+          data-testid="button-toggle-filters"
+          aria-label="Toggle filters"
+        >
+          <span>Filters</span>
+          {mobileFiltersOpen ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
+        </button>
+
+        {/* Filter controls — always visible on desktop, collapsible on mobile */}
+        <div className={`p-3 ${mobileFiltersOpen ? "block" : "hidden"} md:block`}>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[160px]">
+              <Label htmlFor="vehicle" className="text-xs mb-1 block">Vehicle</Label>
+              <Select
+                value={selectedVehicle}
+                onValueChange={(v) => {
+                  setSelectedVehicle(v);
+                  setSelectedDate(null);
+                  setExpandedDates({});
+                }}
+              >
+                <SelectTrigger id="vehicle" data-testid="select-vehicle" className="h-8 text-sm">
+                  <SelectValue placeholder="Select vehicle" />
+                </SelectTrigger>
+                <SelectContent>
+                  {vehicles?.map((vehicle) => (
+                    <SelectItem key={vehicle.id} value={vehicle.id}>
+                      {vehicle.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs mb-1 block">Start Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="justify-start text-left font-normal text-sm"
+                    data-testid="button-start-date"
+                  >
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                    {startDate ? format(startDate, "PP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={(d) => {
+                      if (!d) return;
+                      const s = new Date(d);
+                      s.setHours(0, 0, 0, 0);
+                      setStartDate(s);
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div>
+              <Label className="text-xs mb-1 block">End Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="justify-start text-left font-normal text-sm"
+                    data-testid="button-end-date"
+                  >
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                    {endDate ? format(endDate, "PP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={(d) => {
+                      if (!d) return;
+                      const e = new Date(d);
+                      e.setHours(23, 59, 59, 999);
+                      setEndDate(e);
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <Button
+              disabled={!canLoad}
+              onClick={() => {
                 setSelectedDate(null);
                 setExpandedDates({});
+                setLoadTrigger((n) => n + 1);
+                setMobileFiltersOpen(false);
               }}
+              data-testid="button-load-history"
+              className="text-sm"
             >
-              <SelectTrigger id="vehicle" data-testid="select-vehicle" className="h-8 text-sm">
-                <SelectValue placeholder="Select vehicle" />
-              </SelectTrigger>
-              <SelectContent>
-                {vehicles?.map((vehicle) => (
-                  <SelectItem key={vehicle.id} value={vehicle.id}>
-                    {vehicle.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              Load History
+            </Button>
           </div>
-
-          <div>
-            <Label className="text-xs mb-1 block">Start Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="justify-start text-left font-normal text-sm"
-                  data-testid="button-start-date"
-                >
-                  <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                  {startDate ? format(startDate, "PP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={startDate}
-                  onSelect={(d) => {
-                    if (!d) return;
-                    const s = new Date(d);
-                    s.setHours(0, 0, 0, 0);
-                    setStartDate(s);
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div>
-            <Label className="text-xs mb-1 block">End Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="justify-start text-left font-normal text-sm"
-                  data-testid="button-end-date"
-                >
-                  <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                  {endDate ? format(endDate, "PP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={endDate}
-                  onSelect={(d) => {
-                    if (!d) return;
-                    const e = new Date(d);
-                    e.setHours(23, 59, 59, 999);
-                    setEndDate(e);
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <Button
-            disabled={!canLoad}
-            onClick={() => {
-              setSelectedDate(null);
-              setExpandedDates({});
-              setLoadTrigger((n) => n + 1);
-            }}
-            data-testid="button-load-history"
-            className="text-sm"
-          >
-            Load History
-          </Button>
         </div>
       </div>
 
