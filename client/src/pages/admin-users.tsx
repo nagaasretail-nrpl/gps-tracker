@@ -30,6 +30,31 @@ import type { User, Vehicle } from "@shared/schema";
 
 type UserWithoutPassword = Omit<User, "password">;
 
+interface SubscriptionPlan {
+  name: string;
+  maxVehicles: number;
+  pricePerYear: number;
+}
+
+interface AppSetting {
+  key: string;
+  value: string;
+  updatedAt: string;
+}
+
+function computeBillingAmount(
+  vehicleCount: number,
+  plans: SubscriptionPlan[],
+  fallbackAmount: number | null
+): number | null {
+  if (plans.length > 0) {
+    const sorted = [...plans].sort((a, b) => a.maxVehicles - b.maxVehicles);
+    const matched = sorted.find((p) => vehicleCount <= p.maxVehicles) ?? sorted[sorted.length - 1];
+    return matched.pricePerYear;
+  }
+  return fallbackAmount;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   inactive: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
@@ -127,6 +152,28 @@ export default function AdminUsers() {
   const { data: vehicles = [] } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
   });
+
+  const { data: settingsData = [] } = useQuery<AppSetting[]>({
+    queryKey: ["/api/settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json() as Promise<AppSetting[]>;
+    },
+  });
+
+  const subscriptionPlans: SubscriptionPlan[] = (() => {
+    const s = settingsData.find((x) => x.key === "subscription_plans");
+    if (!s?.value) return [];
+    try { return JSON.parse(s.value) as SubscriptionPlan[]; } catch { return []; }
+  })();
+
+  const renewalAmountFallback: number | null = (() => {
+    const s = settingsData.find((x) => x.key === "renewal_amount");
+    if (!s?.value) return null;
+    const n = parseInt(s.value, 10);
+    return isNaN(n) ? null : n;
+  })();
 
   const toggleExpand = (user: UserWithoutPassword) => {
     if (expandedUserId === user.id) {
@@ -378,6 +425,10 @@ export default function AdminUsers() {
             const isSaving = updateMutation.isPending && updateMutation.variables?.id === user.id;
             const menuPanelOpen = openMenuPanels[user.id] ?? false;
             const restrictedMenuCount = user.allowedMenus?.length ?? null;
+            const billingVehicleCount = assignedCount > 0 ? assignedCount : vehicles.length;
+            const billingAmount = user.role !== "admin"
+              ? computeBillingAmount(billingVehicleCount, subscriptionPlans, renewalAmountFallback)
+              : null;
 
             return (
               <Card key={user.id} data-testid={`card-user-${user.id}`}>
@@ -411,6 +462,14 @@ export default function AdminUsers() {
                               ? `${restrictedMenuCount} menu${restrictedMenuCount !== 1 ? "s" : ""} allowed`
                               : "All menus"}
                           </span>
+                          {billingAmount != null && (
+                            <span
+                              className="text-xs font-semibold text-primary"
+                              data-testid={`text-billing-amount-${user.id}`}
+                            >
+                              ₹{billingAmount.toLocaleString("en-IN")} / yr
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
