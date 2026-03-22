@@ -690,8 +690,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hours = Math.min(parseInt((req.query.hours as string) || "6", 10), 48);
       const limit = Math.min(parseInt((req.query.limit as string) || "50", 10), 200);
       const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
       const trail = await storage.getLocationTrail(since, limit);
-      res.json(trail);
+      const filtered = allowedIds === null ? trail : trail.filter(l => l.vehicleId && allowedIds.includes(l.vehicleId));
+      res.json(filtered);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch trail data" });
     }
@@ -802,12 +804,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/events", requireAuth, async (req, res) => {
     try {
       const { vehicleId, startDate, endDate } = req.query;
-      const events = await storage.getEvents(
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (vehicleId && allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+        return res.json([]);
+      }
+      const evts = (await storage.getEvents(
         vehicleId as string,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
-      );
-      res.json(events);
+      )) ?? [];
+      const filtered = allowedIds === null ? evts : evts.filter(e => e.vehicleId && allowedIds.includes(e.vehicleId));
+      res.json(filtered);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch events" });
     }

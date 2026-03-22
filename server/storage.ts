@@ -491,7 +491,14 @@ export class DbStorage implements IStorage {
       query = query.where(and(...conditions)) as typeof query;
     }
     
-    return await query.orderBy(desc(events.timestamp));
+    try {
+      return await query.orderBy(desc(events.timestamp));
+    } catch (err) {
+      if (err instanceof TypeError && String(err.message).includes("map")) {
+        return [];
+      }
+      throw err;
+    }
   }
 
   async createEvent(insertEvent: InsertEvent): Promise<Event> {
