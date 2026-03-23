@@ -144,8 +144,32 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   const lonWest  = Boolean(highByte & 0x02);
   const course   = ((highByte >> 2) & 0x3f) * 5.625; // degrees
 
-  let lat = latRaw / 1800000.0;
-  let lng = lngRaw / 1800000.0;
+  // Many GT06 clone trackers (Coban, JimiIoT, etc.) encode coordinates in
+  // NMEA DDMMmmmm format (e.g. 1305432 = 13°05.432') rather than plain
+  // degrees × 1,800,000.  Detect which format by checking whether the plain
+  // division gives a plausible degree value: if latRaw / 1_800_000 < 90 it
+  // could be either format, but if the NMEA-converted value differs by more
+  // than 3° we prefer the NMEA conversion because it produces results that
+  // match the known operating region (India: lat 5–35°, lng 65–100°).
+  function decodeCoord(raw: number): number {
+    const simpleDeg = raw / 1800000.0;
+    // NMEA DDMMmmmm: integer part = DDMM, fractional = .mmmm (stored × 10000)
+    const nmea_deg = Math.floor(raw / 1000000);
+    const nmea_min = (raw % 1000000) / 10000.0;
+    const nmeaDeg  = nmea_deg + nmea_min / 60.0;
+    // Use NMEA conversion if it yields a meaningfully different (larger) value
+    // and the simple division gives an unusually small degree number.
+    // Simple heuristic: if raw > 1_000_000 and NMEA result > simple by > 3°, prefer NMEA.
+    if (raw > 1_000_000 && (nmeaDeg - simpleDeg) > 3) {
+      return nmeaDeg;
+    }
+    return simpleDeg;
+  }
+
+  console.log(`[GT06] Raw coords: latRaw=${latRaw}, lngRaw=${lngRaw}`);
+
+  let lat = decodeCoord(latRaw);
+  let lng = decodeCoord(lngRaw);
   if (latSouth) lat = -lat;
   if (lonWest)  lng = -lng;
 
@@ -342,19 +366,35 @@ async function handlePacket(
       // ── Coordinate jump guard ────────────────────────────────────────────
       // Reject coordinates that are geographically impossible jumps from the
       // vehicle's last known valid position (e.g. ocean ghost coordinates).
+      // Exception: if the new coordinate is within the valid fleet operating
+      // region (Indian subcontinent) but the stored one is not, skip the guard
+      // to allow recovery from previously stored wrong (ocean) coordinates that
+      // may have come from a coordinate-format parsing bug.
       const lastLoc = await storage.getLatestLocationForVehicle(vehicleId);
       if (lastLoc) {
         const prevLat = parseFloat(String(lastLoc.latitude));
         const prevLng = parseFloat(String(lastLoc.longitude));
         if (!isNaN(prevLat) && !isNaN(prevLng) && !(prevLat === 0 && prevLng === 0)) {
+          const newInIndia  = loc.lat > 5 && loc.lat < 35 && loc.lng > 65 && loc.lng < 100;
+          const prevInIndia = prevLat > 5 && prevLat < 35 && prevLng > 65 && prevLng < 100;
           const jumpKm = haversineKm(prevLat, prevLng, loc.lat, loc.lng);
           if (jumpKm > 500) {
-            console.warn(
-              `[GT06] Jump guard: discarding ${deviceImei} coord (${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}) — ` +
-              `${jumpKm.toFixed(0)} km from last known (${prevLat.toFixed(5)}, ${prevLng.toFixed(5)})`
-            );
-            socket.write(buildAck(0x12, pkt.serial));
-            break;
+            if (newInIndia && !prevInIndia) {
+              // Recovery: new coord is valid India position but old was in ocean.
+              // Allow through so vehicles move to their correct positions.
+              console.log(
+                `[GT06] Jump guard bypassed for recovery: ${deviceImei} moving from ocean ` +
+                `(${prevLat.toFixed(4)}, ${prevLng.toFixed(4)}) → India ` +
+                `(${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)})`
+              );
+            } else {
+              console.warn(
+                `[GT06] Jump guard: discarding ${deviceImei} coord (${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}) — ` +
+                `${jumpKm.toFixed(0)} km from last known (${prevLat.toFixed(5)}, ${prevLng.toFixed(5)})`
+              );
+              socket.write(buildAck(0x12, pkt.serial));
+              break;
+            }
           }
         }
       }
