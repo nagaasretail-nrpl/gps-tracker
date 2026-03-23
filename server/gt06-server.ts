@@ -144,62 +144,62 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   const lonWest  = Boolean(highByte & 0x02);
   const course   = ((highByte >> 2) & 0x3f) * 5.625; // degrees
 
-  // GT06 clone trackers use various coordinate encodings. Rather than guessing
-  // by a heuristic difference, we try each known format and accept whichever
-  // one lands inside the fleet's operating region (Indian subcontinent:
-  // lat 5–35°N, lng 65–100°E). If none of the formats produces an India
-  // coordinate, the packet is rejected so the last valid position stays.
-  function decodeCoord(raw: number, isLat: boolean): number {
-    const inRange = isLat
-      ? (v: number) => v > 5 && v < 35
-      : (v: number) => v > 65 && v < 100;
+  // GT06 clone trackers use various coordinate encodings. We try each known
+  // format applied SIMULTANEOUSLY to both lat and lng raw values, and pick the
+  // first pair where BOTH values land inside India's geographic bounds
+  // (lat 5–35°N, lng 65–100°E). Evaluating as a pair prevents a borderline
+  // "wrong format" from passing the lat check alone (e.g. ×1800000 giving ~5.7°
+  // which is just inside the lat threshold but whose lng would be ~43°, failing).
+  function decodeCoordPair(
+    latRaw: number,
+    lngRaw: number
+  ): { lat: number; lng: number } | null {
+    const formats: Array<(r: number) => number> = [
+      // Format 1: Plain degrees × 1,800,000 (original GT06 spec)
+      r => r / 1800000.0,
+      // Format 2: NMEA DDMMmmmm — 8-digit (most common GT06 clone format)
+      // e.g. rawLat=10305432 → floor(…/1M)=10°, (…%1M)/10000=30.5432′ → 10.509°
+      r => Math.floor(r / 1000000) + (r % 1000000) / 10000.0 / 60.0,
+      // Format 3: NMEA DDMMmmm — 7-digit (cheaper clones, 3-decimal minutes)
+      r => Math.floor(r / 100000) + (r % 100000) / 1000.0 / 60.0,
+      // Format 4: degrees × 30,000 (rare Coban variant)
+      r => r / 30000.0,
+    ];
 
-    // Format 1: Plain degrees × 1,800,000 (original GT06 spec)
-    const simple = raw / 1800000.0;
-    if (inRange(simple)) return simple;
-
-    // Format 2: NMEA DDMMmmmm — 8-digit: DD×1000000 + MM×10000 + mmmm
-    // e.g. raw=10305432 → 10°30.5432′ → 10.509°
-    const d2 = Math.floor(raw / 1000000);
-    const m2 = (raw % 1000000) / 10000.0;
-    const nmea8 = d2 + m2 / 60.0;
-    if (inRange(nmea8)) return nmea8;
-
-    // Format 3: NMEA DDMMmmm — 7-digit: DD×100000 + MM×1000 + mmm
-    // Some cheaper clones use 3-decimal-minute precision
-    const d3 = Math.floor(raw / 100000);
-    const m3 = (raw % 100000) / 1000.0;
-    const nmea7 = d3 + m3 / 60.0;
-    if (inRange(nmea7)) return nmea7;
-
-    // Format 4: degrees × 30,000 (rare but observed on some Coban clones)
-    const x30k = raw / 30000.0;
-    if (inRange(x30k)) return x30k;
-
-    // No known format gives an India coordinate — caller will discard packet
-    return NaN;
+    for (const fn of formats) {
+      const lat = fn(latRaw);
+      const lng = fn(lngRaw);
+      if (lat > 5 && lat < 35 && lng > 65 && lng < 100) {
+        return { lat, lng };
+      }
+    }
+    return null; // no known format gives an India coordinate pair
   }
 
   console.log(`[GT06] Raw coords: latRaw=${latRaw}, lngRaw=${lngRaw}`);
 
-  let lat = decodeCoord(latRaw, true);
-  let lng = decodeCoord(lngRaw, false);
+  const decoded = decodeCoordPair(latRaw, lngRaw);
+  if (!decoded) {
+    console.warn(
+      `[GT06] Discarding location: no encoding format gives India bounds ` +
+      `— rawLat=${latRaw}, rawLng=${lngRaw}`
+    );
+    return null;
+  }
+
+  let lat = decoded.lat;
+  let lng = decoded.lng;
   if (latSouth) lat = -lat;
   if (lonWest)  lng = -lng;
 
-  // Hard India bounds check — reject anything outside the fleet operating area.
-  // This is the single authoritative gate; it covers null-island, ocean ghosts,
-  // hemisphere-bit errors, and any encoding format we didn't recognise.
+  // Final India bounds check — catches hemisphere-bit errors and any edge case
+  // where a format passed the pre-bit check but flipped out of bounds after.
+  // India is always N hemisphere (lat > 0) and E longitude (lng > 0).
   const LAT_MIN = 5, LAT_MAX = 35, LNG_MIN = 65, LNG_MAX = 100;
-  if (
-    isNaN(lat) || isNaN(lng) ||
-    lat < LAT_MIN || lat > LAT_MAX ||
-    lng < LNG_MIN || lng > LNG_MAX
-  ) {
+  if (lat < LAT_MIN || lat > LAT_MAX || lng < LNG_MIN || lng > LNG_MAX) {
     console.warn(
-      `[GT06] Discarding location: outside India bounds ` +
-      `(lat=${isNaN(lat) ? "NaN" : lat.toFixed(5)}, lng=${isNaN(lng) ? "NaN" : lng.toFixed(5)}) ` +
-      `— rawLat=${latRaw}, rawLng=${lngRaw}`
+      `[GT06] Discarding location: outside India bounds after hemisphere bits ` +
+      `(lat=${lat.toFixed(5)}, lng=${lng.toFixed(5)}) — rawLat=${latRaw}, rawLng=${lngRaw}`
     );
     return null;
   }
