@@ -144,6 +144,7 @@ export default function AdminUsers() {
   const [vehicleSearches, setVehicleSearches] = useState<Record<string, string>>({});
   const [userToDelete, setUserToDelete] = useState<UserWithoutPassword | null>(null);
   const [deleteUserConfirmText, setDeleteUserConfirmText] = useState("");
+  const [passwordInputs, setPasswordInputs] = useState<Record<string, string>>({});
 
   const { data: users = [], isLoading } = useQuery<UserWithoutPassword[]>({
     queryKey: ["/api/users"],
@@ -290,6 +291,11 @@ export default function AdminUsers() {
         delete next[variables.id];
         return next;
       });
+      setPasswordInputs((prev) => {
+        const next = { ...prev };
+        delete next[variables.id];
+        return next;
+      });
     },
     onError: (err: Error) => {
       toast({ variant: "destructive", description: err.message });
@@ -316,6 +322,11 @@ export default function AdminUsers() {
   const handleSave = (userId: string) => {
     const state = editStates[userId];
     if (!state) return;
+    const newPassword = passwordInputs[userId]?.trim();
+    if (newPassword && newPassword.length < 8) {
+      toast({ variant: "destructive", description: "Password must be at least 8 characters" });
+      return;
+    }
     const payload: Record<string, unknown> = {
       status: state.status,
       subscriptionType: state.subscriptionType,
@@ -329,6 +340,7 @@ export default function AdminUsers() {
         ? new Date(state.subscriptionExpiry).toISOString()
         : null,
     };
+    if (newPassword) payload.password = newPassword;
     updateMutation.mutate({ id: userId, data: payload });
   };
 
@@ -535,6 +547,19 @@ export default function AdminUsers() {
                             onChange={(e) => updateEditState(user.id, { department: e.target.value })}
                             placeholder="e.g. Fleet Ops"
                             data-testid={`input-department-${user.id}`}
+                          />
+                        </div>
+
+                        {/* New Password */}
+                        <div className="space-y-1">
+                          <Label htmlFor={`password-${user.id}`}>New Password <span className="text-muted-foreground font-normal">(leave blank to keep current)</span></Label>
+                          <Input
+                            id={`password-${user.id}`}
+                            type="password"
+                            value={passwordInputs[user.id] ?? ""}
+                            onChange={(e) => setPasswordInputs((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                            placeholder="Min 8 characters"
+                            data-testid={`input-password-${user.id}`}
                           />
                         </div>
 
