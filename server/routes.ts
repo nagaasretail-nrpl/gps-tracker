@@ -312,8 +312,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       const speed = data.speed ?? 0;
-      const status = speed > 5 ? "active" : "stopped";
-      await storage.updateVehicle(vehicle.id, { status });
+      const newStatus = speed > 5 ? "active" : "stopped";
+      let parkedSince: Date | null | undefined = undefined;
+      if (newStatus === "stopped" && vehicle.status !== "stopped") {
+        parkedSince = new Date();
+      } else if (newStatus === "active" && vehicle.status === "stopped") {
+        parkedSince = null;
+      }
+      const vehicleUpdate: { status: string; parkedSince?: Date | null } = { status: newStatus };
+      if (parkedSince !== undefined) vehicleUpdate.parkedSince = parkedSince;
+      await storage.updateVehicle(vehicle.id, vehicleUpdate);
 
       checkGeofences(location).catch(err => console.error("Geofence check error:", err));
       checkSpeedViolation(location).catch(err => console.error("Speed check error:", err));

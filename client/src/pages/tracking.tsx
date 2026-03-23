@@ -141,6 +141,19 @@ export default function Tracking() {
   const getVehicleLocation = (vehicleId: string) =>
     latestLocations?.find((l) => l.vehicleId === vehicleId);
 
+  const formatParkingDuration = (parkedSince: Date | string | null | undefined): string => {
+    if (!parkedSince) return "";
+    const ms = Date.now() - new Date(parkedSince).getTime();
+    if (ms < 0) return "";
+    const totalMinutes = Math.floor(ms / 60000);
+    if (totalMinutes < 1) return "< 1m";
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours === 0) return `${minutes}m`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  };
+
   const formatTimestamp = (timestamp: Date) => {
     const diff = Date.now() - new Date(timestamp).getTime();
     if (diff < 0) return new Date(timestamp).toLocaleTimeString();
@@ -278,7 +291,7 @@ export default function Tracking() {
                         {vehicle.licensePlate}
                       </p>
                     )}
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span
                         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                         style={{
@@ -295,6 +308,18 @@ export default function Tracking() {
                           ? formatTimestamp(location.timestamp)
                           : "Waiting for GPS…"}
                       </span>
+                      {vehicle.status === "stopped" && vehicle.parkedSince && (
+                        <span
+                          className="text-xs font-semibold flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded"
+                          style={{ background: "#fff8e1", color: "#92400e" }}
+                          data-testid={`text-parking-${vehicle.id}`}
+                        >
+                          <span
+                            style={{ background: "#f59e0b", color: "#fff", fontSize: "9px", fontWeight: 700, padding: "0 4px", borderRadius: "2px" }}
+                          >P</span>
+                          {formatParkingDuration(vehicle.parkedSince)}
+                        </span>
+                      )}
                       {isSelected && selectedTrailCount > 1 && (
                         <Badge variant="outline" className="text-xs ml-auto flex-shrink-0 px-1 py-0">
                           {selectedTrailCount}pts

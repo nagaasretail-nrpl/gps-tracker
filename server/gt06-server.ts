@@ -419,8 +419,19 @@ async function handlePacket(
         loc.timestamp,
       );
 
-      const status = loc.speed > 5 ? "active" : "stopped";
-      const updatedVehicle = await storage.updateVehicle(vehicleId, { status });
+      const newStatus = loc.speed > 5 ? "active" : "stopped";
+      const existingVehicle = await storage.getVehicle(vehicleId);
+      let parkedSince: Date | null | undefined = undefined; // undefined = don't change
+      if (newStatus === "stopped" && existingVehicle?.status !== "stopped") {
+        // Transitioned from moving → stopped: record parking start time
+        parkedSince = new Date();
+      } else if (newStatus === "active" && existingVehicle?.status === "stopped") {
+        // Transitioned from stopped → moving: clear parking time
+        parkedSince = null;
+      }
+      const vehicleUpdate: { status: string; parkedSince?: Date | null } = { status: newStatus };
+      if (parkedSince !== undefined) vehicleUpdate.parkedSince = parkedSince;
+      const updatedVehicle = await storage.updateVehicle(vehicleId, vehicleUpdate);
 
       // Trigger geofence checks and broadcast to WebSocket clients
       checkGeofences(location).catch((e) => console.error("[GT06] Geofence error:", e));

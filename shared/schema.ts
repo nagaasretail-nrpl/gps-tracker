@@ -139,6 +139,7 @@ export const vehicles = pgTable("vehicles", {
   fuelRatePerLiter: decimal("fuel_rate_per_liter", { precision: 10, scale: 2 }), // cost per liter/unit; null = not set
   fuelTankCapacity: decimal("fuel_tank_capacity", { precision: 10, scale: 2 }), // liters; null = not set
   devicePhone: text("device_phone"), // SIM card phone number on the GPS tracker
+  parkedSince: timestamp("parked_since"), // set when vehicle transitions from moving → stopped
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -166,6 +167,7 @@ export const updateVehicleSchema = z.object({
   fuelRatePerLiter: z.number().positive().nullable().optional(),
   fuelTankCapacity: z.number().positive().nullable().optional(),
   devicePhone: z.string().nullable().optional(),
+  parkedSince: z.date().nullable().optional(),
 });
 
 export type InsertVehicle = z.infer<typeof insertVehicleSchema>;

@@ -45,6 +45,20 @@ type MapOverlay =
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+/** Format a parking duration from a Date into "Xh Ym" or "Ym" string */
+function formatParkingDuration(parkedSince: Date | string | null | undefined): string {
+  if (!parkedSince) return "";
+  const ms = Date.now() - new Date(parkedSince).getTime();
+  if (ms < 0) return "";
+  const totalMinutes = Math.floor(ms / 60000);
+  if (totalMinutes < 1) return "< 1m";
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 /** Escape HTML for InfoWindow content */
 function esc(str: string | null | undefined): string {
   if (!str) return "";
@@ -92,6 +106,14 @@ function buildVehicleInfoHtml(
   const ts = new Date(location.timestamp);
   const timeStr = ts.toLocaleString();
   const address = String(location.address ?? "").trim();
+  const isStopped = speed <= 5;
+  const parkingDuration = isStopped ? formatParkingDuration(vehicle.parkedSince) : "";
+  const parkingRow = parkingDuration
+    ? `<div style="background:#fff8e1;border-radius:4px;padding:4px 8px;margin-top:6px;display:flex;align-items:center;gap:6px;">
+        <span style="background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;">P</span>
+        <span style="font-weight:600;color:#92400e;">Parked ${esc(parkingDuration)}</span>
+       </div>`
+    : "";
   return `
     <div style="min-width:230px;max-width:290px;font-family:sans-serif;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.18);">
       <div style="background:${headerColor};color:#fff;padding:10px 14px;">
@@ -104,6 +126,7 @@ function buildVehicleInfoHtml(
         <div><b style="color:#666;min-width:85px;display:inline-block;">Heading:</b> ${heading.toFixed(0)}&deg;</div>
         <div><b style="color:#666;min-width:85px;display:inline-block;">Status:</b> ${esc(vehicle.status)}</div>
         <div style="color:#888;font-size:11px;margin-top:4px;"><b style="color:#666;min-width:85px;display:inline-block;">Last update:</b> ${esc(timeStr)}</div>
+        ${parkingRow}
       </div>
     </div>
   `;
@@ -433,10 +456,14 @@ export function MapComponent({
       const [anchorX, anchorY] = getIconAnchor(iconType);
       const pngUrl = getVehicleImg(iconType);
 
-      // Label text: "Name (speed km/h)" — matching the reference app format
+      // Label text: for stopped vehicles show parking duration, else show speed
       const displayName =
         vehicle.name.length > 14 ? vehicle.name.slice(0, 13) + "…" : vehicle.name;
-      const labelText = `${displayName} (${speed.toFixed(0)} km/h)`;
+      const isStopped = speed <= 5;
+      const parkDur = isStopped ? formatParkingDuration(vehicle.parkedSince) : "";
+      const labelText = isStopped && parkDur
+        ? `${displayName} | P ${parkDur}`
+        : `${displayName} (${speed.toFixed(0)} km/h)`;
 
       // Build composite marker icon (vehicle image + label pill to the right)
       let markerIcon: google.maps.Icon;
