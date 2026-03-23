@@ -388,15 +388,15 @@ export default function Tracking() {
             {selectedVehicle ? (
               <div className="md:hidden absolute bottom-4 left-4 right-4 z-40">
                 <Button
-                  variant="secondary"
-                  className="w-full shadow-lg justify-between"
+                  variant="default"
+                  className="w-full shadow-xl justify-between bg-primary text-primary-foreground"
                   onClick={() => setMobileListOpen(true)}
                   data-testid="button-change-vehicle"
                 >
-                  <span className="truncate flex-1 text-left font-semibold text-sm">
+                  <span className="truncate flex-1 text-left font-bold text-sm">
                     {vehicles?.find((v) => v.id === selectedVehicle)?.name ?? "Selected Vehicle"}
                   </span>
-                  <span className="text-xs text-muted-foreground shrink-0 ml-2">Change Vehicle</span>
+                  <span className="text-xs font-medium opacity-80 shrink-0 ml-2">Change Vehicle</span>
                 </Button>
               </div>
             ) : null}
