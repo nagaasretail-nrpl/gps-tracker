@@ -44,13 +44,14 @@ import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
 
-// "/" (live tracking) and "/dashboard" are not in PROTECTED_ROUTES so they are
-// always accessible and act as safe redirect targets for blocked routes.
+// "/" (live tracking) is not in PROTECTED_ROUTES — always accessible, safe fallback.
+// "/dashboard" uses legacy key "/" (same as the stored allowedMenus value).
 const PROTECTED_ROUTES: Record<string, string[]> = {
   "/track": ["/track"],
   "/activities": ["/activities"],
   "/stats": ["/stats"],
   "/tracking": ["/tracking"],
+  "/dashboard": ["/"],
   "/vehicles": ["/vehicles"],
   "/trips": ["/trips"],
   "/history": ["/history"],
@@ -86,8 +87,8 @@ function RouteGuard({ user, userLoaded, path, component: Component }: {
 
   const requiredMenu = PROTECTED_ROUTES[path];
   if (requiredMenu && !requiredMenu.some((r) => allowedMenus.includes(r))) {
-    // "/" renders Live Tracking and is never in PROTECTED_ROUTES, so always safe
-    navigate("/");
+    // "/tracking" is never in PROTECTED_ROUTES so it is always reachable
+    navigate("/tracking");
     return null;
   }
 
@@ -102,7 +103,7 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
   return (
     <Switch>
       <Route path="/" component={Tracking} />
-      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/dashboard" component={guard("/dashboard", Dashboard)} />
       <Route path="/track" component={guard("/track", TrackActivity)} />
       <Route path="/activities" component={guard("/activities", Activities)} />
       <Route path="/stats" component={guard("/stats", Statistics)} />
