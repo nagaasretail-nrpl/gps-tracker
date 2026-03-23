@@ -14,12 +14,14 @@ import type { User } from "@shared/schema";
 interface PaymentStatus {
   configured: boolean;
   amount: number | null;
+  unitRate: number | null;
   vehicleCount: number;
   planName: string | null;
 }
 
 const SUBSCRIPTION_LABELS: Record<string, string> = {
   basic: "Basic",
+  premium: "Premium",
   pro: "Pro",
   enterprise: "Enterprise",
 };
@@ -264,11 +266,24 @@ export default function Profile() {
                   )}
                 </div>
 
+                {paymentStatus?.unitRate != null && paymentStatus.unitRate > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Rate</p>
+                    <p className="font-semibold" data-testid="text-subscription-unit-rate">
+                      ₹{paymentStatus.unitRate.toLocaleString("en-IN")}/vehicle/yr
+                    </p>
+                  </div>
+                )}
                 {paymentStatus?.amount != null && paymentStatus.amount > 0 && (
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Renewal Amount</p>
-                    <p className="font-semibold text-lg" data-testid="text-subscription-amount">
-                      ₹{paymentStatus.amount.toLocaleString("en-IN")}
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Renewal Total
+                      {paymentStatus.vehicleCount > 1 && paymentStatus.unitRate != null && (
+                        <span className="font-normal ml-1">({paymentStatus.vehicleCount} vehicles)</span>
+                      )}
+                    </p>
+                    <p className="font-semibold text-lg text-primary" data-testid="text-subscription-amount">
+                      ₹{paymentStatus.amount.toLocaleString("en-IN")}/yr
                     </p>
                   </div>
                 )}

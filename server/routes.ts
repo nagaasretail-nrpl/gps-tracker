@@ -40,10 +40,11 @@ interface SubscriptionPlan {
 async function getSubscriptionPricingForUser(userId: string): Promise<{
   vehicleCount: number;
   planName: string | null;
-  amount: number | null;
+  unitRate: number | null;   // per-vehicle price
+  amount: number | null;     // total = unitRate × vehicleCount (charged amount)
 }> {
   const user = await storage.getUser(userId);
-  if (!user) return { vehicleCount: 0, planName: null, amount: null };
+  if (!user) return { vehicleCount: 0, planName: null, unitRate: null, amount: null };
 
   let vehicleCount: number;
   if (user.allowedVehicleIds && user.allowedVehicleIds.length > 0) {
@@ -58,19 +59,26 @@ async function getSubscriptionPricingForUser(userId: string): Promise<{
     try {
       const plans: SubscriptionPlan[] = JSON.parse(plansSetting.value);
       if (Array.isArray(plans) && plans.length > 0) {
-        const sorted = [...plans].sort((a, b) => a.maxVehicles - b.maxVehicles);
-        const matched = sorted.find(p => vehicleCount <= p.maxVehicles) ?? sorted[sorted.length - 1];
-        return { vehicleCount, planName: matched.name, amount: matched.pricePerYear };
+        // Match plan by the user's assigned subscriptionType name (case-insensitive).
+        // Fall back to the cheapest plan if no exact match.
+        const userPlanKey = (user.subscriptionType ?? "").toLowerCase();
+        const matched =
+          plans.find(p => p.name.toLowerCase() === userPlanKey) ??
+          [...plans].sort((a, b) => a.maxVehicles - b.maxVehicles)[0];
+        const unitRate = matched.pricePerYear;
+        const amount = unitRate * Math.max(vehicleCount, 1);
+        return { vehicleCount, planName: matched.name, unitRate, amount };
       }
     } catch {
       // fall through to renewal_amount
     }
   }
 
-  // Fallback: fixed renewal_amount setting
+  // Fallback: fixed renewal_amount setting (no per-vehicle scaling)
   const amountSetting = await storage.getSetting("renewal_amount");
-  const amount = amountSetting ? parseInt(amountSetting.value, 10) : null;
-  return { vehicleCount, planName: null, amount: amount && !isNaN(amount) ? amount : null };
+  const flat = amountSetting ? parseInt(amountSetting.value, 10) : null;
+  const amount = flat && !isNaN(flat) ? flat : null;
+  return { vehicleCount, planName: null, unitRate: null, amount };
 }
 
 // DB-backed idempotency helpers for processed Razorpay payment IDs
@@ -140,11 +148,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const keyId = (await storage.getSetting("razorpay_key_id"))?.value || "";
       const keySecret = (await storage.getSetting("razorpay_key_secret"))?.value || "";
       const userId = (req.user as { id: string }).id;
-      const { vehicleCount, planName, amount } = await getSubscriptionPricingForUser(userId);
+      const { vehicleCount, planName, unitRate, amount } = await getSubscriptionPricingForUser(userId);
       const configured = !!(keyId && keySecret && amount && amount > 0);
       res.json({
         configured,
         amount: configured ? amount : null,
+        unitRate: configured ? unitRate : null,
         vehicleCount,
         planName,
       });

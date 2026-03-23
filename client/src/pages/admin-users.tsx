@@ -42,17 +42,13 @@ interface AppSetting {
   updatedAt: string;
 }
 
-function computeBillingAmount(
-  vehicleCount: number,
-  plans: SubscriptionPlan[],
-  fallbackAmount: number | null
-): number | null {
-  if (plans.length > 0) {
-    const sorted = [...plans].sort((a, b) => a.maxVehicles - b.maxVehicles);
-    const matched = sorted.find((p) => vehicleCount <= p.maxVehicles) ?? sorted[sorted.length - 1];
-    return matched.pricePerYear;
-  }
-  return fallbackAmount;
+function getPlanByType(subscriptionType: string, plans: SubscriptionPlan[]): SubscriptionPlan | null {
+  if (!plans.length) return null;
+  const key = subscriptionType.toLowerCase();
+  return (
+    plans.find((p) => p.name.toLowerCase() === key) ??
+    [...plans].sort((a, b) => a.maxVehicles - b.maxVehicles)[0]
+  );
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -63,6 +59,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const SUBSCRIPTION_LABELS: Record<string, string> = {
   basic: "Basic",
+  premium: "Premium",
   pro: "Pro",
   enterprise: "Enterprise",
 };
@@ -438,9 +435,11 @@ export default function AdminUsers() {
             const menuPanelOpen = openMenuPanels[user.id] ?? false;
             const restrictedMenuCount = user.allowedMenus?.length ?? null;
             const billingVehicleCount = assignedCount > 0 ? assignedCount : vehicles.length;
-            const billingAmount = user.role !== "admin"
-              ? computeBillingAmount(billingVehicleCount, subscriptionPlans, renewalAmountFallback)
+            const matchedPlan = user.role !== "admin"
+              ? getPlanByType(user.subscriptionType ?? "basic", subscriptionPlans)
               : null;
+            const unitRate = matchedPlan?.pricePerYear ?? renewalAmountFallback;
+            const totalRate = unitRate != null ? unitRate * Math.max(billingVehicleCount, 1) : null;
 
             return (
               <Card key={user.id} data-testid={`card-user-${user.id}`}>
@@ -457,7 +456,9 @@ export default function AdminUsers() {
                         <p className="text-sm text-muted-foreground">{user.phone ?? user.email ?? "—"}</p>
                         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                           <span className="text-xs text-muted-foreground">
-                            Plan: <span className="font-medium">{SUBSCRIPTION_LABELS[user.subscriptionType ?? "basic"] ?? user.subscriptionType}</span>
+                            Plan: <span className="font-medium">
+                              {matchedPlan?.name ?? SUBSCRIPTION_LABELS[user.subscriptionType ?? "basic"] ?? user.subscriptionType ?? "Basic"}
+                            </span>
                           </span>
                           {expiry && (
                             <span className={`text-xs ${isExpired ? "text-red-500" : "text-muted-foreground"}`}>
@@ -474,12 +475,15 @@ export default function AdminUsers() {
                               ? `${restrictedMenuCount} menu${restrictedMenuCount !== 1 ? "s" : ""} allowed`
                               : "All menus"}
                           </span>
-                          {billingAmount != null && (
+                          {unitRate != null && (
                             <span
                               className="text-xs font-semibold text-primary"
                               data-testid={`text-billing-amount-${user.id}`}
                             >
-                              ₹{billingAmount.toLocaleString("en-IN")} / yr
+                              ₹{unitRate.toLocaleString("en-IN")}/vehicle/yr
+                              {billingVehicleCount > 1 && totalRate != null && (
+                                <> · ₹{totalRate.toLocaleString("en-IN")}/yr total</>
+                              )}
                             </span>
                           )}
                         </div>
@@ -604,9 +608,18 @@ export default function AdminUsers() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="basic">Basic</SelectItem>
-                              <SelectItem value="pro">Pro</SelectItem>
-                              <SelectItem value="enterprise">Enterprise</SelectItem>
+                              {subscriptionPlans.length > 0 ? (
+                                subscriptionPlans.map((p) => (
+                                  <SelectItem key={p.name.toLowerCase()} value={p.name.toLowerCase()}>
+                                    {p.name} — ₹{p.pricePerYear.toLocaleString("en-IN")}/vehicle/yr
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                <>
+                                  <SelectItem value="basic">Basic</SelectItem>
+                                  <SelectItem value="premium">Premium</SelectItem>
+                                </>
+                              )}
                             </SelectContent>
                           </Select>
                         </div>
