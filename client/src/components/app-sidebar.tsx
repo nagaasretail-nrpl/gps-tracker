@@ -44,7 +44,7 @@ const personalMenuItems = [
 ];
 
 const fleetMenuItems = [
-  { title: "Fleet Dashboard", url: "/", icon: BarChart3 },
+  { title: "Fleet Dashboard", url: "/dashboard", icon: BarChart3 },
   { title: "Live Tracking", url: "/tracking", icon: Radio },
   { title: "Vehicles", url: "/vehicles", icon: Car },
   { title: "Trips", url: "/trips", icon: Navigation },

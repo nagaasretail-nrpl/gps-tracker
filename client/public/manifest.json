@@ -2,7 +2,7 @@
   "name": "Nista GPS",
   "short_name": "NistaGPS",
   "description": "Real-time vehicle tracking and fleet management",
-  "start_url": "/",
+  "start_url": "/tracking",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",

@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { MobileTileNav } from "@/components/mobile-tile-nav";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -43,8 +44,8 @@ import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
 
-// "/" (dashboard) is intentionally not in PROTECTED_ROUTES so it is always
-// accessible and acts as a safe redirect target for blocked routes.
+// "/" (live tracking) and "/dashboard" are not in PROTECTED_ROUTES so they are
+// always accessible and act as safe redirect targets for blocked routes.
 const PROTECTED_ROUTES: Record<string, string[]> = {
   "/track": ["/track"],
   "/activities": ["/activities"],
@@ -85,7 +86,7 @@ function RouteGuard({ user, userLoaded, path, component: Component }: {
 
   const requiredMenu = PROTECTED_ROUTES[path];
   if (requiredMenu && !requiredMenu.some((r) => allowedMenus.includes(r))) {
-    navigate("/"); // "/" is always accessible and never in PROTECTED_ROUTES
+    navigate("/dashboard");
     return null;
   }
 
@@ -99,7 +100,8 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
 
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      <Route path="/" component={Tracking} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route path="/track" component={guard("/track", TrackActivity)} />
       <Route path="/activities" component={guard("/activities", Activities)} />
       <Route path="/stats" component={guard("/stats", Statistics)} />
@@ -226,27 +228,46 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
-        <AppSidebar />
-        <div className="flex flex-col flex-1 relative">
+        {/* Desktop sidebar — hidden on mobile */}
+        <div className="hidden md:flex">
+          <AppSidebar />
+        </div>
+
+        <div className="flex flex-col flex-1 relative min-w-0">
           <header className="sticky top-0 z-20 flex items-center justify-between h-14 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <SidebarTrigger data-testid="button-sidebar-toggle" className="hover-elevate" />
+            {/* Mobile: tile nav trigger (hidden on desktop) */}
+            <div className="flex md:hidden">
+              <MobileTileNav onLogout={() => {
+                queryClient.invalidateQueries();
+                onLogout();
+              }} />
+            </div>
+            {/* Desktop: sidebar trigger (hidden on mobile) */}
+            <div className="hidden md:flex">
+              <SidebarTrigger data-testid="button-sidebar-toggle" className="hover-elevate" />
+            </div>
+
             <div className="flex items-center gap-2">
               <ThemeToggle />
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={async () => {
-                  await fetch("/api/auth/logout", {
-                    method: "POST",
-                    credentials: "include",
-                  });
-                  onLogout();
-                }}
-                data-testid="button-logout"
-                title="Logout"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
+              {/* Desktop logout button — hidden on mobile (mobile uses tile nav logout) */}
+              <div className="hidden md:flex">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={async () => {
+                    await fetch("/api/auth/logout", {
+                      method: "POST",
+                      credentials: "include",
+                    });
+                    queryClient.invalidateQueries();
+                    onLogout();
+                  }}
+                  data-testid="button-logout"
+                  title="Logout"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </header>
           <main className="flex-1 overflow-auto">
@@ -302,9 +323,9 @@ function PublicOrAuthApp() {
 
   if (isLoading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-orange-50 to-white dark:from-slate-950 dark:to-slate-900">
+      <div className="h-screen w-full flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="mt-4 text-muted-foreground">Loading...</p>
         </div>
       </div>
