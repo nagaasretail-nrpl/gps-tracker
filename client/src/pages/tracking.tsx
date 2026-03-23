@@ -4,12 +4,44 @@ import { MapComponent } from "@/components/map-component";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Wifi, WifiOff, List, X } from "lucide-react";
+import { Search, List, X } from "lucide-react";
 import type { Vehicle, Location } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { filterValidGpsCoords, isBasicValidCoord } from "@/lib/gpsUtils";
 import { getVehicleImg } from "@/lib/vehicleIcons";
+
+/** Render 4-bar signal indicator like a mobile signal icon */
+function SignalBars({ level, color, title }: { level: number; color: string; title?: string }) {
+  const bars = [1, 2, 3, 4];
+  return (
+    <span title={title} style={{ display: "inline-flex", alignItems: "flex-end", gap: "1.5px", height: "14px" }}>
+      {bars.map((b) => (
+        <span
+          key={b}
+          style={{
+            display: "inline-block",
+            width: "3px",
+            height: `${b * 25}%`,
+            borderRadius: "1px",
+            backgroundColor: b <= level ? color : "#d1d5db",
+            transition: "background-color 0.3s",
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Convert satellite count to 0-4 signal bars */
+function satellitesToBars(sats: number | null | undefined): number {
+  const n = sats ?? 0;
+  if (n >= 10) return 4;
+  if (n >= 8) return 3;
+  if (n >= 6) return 2;
+  if (n >= 4) return 1;
+  return 0;
+}
 
 function usePrevious<T>(value: T): T | undefined {
   const ref = useRef<T | undefined>(undefined);
@@ -271,12 +303,20 @@ export default function Tracking() {
                       <span className="text-sm font-semibold truncate" data-testid={`text-vehicle-name-${vehicle.id}`}>
                         {vehicle.name}
                       </span>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {connected ? (
-                          <span title="Connected"><Wifi className="h-3 w-3 text-green-500" /></span>
-                        ) : (
-                          <span title="Offline"><WifiOff className="h-3 w-3 text-muted-foreground/40" /></span>
-                        )}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* Signal indicators: GPS (satellite) + GPRS (SIM connection) */}
+                        <div className="flex items-center gap-1" data-testid={`signal-${vehicle.id}`}>
+                          <SignalBars
+                            level={satellitesToBars(location?.satellites)}
+                            color="#22c55e"
+                            title={`GPS: ${location?.satellites ?? 0} satellites`}
+                          />
+                          <SignalBars
+                            level={connected ? 4 : 0}
+                            color="#3b82f6"
+                            title={connected ? "GPRS: Connected" : "GPRS: Offline"}
+                          />
+                        </div>
                         <span
                           className="text-xs font-medium tabular-nums"
                           style={{ color: isMoving ? "#22c55e" : "hsl(var(--muted-foreground))" }}
@@ -391,6 +431,7 @@ export default function Tracking() {
             routePolylines={routePolylines}
             bearingData={bearingData}
             focusVehicleId={selectedVehicle}
+            connectedImeis={new Set((activeConnections ?? []).map((c) => c.imei))}
           />
         )}
 

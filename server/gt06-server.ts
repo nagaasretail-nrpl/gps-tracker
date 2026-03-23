@@ -417,6 +417,7 @@ async function handlePacket(
         null,
         null,
         loc.timestamp,
+        loc.satellites,
       );
 
       const newStatus = loc.speed > 5 ? "active" : "stopped";

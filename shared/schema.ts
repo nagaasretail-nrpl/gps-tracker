@@ -187,6 +187,7 @@ export const locations = pgTable("locations", {
   heading: decimal("heading", { precision: 5, scale: 2 }), // degrees 0-360
   address: text("address"),
   accuracy: decimal("accuracy", { precision: 6, scale: 2 }),
+  satellites: integer("satellites"), // GPS satellite count
   timestamp: timestamp("timestamp").notNull().defaultNow(),
 }, (table) => ({
   // Check constraint: exactly one of vehicleId or activityId must be non-null

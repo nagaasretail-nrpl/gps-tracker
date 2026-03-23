@@ -26,6 +26,7 @@ interface MapComponentProps {
   routePolylines?: RoutePolyline[];
   bearingData?: Record<string, [number, number][]>;
   focusVehicleId?: string | null;
+  connectedImeis?: Set<string>; // set of device IMEIs with live TCP connections
 }
 
 // Augment Window to include the optional google namespace and dynamic callbacks.
@@ -93,6 +94,28 @@ function computeBearing(
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
+/** Render signal bars as inline SVG HTML for use inside InfoWindow */
+function signalBarsHtml(level: number, color: string, offColor = "#d1d5db"): string {
+  const bars = [1, 2, 3, 4];
+  const svgBars = bars.map((b) => {
+    const h = b * 5;
+    const y = 20 - h;
+    const fill = b <= level ? color : offColor;
+    return `<rect x="${(b - 1) * 6}" y="${y}" width="4" height="${h}" rx="1" fill="${fill}"/>`;
+  }).join("");
+  return `<svg width="28" height="20" viewBox="0 0 24 20" style="display:inline-block;vertical-align:middle;">${svgBars}</svg>`;
+}
+
+/** Convert satellite count to 0-4 signal bars */
+function satsToLevel(sats: number | null | undefined): number {
+  const n = sats ?? 0;
+  if (n >= 10) return 4;
+  if (n >= 8) return 3;
+  if (n >= 6) return 2;
+  if (n >= 4) return 1;
+  return 0;
+}
+
 /** Build styled HTML for the vehicle InfoWindow popup */
 function buildVehicleInfoHtml(
   vehicle: Vehicle,
@@ -100,7 +123,8 @@ function buildVehicleInfoHtml(
   speed: number,
   lat: number,
   lng: number,
-  heading: number
+  heading: number,
+  isConnected: boolean
 ): string {
   const headerColor = vehicle.iconColor ?? "#e4006e";
   const ts = new Date(location.timestamp);
@@ -109,21 +133,37 @@ function buildVehicleInfoHtml(
   const isStopped = speed <= 5;
   const parkingDuration = isStopped ? formatParkingDuration(vehicle.parkedSince) : "";
   const parkingRow = parkingDuration
-    ? `<div style="background:#fff8e1;border-radius:4px;padding:4px 8px;margin-top:6px;display:flex;align-items:center;gap:6px;">
+    ? `<div style="background:#fff8e1;border-radius:4px;padding:4px 8px;margin-top:4px;display:flex;align-items:center;gap:6px;">
         <span style="background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;">P</span>
         <span style="font-weight:600;color:#92400e;">Parked ${esc(parkingDuration)}</span>
        </div>`
     : "";
+  const sats = typeof location.satellites === "number" ? location.satellites : null;
+  const gpsBars = signalBarsHtml(satsToLevel(sats), "#22c55e");
+  const gprsBars = signalBarsHtml(isConnected ? 4 : 0, "#3b82f6");
+  const altStr = location.altitude ? `${parseFloat(String(location.altitude)).toFixed(0)} m` : "—";
   return `
-    <div style="min-width:230px;max-width:290px;font-family:sans-serif;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.18);">
-      <div style="background:${headerColor};color:#fff;padding:10px 14px;">
-        <span style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">${esc(vehicle.name)}</span>
+    <div style="min-width:240px;max-width:300px;font-family:sans-serif;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.18);">
+      <div style="background:${headerColor};color:#fff;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(vehicle.name)}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <span style="display:flex;flex-direction:column;align-items:center;gap:1px;">
+            ${gpsBars}
+            <span style="font-size:9px;opacity:0.85;">GPS</span>
+          </span>
+          <span style="display:flex;flex-direction:column;align-items:center;gap:1px;">
+            ${gprsBars}
+            <span style="font-size:9px;opacity:0.85;">GPRS</span>
+          </span>
+        </div>
       </div>
       <div style="background:#fff;padding:10px 14px;font-size:12px;line-height:1.75;color:#222;">
         ${address ? `<div><b style="color:#666;min-width:85px;display:inline-block;">Address:</b> ${esc(address)}</div>` : ""}
         <div><b style="color:#666;min-width:85px;display:inline-block;">Position:</b> <span style="color:#1a6bc7;font-family:monospace;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span></div>
+        <div><b style="color:#666;min-width:85px;display:inline-block;">Altitude:</b> ${altStr}</div>
         <div><b style="color:#666;min-width:85px;display:inline-block;">Speed:</b> ${speed.toFixed(0)} km/h</div>
         <div><b style="color:#666;min-width:85px;display:inline-block;">Heading:</b> ${heading.toFixed(0)}&deg;</div>
+        <div><b style="color:#666;min-width:85px;display:inline-block;">Satellites:</b> ${sats !== null ? sats : "—"}</div>
         <div><b style="color:#666;min-width:85px;display:inline-block;">Status:</b> ${esc(vehicle.status)}</div>
         <div style="color:#888;font-size:11px;margin-top:4px;"><b style="color:#666;min-width:85px;display:inline-block;">Last update:</b> ${esc(timeStr)}</div>
         ${parkingRow}
@@ -296,6 +336,7 @@ export function MapComponent({
   routePolylines = [],
   bearingData = {},
   focusVehicleId,
+  connectedImeis,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -485,7 +526,8 @@ export function MapComponent({
       }
 
       // Build InfoWindow popup content
-      const infoHtml = buildVehicleInfoHtml(vehicle, location, speed, lat, lng, heading);
+      const isConnected = connectedImeis ? connectedImeis.has(vehicle.deviceId) : false;
+      const infoHtml = buildVehicleInfoHtml(vehicle, location, speed, lat, lng, heading, isConnected);
 
       const existingMarker = vehicleMarkersRef.current.get(vehicle.id);
       if (existingMarker) {
