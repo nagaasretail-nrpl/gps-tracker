@@ -144,57 +144,69 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   const lonWest  = Boolean(highByte & 0x02);
   const course   = ((highByte >> 2) & 0x3f) * 5.625; // degrees
 
-  // Many GT06 clone trackers (Coban, JimiIoT, etc.) encode coordinates in
-  // NMEA DDMMmmmm format (e.g. 1305432 = 13°05.432') rather than plain
-  // degrees × 1,800,000.  Detect which format by checking whether the plain
-  // division gives a plausible degree value: if latRaw / 1_800_000 < 90 it
-  // could be either format, but if the NMEA-converted value differs by more
-  // than 3° we prefer the NMEA conversion because it produces results that
-  // match the known operating region (India: lat 5–35°, lng 65–100°).
-  function decodeCoord(raw: number): number {
-    const simpleDeg = raw / 1800000.0;
-    // NMEA DDMMmmmm: integer part = DDMM, fractional = .mmmm (stored × 10000)
-    const nmea_deg = Math.floor(raw / 1000000);
-    const nmea_min = (raw % 1000000) / 10000.0;
-    const nmeaDeg  = nmea_deg + nmea_min / 60.0;
-    // Use NMEA conversion if it yields a meaningfully different (larger) value
-    // and the simple division gives an unusually small degree number.
-    // Simple heuristic: if raw > 1_000_000 and NMEA result > simple by > 3°, prefer NMEA.
-    if (raw > 1_000_000 && (nmeaDeg - simpleDeg) > 3) {
-      return nmeaDeg;
-    }
-    return simpleDeg;
+  // GT06 clone trackers use various coordinate encodings. Rather than guessing
+  // by a heuristic difference, we try each known format and accept whichever
+  // one lands inside the fleet's operating region (Indian subcontinent:
+  // lat 5–35°N, lng 65–100°E). If none of the formats produces an India
+  // coordinate, the packet is rejected so the last valid position stays.
+  function decodeCoord(raw: number, isLat: boolean): number {
+    const inRange = isLat
+      ? (v: number) => v > 5 && v < 35
+      : (v: number) => v > 65 && v < 100;
+
+    // Format 1: Plain degrees × 1,800,000 (original GT06 spec)
+    const simple = raw / 1800000.0;
+    if (inRange(simple)) return simple;
+
+    // Format 2: NMEA DDMMmmmm — 8-digit: DD×1000000 + MM×10000 + mmmm
+    // e.g. raw=10305432 → 10°30.5432′ → 10.509°
+    const d2 = Math.floor(raw / 1000000);
+    const m2 = (raw % 1000000) / 10000.0;
+    const nmea8 = d2 + m2 / 60.0;
+    if (inRange(nmea8)) return nmea8;
+
+    // Format 3: NMEA DDMMmmm — 7-digit: DD×100000 + MM×1000 + mmm
+    // Some cheaper clones use 3-decimal-minute precision
+    const d3 = Math.floor(raw / 100000);
+    const m3 = (raw % 100000) / 1000.0;
+    const nmea7 = d3 + m3 / 60.0;
+    if (inRange(nmea7)) return nmea7;
+
+    // Format 4: degrees × 30,000 (rare but observed on some Coban clones)
+    const x30k = raw / 30000.0;
+    if (inRange(x30k)) return x30k;
+
+    // No known format gives an India coordinate — caller will discard packet
+    return NaN;
   }
 
   console.log(`[GT06] Raw coords: latRaw=${latRaw}, lngRaw=${lngRaw}`);
 
-  let lat = decodeCoord(latRaw);
-  let lng = decodeCoord(lngRaw);
+  let lat = decodeCoord(latRaw, true);
+  let lng = decodeCoord(lngRaw, false);
   if (latSouth) lat = -lat;
   if (lonWest)  lng = -lng;
 
-  // Reject null-island (device not locked yet)
-  if (lat === 0 && lng === 0) {
-    console.warn(`[GT06] Discarding location: null-island coords (0,0)`);
+  // Hard India bounds check — reject anything outside the fleet operating area.
+  // This is the single authoritative gate; it covers null-island, ocean ghosts,
+  // hemisphere-bit errors, and any encoding format we didn't recognise.
+  const LAT_MIN = 5, LAT_MAX = 35, LNG_MIN = 65, LNG_MAX = 100;
+  if (
+    isNaN(lat) || isNaN(lng) ||
+    lat < LAT_MIN || lat > LAT_MAX ||
+    lng < LNG_MIN || lng > LNG_MAX
+  ) {
+    console.warn(
+      `[GT06] Discarding location: outside India bounds ` +
+      `(lat=${isNaN(lat) ? "NaN" : lat.toFixed(5)}, lng=${isNaN(lng) ? "NaN" : lng.toFixed(5)}) ` +
+      `— rawLat=${latRaw}, rawLng=${lngRaw}`
+    );
     return null;
   }
 
   // Reject if not enough satellites for a reliable fix
   if (satellites < 4) {
     console.warn(`[GT06] Discarding location: only ${satellites} satellites (need ≥4)`);
-    return null;
-  }
-
-  // Reject South Indian Ocean ghost coordinates.
-  // When GPS signal is weak the latSouth protocol bit can be incorrectly set,
-  // flipping an Indian-longitude coordinate into the southern hemisphere ocean.
-  // All valid Indian-fleet positions have lat > 0; lat < 0 with Indian-Ocean
-  // longitude (60–105°E) is physically impossible and indicates a bad fix.
-  if (lat < 0 && lng > 60 && lng < 105) {
-    console.warn(
-      `[GT06] Discarding location: south Indian Ocean ghost coord ` +
-      `(${lat.toFixed(5)}, ${lng.toFixed(5)}) — latSouth bit likely misset`
-    );
     return null;
   }
 
