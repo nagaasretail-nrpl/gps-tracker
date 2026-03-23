@@ -45,9 +45,10 @@ interface AppSetting {
 function getPlanByType(subscriptionType: string, plans: SubscriptionPlan[]): SubscriptionPlan | null {
   if (!plans.length) return null;
   const key = subscriptionType.toLowerCase();
+  // Case-insensitive match; fall back to lowest-priced plan if no match found.
   return (
     plans.find((p) => p.name.toLowerCase() === key) ??
-    [...plans].sort((a, b) => a.maxVehicles - b.maxVehicles)[0]
+    [...plans].sort((a, b) => a.pricePerYear - b.pricePerYear)[0]
   );
 }
 

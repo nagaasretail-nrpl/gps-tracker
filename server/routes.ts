@@ -60,11 +60,11 @@ async function getSubscriptionPricingForUser(userId: string): Promise<{
       const plans: SubscriptionPlan[] = JSON.parse(plansSetting.value);
       if (Array.isArray(plans) && plans.length > 0) {
         // Match plan by the user's assigned subscriptionType name (case-insensitive).
-        // Fall back to the cheapest plan if no exact match.
+        // Fall back to the plan with the smallest vehicle quota if no exact match.
         const userPlanKey = (user.subscriptionType ?? "").toLowerCase();
         const matched =
           plans.find(p => p.name.toLowerCase() === userPlanKey) ??
-          [...plans].sort((a, b) => a.maxVehicles - b.maxVehicles)[0];
+          [...plans].sort((a, b) => a.pricePerYear - b.pricePerYear)[0];
         const unitRate = matched.pricePerYear;
         const amount = unitRate * Math.max(vehicleCount, 1);
         return { vehicleCount, planName: matched.name, unitRate, amount };
