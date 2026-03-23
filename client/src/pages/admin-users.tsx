@@ -438,7 +438,10 @@ export default function AdminUsers() {
             const matchedPlan = user.role !== "admin"
               ? getPlanByType(user.subscriptionType ?? "basic", subscriptionPlans)
               : null;
-            const unitRate = matchedPlan?.pricePerYear ?? renewalAmountFallback;
+            // unitRate only exists when a real plan is matched (per-vehicle pricing).
+            // flatFallback is used when no plans are configured — shown as-is, not multiplied.
+            const unitRate = matchedPlan != null ? matchedPlan.pricePerYear : null;
+            const flatFallback = matchedPlan == null && user.role !== "admin" ? renewalAmountFallback : null;
             const totalRate = unitRate != null ? unitRate * Math.max(billingVehicleCount, 1) : null;
 
             return (
@@ -475,7 +478,7 @@ export default function AdminUsers() {
                               ? `${restrictedMenuCount} menu${restrictedMenuCount !== 1 ? "s" : ""} allowed`
                               : "All menus"}
                           </span>
-                          {unitRate != null && (
+                          {unitRate != null ? (
                             <span
                               className="text-xs font-semibold text-primary"
                               data-testid={`text-billing-amount-${user.id}`}
@@ -485,7 +488,14 @@ export default function AdminUsers() {
                                 <> · ₹{totalRate.toLocaleString("en-IN")}/yr total</>
                               )}
                             </span>
-                          )}
+                          ) : flatFallback != null ? (
+                            <span
+                              className="text-xs font-semibold text-primary"
+                              data-testid={`text-billing-amount-${user.id}`}
+                            >
+                              ₹{flatFallback.toLocaleString("en-IN")}/yr
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </div>
