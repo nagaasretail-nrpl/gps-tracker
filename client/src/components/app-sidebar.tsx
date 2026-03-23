@@ -37,14 +37,23 @@ const nistaLogo = "/nista-logo.png";
 
 type UserWithoutPassword = Omit<UserType, "password">;
 
-const personalMenuItems = [
+interface MenuItem {
+  title: string;
+  url: string;
+  icon: React.ElementType;
+  // menuKey is the allowedMenus permission key. Defaults to url when not set.
+  // Fleet Dashboard navigates to /dashboard but its permission key is "/" (legacy).
+  menuKey?: string;
+}
+
+const personalMenuItems: MenuItem[] = [
   { title: "Track Activity", url: "/track", icon: Play },
   { title: "My Activities", url: "/activities", icon: Activity },
   { title: "Statistics", url: "/stats", icon: TrendingUp },
 ];
 
-const fleetMenuItems = [
-  { title: "Fleet Dashboard", url: "/dashboard", icon: BarChart3 },
+const fleetMenuItems: MenuItem[] = [
+  { title: "Fleet Dashboard", url: "/dashboard", icon: BarChart3, menuKey: "/" },
   { title: "Live Tracking", url: "/tracking", icon: Radio },
   { title: "Vehicles", url: "/vehicles", icon: Car },
   { title: "Trips", url: "/trips", icon: Navigation },
@@ -55,12 +64,12 @@ const fleetMenuItems = [
   { title: "Reports", url: "/reports", icon: FileText },
 ];
 
-const adminMenuItems = [
+const adminMenuItems: MenuItem[] = [
   { title: "User Management", url: "/admin-users", icon: Users },
   { title: "Settings", url: "/admin-settings", icon: Settings },
 ];
 
-const userMenuItems = [
+const userMenuItems: MenuItem[] = [
   { title: "My Profile", url: "/profile", icon: User },
 ];
 
@@ -75,19 +84,20 @@ export function AppSidebar() {
   const currentUser = authData?.user;
   const isAdmin = currentUser?.role === "admin";
 
-  const isAllowed = (url: string): boolean => {
+  const isAllowed = (item: MenuItem): boolean => {
     if (!currentUser || isAdmin) return true;
     const allowed = currentUser.allowedMenus;
     // null or empty array both mean unrestricted (no specific menus configured)
     if (allowed == null || allowed.length === 0) return true;
-    return allowed.includes(url);
+    const key = item.menuKey ?? item.url;
+    return allowed.includes(key);
   };
 
-  const visiblePersonal = personalMenuItems.filter((i) => isAllowed(i.url));
-  const visibleFleet = fleetMenuItems.filter((i) => isAllowed(i.url));
-  const visibleUser = userMenuItems.filter((i) => isAllowed(i.url));
+  const visiblePersonal = personalMenuItems.filter(isAllowed);
+  const visibleFleet = fleetMenuItems.filter(isAllowed);
+  const visibleUser = userMenuItems.filter(isAllowed);
 
-  const renderGroup = (label: string, items: typeof personalMenuItems) => {
+  const renderGroup = (label: string, items: MenuItem[]) => {
     if (items.length === 0) return null;
     return (
       <SidebarGroup>

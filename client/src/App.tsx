@@ -86,7 +86,8 @@ function RouteGuard({ user, userLoaded, path, component: Component }: {
 
   const requiredMenu = PROTECTED_ROUTES[path];
   if (requiredMenu && !requiredMenu.some((r) => allowedMenus.includes(r))) {
-    navigate("/dashboard");
+    // "/" renders Live Tracking and is never in PROTECTED_ROUTES, so always safe
+    navigate("/");
     return null;
   }
 
