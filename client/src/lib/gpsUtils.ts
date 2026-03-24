@@ -8,7 +8,7 @@ export function isBasicValidCoord(lat: number, lng: number): boolean {
   );
 }
 
-function isIndiaCoord(lat: number, lng: number): boolean {
+export function isIndiaCoord(lat: number, lng: number): boolean {
   return lat >= 5 && lat <= 37 && lng >= 65 && lng <= 100;
 }
 

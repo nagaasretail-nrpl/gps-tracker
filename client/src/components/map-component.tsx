@@ -3,6 +3,7 @@ import type { Vehicle, Location, Geofence, Route as RouteType, Poi } from "@shar
 import { Button } from "@/components/ui/button";
 import { ZoomIn, ZoomOut, Locate, Layers, MapPinOff } from "lucide-react";
 import { getMarkerSvg, getIconAnchor, getVehicleImg } from "@/lib/vehicleIcons";
+import { isIndiaCoord } from "@/lib/gpsUtils";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -469,7 +470,7 @@ export function MapComponent({
 
       const lat = parseFloat(String(location.latitude));
       const lng = parseFloat(String(location.longitude));
-      if (isNaN(lat) || isNaN(lng)) return;
+      if (!isIndiaCoord(lat, lng)) return;
 
       currentVehicleIds.add(vehicle.id);
 
@@ -730,7 +731,7 @@ export function MapComponent({
     if (!loc) return;
     const lat = parseFloat(String(loc.latitude));
     const lng = parseFloat(String(loc.longitude));
-    if (!isNaN(lat) && !isNaN(lng)) {
+    if (isIndiaCoord(lat, lng)) {
       mapInstanceRef.current.panTo({ lat, lng });
       mapInstanceRef.current.setZoom(15);
     }

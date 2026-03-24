@@ -8,7 +8,7 @@ import { Search, List, X } from "lucide-react";
 import type { Vehicle, Location } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { filterValidGpsCoords, isBasicValidCoord } from "@/lib/gpsUtils";
+import { filterValidGpsCoords, isBasicValidCoord, isIndiaCoord } from "@/lib/gpsUtils";
 import { getVehicleImg } from "@/lib/vehicleIcons";
 
 /** Render 4-bar signal indicator like a mobile signal icon */
@@ -94,7 +94,7 @@ export default function Tracking() {
     return latestLocations.filter((l) => {
       const lat = parseFloat(String(l.latitude));
       const lng = parseFloat(String(l.longitude));
-      return isBasicValidCoord(lat, lng);
+      return isBasicValidCoord(lat, lng) && isIndiaCoord(lat, lng);
     });
   }, [latestLocations]);
 
@@ -105,12 +105,12 @@ export default function Tracking() {
       if (!loc.vehicleId) continue;
       const lat = parseFloat(String(loc.latitude));
       const lng = parseFloat(String(loc.longitude));
-      if (isNaN(lat) || isNaN(lng)) continue;
+      if (!isIndiaCoord(lat, lng)) continue;
       const prev = prevLocations?.find((l) => l.vehicleId === loc.vehicleId);
       if (prev) {
         const prevLat = parseFloat(String(prev.latitude));
         const prevLng = parseFloat(String(prev.longitude));
-        if (!isNaN(prevLat) && !isNaN(prevLng)) {
+        if (isIndiaCoord(prevLat, prevLng)) {
           data[loc.vehicleId] = [[prevLat, prevLng], [lat, lng]];
         }
       }
@@ -207,11 +207,11 @@ export default function Tracking() {
   }, [selectedVehicle, trailLocations]);
 
   const mapCenter: [number, number] = (() => {
-    if (latestLocations && latestLocations.length > 0) {
-      const loc = latestLocations[0];
+    if (validLatestLocations && validLatestLocations.length > 0) {
+      const loc = validLatestLocations[0];
       const lat = parseFloat(String(loc.latitude));
       const lng = parseFloat(String(loc.longitude));
-      if (!isNaN(lat) && !isNaN(lng)) return [lat, lng];
+      return [lat, lng];
     }
     return [20.5937, 78.9629];
   })();
