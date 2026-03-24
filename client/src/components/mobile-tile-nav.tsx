@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, Link } from "wouter";
 import {
   Radio,
@@ -97,7 +98,7 @@ export function MobileTileNav({ onLogout }: MobileTileNavProps) {
         <Menu className="h-5 w-5" />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           className="fixed inset-0 z-50 flex flex-col bg-muted"
           data-testid="overlay-mobile-menu"
@@ -175,7 +176,8 @@ export function MobileTileNav({ onLogout }: MobileTileNavProps) {
             </button>
             <p className="text-xs text-center text-muted-foreground mt-1">NistaGPS by Nagaas Retail</p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
