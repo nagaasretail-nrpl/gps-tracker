@@ -8,6 +8,10 @@ export function isBasicValidCoord(lat: number, lng: number): boolean {
   );
 }
 
+function isIndiaCoord(lat: number, lng: number): boolean {
+  return lat >= 5 && lat <= 37 && lng >= 65 && lng <= 100;
+}
+
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -23,7 +27,7 @@ export function filterValidGpsCoords(
   coords: [number, number][],
   maxRadiusKm = 1000
 ): [number, number][] {
-  const basic = coords.filter(([lat, lng]) => isBasicValidCoord(lat, lng));
+  const basic = coords.filter(([lat, lng]) => isBasicValidCoord(lat, lng) && isIndiaCoord(lat, lng));
   if (basic.length < 2) return basic;
 
   const sortedLats = basic.map(([lat]) => lat).sort((a, b) => a - b);
