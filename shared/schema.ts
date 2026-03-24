@@ -147,6 +147,8 @@ export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   id: true,
   createdAt: true,
 }).extend({
+  name: z.string().min(1, "Vehicle name is required"),
+  deviceId: z.string().min(1, "Device ID is required"),
   fuelEfficiency: z.coerce.number().positive().nullable().optional(),
   fuelType: z.enum(["petrol", "diesel", "cng", "electric"]).nullable().optional(),
   fuelRatePerLiter: z.coerce.number().positive().nullable().optional(),

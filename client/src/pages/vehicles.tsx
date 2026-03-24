@@ -68,6 +68,8 @@ function fuelEfficiencyLabel(fuelType: FuelTypeValue): string {
 }
 
 const addVehicleFormSchema = insertVehicleSchema.extend({
+  name: z.string().min(1, "Vehicle name is required"),
+  deviceId: z.string().min(1, "Device ID (IMEI) is required"),
   fuelEfficiency: z.coerce.number().positive("Must be a positive number").nullable().optional(),
   fuelType: z.enum(["petrol", "diesel", "cng", "electric", "none"]).nullable().optional(),
   fuelRatePerLiter: z.coerce.number().positive("Must be a positive number").nullable().optional(),
@@ -273,8 +275,16 @@ export default function Vehicles() {
       form.reset();
       toast({ title: "Vehicle added", description: "The vehicle has been added successfully." });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to add vehicle. Please try again.", variant: "destructive" });
+    onError: (error: Error) => {
+      const msg = error.message ?? "";
+      const isDuplicate = msg.includes("unique") || msg.includes("duplicate") || msg.includes("already exists") || msg.includes("23505");
+      toast({
+        title: "Failed to add vehicle",
+        description: isDuplicate
+          ? "A vehicle with this Device ID already exists. Please use a different IMEI."
+          : `Error: ${msg || "Please try again."}`,
+        variant: "destructive",
+      });
     },
   });
 
