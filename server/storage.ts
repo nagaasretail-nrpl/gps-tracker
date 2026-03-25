@@ -341,17 +341,26 @@ export class DbStorage implements IStorage {
   }
 
   async getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]> {
-    return await db.select().from(locations)
-      .where(and(
-        eq(locations.vehicleId, vehicleId),
-        gte(locations.timestamp, startDate),
-        lte(locations.timestamp, endDate),
-        sql`${locations.latitude} >= 5`,
-        sql`${locations.latitude} <= 37`,
-        sql`${locations.longitude} >= 65`,
-        sql`${locations.longitude} <= 100`
-      ))
-      .orderBy(desc(locations.timestamp));
+    // NOTE: Do NOT add lat/lng bounds to the SQL WHERE clause — the Neon HTTP driver
+    // returns { rows: null } (not []) when a DISTINCT ON / filtered query matches 0 rows,
+    // causing a runtime crash. Apply coordinate filtering in JavaScript instead.
+    let rows: Location[] = [];
+    try {
+      rows = await db.select().from(locations)
+        .where(and(
+          eq(locations.vehicleId, vehicleId),
+          gte(locations.timestamp, startDate),
+          lte(locations.timestamp, endDate),
+        ))
+        .orderBy(desc(locations.timestamp));
+    } catch {
+      return [];
+    }
+    return (rows ?? []).filter((l) => {
+      const lat = parseFloat(String(l.latitude));
+      const lng = parseFloat(String(l.longitude));
+      return lat >= 5 && lat <= 37 && lng >= 65 && lng <= 100;
+    });
   }
 
   async getLocationTrail(since: Date, perVehicleLimit: number): Promise<Location[]> {
