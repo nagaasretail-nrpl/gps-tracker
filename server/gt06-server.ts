@@ -379,6 +379,12 @@ async function handlePacket(
       // ── Location filter pipeline ─────────────────────────────────────────
       // Run the incoming coordinate through the multi-stage filter (bounds
       // check, jump guard, speed spike, stationary drift) with Kalman smoothing.
+      //
+      // Ocean recovery: getLatestLocationForVehicle already filters returned rows
+      // to India bounds (lat 5-37, lng 65-100), so if the last stored coordinate
+      // is an ocean/garbage point it will return null. When lastKnown is null the
+      // filter skips the jump guard entirely, allowing the first valid India
+      // coordinate to be accepted — this is the recovery path.
       const lastLoc = await storage.getLatestLocationForVehicle(vehicleId);
       const lastKnown: LastKnownLocation | null = lastLoc ? {
         lat: parseFloat(String(lastLoc.latitude)),
