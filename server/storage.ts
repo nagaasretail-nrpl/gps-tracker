@@ -303,6 +303,8 @@ export class DbStorage implements IStorage {
         satellites,
         timestamp
       FROM locations
+      WHERE latitude >= 5 AND latitude <= 37
+        AND longitude >= 65 AND longitude <= 100
       ORDER BY vehicle_id, timestamp DESC
     `);
     return result.rows as Location[];
@@ -324,6 +326,8 @@ export class DbStorage implements IStorage {
         timestamp
       FROM locations
       WHERE vehicle_id = ${vehicleId}
+        AND latitude >= 5 AND latitude <= 37
+        AND longitude >= 65 AND longitude <= 100
       ORDER BY timestamp DESC
       LIMIT 1
     `);
@@ -336,7 +340,11 @@ export class DbStorage implements IStorage {
       .where(and(
         eq(locations.vehicleId, vehicleId),
         gte(locations.timestamp, startDate),
-        lte(locations.timestamp, endDate)
+        lte(locations.timestamp, endDate),
+        sql`${locations.latitude} >= 5`,
+        sql`${locations.latitude} <= 37`,
+        sql`${locations.longitude} >= 65`,
+        sql`${locations.longitude} <= 100`
       ))
       .orderBy(desc(locations.timestamp));
   }
@@ -350,6 +358,8 @@ export class DbStorage implements IStorage {
           ROW_NUMBER() OVER (PARTITION BY vehicle_id ORDER BY timestamp DESC) AS rn
         FROM locations
         WHERE timestamp >= ${since}
+          AND latitude >= 5 AND latitude <= 37
+          AND longitude >= 65 AND longitude <= 100
       ) ranked
       WHERE rn <= ${perVehicleLimit}
       ORDER BY "vehicleId", timestamp ASC

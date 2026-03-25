@@ -144,12 +144,16 @@ export default function Tracking() {
         const msg = JSON.parse(event.data);
         if (msg.type === "location") {
           const newLoc: Location = msg.data;
-          queryClient.setQueryData<Location[]>(["/api/locations/latest"], (prev) => {
-            if (!prev) return [newLoc];
-            const filtered = prev.filter((l) => l.vehicleId !== newLoc.vehicleId);
-            return [...filtered, newLoc];
-          });
-          queryClient.invalidateQueries({ queryKey: ["/api/locations/trail"] });
+          const lat = parseFloat(String(newLoc.latitude));
+          const lng = parseFloat(String(newLoc.longitude));
+          if (isBasicValidCoord(lat, lng) && isIndiaCoord(lat, lng)) {
+            queryClient.setQueryData<Location[]>(["/api/locations/latest"], (prev) => {
+              if (!prev) return [newLoc];
+              const filtered = prev.filter((l) => l.vehicleId !== newLoc.vehicleId);
+              return [...filtered, newLoc];
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/locations/trail"] });
+          }
         }
         if (msg.type === "vehicle") {
           const updated: Vehicle = msg.data;
