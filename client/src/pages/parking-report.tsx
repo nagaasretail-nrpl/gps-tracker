@@ -61,6 +61,46 @@ function formatTotalDuration(totalMin: number): string {
   return m === 0 ? `${h} hrs` : `${h} hrs ${m} min`;
 }
 
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+interface StopCluster {
+  lat: number;
+  lng: number;
+  count: number;
+  address: string | null;
+}
+
+function clusterStops(events: ParkingEvent[], radiusKm = 0.2): StopCluster[] {
+  const clusters: StopCluster[] = [];
+  for (const ev of events) {
+    let found = false;
+    for (const c of clusters) {
+      if (haversineKm(ev.lat, ev.lng, c.lat, c.lng) <= radiusKm) {
+        // Update centroid incrementally
+        const n = c.count + 1;
+        c.lat = (c.lat * c.count + ev.lat) / n;
+        c.lng = (c.lng * c.count + ev.lng) / n;
+        c.count = n;
+        if (!c.address && ev.address) c.address = ev.address;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      clusters.push({ lat: ev.lat, lng: ev.lng, count: 1, address: ev.address });
+    }
+  }
+  return clusters;
+}
+
 export default function ParkingReport() {
   const [selectedVehicle, setSelectedVehicle] = useState<string>("all");
   const [startDate, setStartDate] = useState<Date>(todayStart);
@@ -101,8 +141,13 @@ export default function ParkingReport() {
     if (!parkingEvents || parkingEvents.length === 0) return null;
     const total = parkingEvents.length;
     const totalMin = parkingEvents.reduce((s, e) => s + e.durationMin, 0);
-    const longest = parkingEvents.reduce((best, e) => e.durationMin > best.durationMin ? e : best, parkingEvents[0]);
-    return { total, totalMin, longest };
+    const longest = parkingEvents.reduce(
+      (best, e) => e.durationMin > best.durationMin ? e : best,
+      parkingEvents[0]
+    );
+    const clusters = clusterStops(parkingEvents, 0.2);
+    const topCluster = clusters.sort((a, b) => b.count - a.count)[0] ?? null;
+    return { total, totalMin, longest, topCluster };
   }, [parkingEvents]);
 
   function exportCsv() {
@@ -253,7 +298,7 @@ export default function ParkingReport() {
           {!isLoading && stats && (
             <>
               {/* Summary Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Card>
                   <CardHeader className="pb-1 pt-3 px-4">
                     <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Events</CardTitle>
@@ -274,7 +319,7 @@ export default function ParkingReport() {
                   </CardContent>
                 </Card>
 
-                <Card className="col-span-2 md:col-span-1">
+                <Card>
                   <CardHeader className="pb-1 pt-3 px-4">
                     <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Longest Stop</CardTitle>
                   </CardHeader>
@@ -283,6 +328,42 @@ export default function ParkingReport() {
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
                       {vehicleMap[stats.longest.vehicleId]?.name ?? "Unknown vehicle"}
                     </p>
+                    {stats.longest.address ? (
+                      <p className="text-xs text-muted-foreground/70 truncate mt-0.5" title={stats.longest.address}>
+                        {stats.longest.address}
+                      </p>
+                    ) : (
+                      <p className="text-xs font-mono text-muted-foreground/60 mt-0.5">
+                        {formatLatLng(stats.longest.lat, stats.longest.lng)}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Most Frequent Stop</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3">
+                    {stats.topCluster ? (
+                      <>
+                        <p className="text-2xl font-bold text-foreground" data-testid="stat-top-cluster">
+                          {stats.topCluster.count}×
+                        </p>
+                        {stats.topCluster.address ? (
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate" title={stats.topCluster.address}>
+                            {stats.topCluster.address}
+                          </p>
+                        ) : (
+                          <p className="text-xs font-mono text-muted-foreground/70 mt-0.5">
+                            {formatLatLng(stats.topCluster.lat, stats.topCluster.lng)}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground/60 mt-0.5">within 200 m radius</p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">—</p>
+                    )}
                   </CardContent>
                 </Card>
               </div>

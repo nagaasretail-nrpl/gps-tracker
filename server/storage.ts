@@ -341,21 +341,14 @@ export class DbStorage implements IStorage {
   }
 
   async getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]> {
-    // NOTE: Do NOT add lat/lng bounds to the SQL WHERE clause — the Neon HTTP driver
-    // returns { rows: null } (not []) when a DISTINCT ON / filtered query matches 0 rows,
-    // causing a runtime crash. Apply coordinate filtering in JavaScript instead.
-    let rows: Location[] = [];
-    try {
-      rows = await db.select().from(locations)
-        .where(and(
-          eq(locations.vehicleId, vehicleId),
-          gte(locations.timestamp, startDate),
-          lte(locations.timestamp, endDate),
-        ))
-        .orderBy(desc(locations.timestamp));
-    } catch {
-      return [];
-    }
+    const rows = await db.select().from(locations)
+      .where(and(
+        eq(locations.vehicleId, vehicleId),
+        gte(locations.timestamp, startDate),
+        lte(locations.timestamp, endDate),
+      ))
+      .orderBy(desc(locations.timestamp));
+    // Filter India bounds in JS — matching the pattern used in getLatestLocations/getLocationTrail.
     return (rows ?? []).filter((l) => {
       const lat = parseFloat(String(l.latitude));
       const lng = parseFloat(String(l.longitude));
