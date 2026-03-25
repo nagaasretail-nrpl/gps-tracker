@@ -15,6 +15,7 @@ import * as net from "net";
 import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation } from "./geofence-monitor";
 import { broadcastLocationUpdate, broadcastVehicleUpdate } from "./broadcaster";
+import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
 
@@ -375,41 +376,34 @@ async function handlePacket(
         break;
       }
 
-      // ── Coordinate jump guard ────────────────────────────────────────────
-      // Reject coordinates that are geographically impossible jumps from the
-      // vehicle's last known valid position (e.g. ocean ghost coordinates).
-      // Exception: if the new coordinate is within the valid fleet operating
-      // region (Indian subcontinent) but the stored one is not, skip the guard
-      // to allow recovery from previously stored wrong (ocean) coordinates that
-      // may have come from a coordinate-format parsing bug.
+      // ── Location filter pipeline ─────────────────────────────────────────
+      // Run the incoming coordinate through the multi-stage filter (bounds
+      // check, jump guard, speed spike, stationary drift) with Kalman smoothing.
       const lastLoc = await storage.getLatestLocationForVehicle(vehicleId);
-      if (lastLoc) {
-        const prevLat = parseFloat(String(lastLoc.latitude));
-        const prevLng = parseFloat(String(lastLoc.longitude));
-        if (!isNaN(prevLat) && !isNaN(prevLng) && !(prevLat === 0 && prevLng === 0)) {
-          const newInIndia  = loc.lat > 5 && loc.lat < 35 && loc.lng > 65 && loc.lng < 100;
-          const prevInIndia = prevLat > 5 && prevLat < 35 && prevLng > 65 && prevLng < 100;
-          const jumpKm = haversineKm(prevLat, prevLng, loc.lat, loc.lng);
-          if (jumpKm > 500) {
-            if (newInIndia && !prevInIndia) {
-              // Recovery: new coord is valid India position but old was in ocean.
-              // Allow through so vehicles move to their correct positions.
-              console.log(
-                `[GT06] Jump guard bypassed for recovery: ${deviceImei} moving from ocean ` +
-                `(${prevLat.toFixed(4)}, ${prevLng.toFixed(4)}) → India ` +
-                `(${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)})`
-              );
-            } else {
-              console.warn(
-                `[GT06] Jump guard: discarding ${deviceImei} coord (${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}) — ` +
-                `${jumpKm.toFixed(0)} km from last known (${prevLat.toFixed(5)}, ${prevLng.toFixed(5)})`
-              );
-              socket.write(buildAck(0x12, pkt.serial));
-              break;
-            }
-          }
-        }
+      const lastKnown: LastKnownLocation | null = lastLoc ? {
+        lat: parseFloat(String(lastLoc.latitude)),
+        lng: parseFloat(String(lastLoc.longitude)),
+        timestamp: lastLoc.timestamp,
+        speedKph: lastLoc.speed ? parseFloat(String(lastLoc.speed)) : null,
+      } : null;
+
+      const filterResult = filterIncomingLocation({
+        imei: deviceImei,
+        lat: loc.lat,
+        lng: loc.lng,
+        speedKph: loc.speed,
+        heading: loc.course ?? null,
+        satellites: loc.satellites,
+        timestamp: loc.timestamp,
+      }, lastKnown);
+
+      if (!filterResult.accepted) {
+        console.log(`[GT06][FILTER] ${deviceImei} rejected: ${filterResult.reason}${filterResult.details ? ` — ${filterResult.details}` : ""}`);
+        socket.write(buildAck(0x12, pkt.serial));
+        break;
       }
+
+      const filtered = filterResult.location;
 
       // Update last-packet time and count in the registry
       const conn = activeConnections.get(remoteAddr);
@@ -418,18 +412,21 @@ async function handlePacket(
         conn.packetCount += 1;
       }
 
-      console.log(`[GT06] Location ${deviceImei}: lat=${loc.lat.toFixed(6)}, lng=${loc.lng.toFixed(6)}, speed=${loc.speed} km/h, sats=${loc.satellites}`);
+      console.log(`[GT06] Location ${deviceImei}: lat=${filtered.lat.toFixed(6)}, lng=${filtered.lng.toFixed(6)}, speed=${filtered.speedKph ?? loc.speed} km/h, sats=${loc.satellites}`);
 
       // Store location and update vehicle status
       const location = await storage.createDeviceLocation(
         vehicleId,
-        loc.lat,
-        loc.lng,
-        loc.speed,
+        filtered.lat,
+        filtered.lng,
+        filtered.speedKph ?? loc.speed,
         null,
         null,
-        loc.timestamp,
+        filtered.timestamp,
         loc.satellites,
+        filtered.heading,
+        filtered.isStationary,
+        filtered.accuracyScore,
       );
 
       const newStatus = loc.speed > 5 ? "active" : "stopped";

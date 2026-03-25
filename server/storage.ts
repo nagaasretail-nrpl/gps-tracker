@@ -68,7 +68,7 @@ export interface IStorage {
   getLocationTrail(since: Date, perVehicleLimit: number): Promise<Location[]>;
   getActivityLocationHistory(activityId: string): Promise<Location[]>;
   createLocation(location: InsertLocation): Promise<Location>;
-  createDeviceLocation(vehicleId: string, lat: number, lng: number, speed: number, altitude: number | null, accuracy: number | null, timestamp: Date, satellites?: number | null): Promise<Location>;
+  createDeviceLocation(vehicleId: string, lat: number, lng: number, speed: number, altitude: number | null, accuracy: number | null, timestamp: Date, satellites?: number | null, heading?: number | null, isStationary?: boolean, accuracyScore?: number): Promise<Location>;
 
   // Geofences
   getGeofences(): Promise<Geofence[]>;
@@ -386,6 +386,9 @@ export class DbStorage implements IStorage {
       heading: r.heading as string | null,
       accuracy: r.accuracy as string | null,
       address: r.address as string | null,
+      satellites: r.satellites as number | null,
+      isStationary: (r.isStationary ?? r.is_stationary ?? false) as boolean | null,
+      accuracyScore: (r.accuracyScore ?? r.accuracy_score ?? 100) as number | null,
       timestamp: r.timestamp as Date,
     }));
   }
@@ -400,29 +403,32 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async createDeviceLocation(vehicleId: string, lat: number, lng: number, speed: number, altitude: number | null, accuracy: number | null, timestamp: Date, satellites?: number | null): Promise<Location> {
+  async createDeviceLocation(vehicleId: string, lat: number, lng: number, speed: number, altitude: number | null, accuracy: number | null, timestamp: Date, satellites?: number | null, _heading?: number | null, isStationary?: boolean, accuracyScore?: number): Promise<Location> {
     // Neon HTTP driver converts JS null to '' for numeric columns in parameterized queries.
     // Use template literal form and only include optional columns when they have values.
     // RETURNING also fails on Neon HTTP, so we construct the result from inputs.
+    // is_stationary and accuracy_score always have values so they appear in every branch.
     const ts = timestamp.toISOString();
     const sats = satellites ?? null;
+    const isStat = isStationary ?? false;
+    const accScore = accuracyScore ?? 100;
 
     if (altitude !== null && accuracy !== null && sats !== null) {
-      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, accuracy, satellites, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${accuracy}, ${sats}, ${ts})`;
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, accuracy, satellites, is_stationary, accuracy_score, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${accuracy}, ${sats}, ${isStat}, ${accScore}, ${ts})`;
     } else if (altitude !== null && accuracy !== null) {
-      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, accuracy, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${accuracy}, ${ts})`;
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, accuracy, is_stationary, accuracy_score, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${accuracy}, ${isStat}, ${accScore}, ${ts})`;
     } else if (altitude !== null && sats !== null) {
-      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, satellites, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${sats}, ${ts})`;
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, satellites, is_stationary, accuracy_score, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${sats}, ${isStat}, ${accScore}, ${ts})`;
     } else if (altitude !== null) {
-      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${ts})`;
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, altitude, is_stationary, accuracy_score, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${altitude}, ${isStat}, ${accScore}, ${ts})`;
     } else if (accuracy !== null && sats !== null) {
-      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, accuracy, satellites, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${accuracy}, ${sats}, ${ts})`;
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, accuracy, satellites, is_stationary, accuracy_score, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${accuracy}, ${sats}, ${isStat}, ${accScore}, ${ts})`;
     } else if (accuracy !== null) {
-      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, accuracy, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${accuracy}, ${ts})`;
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, accuracy, is_stationary, accuracy_score, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${accuracy}, ${isStat}, ${accScore}, ${ts})`;
     } else if (sats !== null) {
-      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, satellites, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${sats}, ${ts})`;
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, satellites, is_stationary, accuracy_score, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${sats}, ${isStat}, ${accScore}, ${ts})`;
     } else {
-      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${ts})`;
+      await neonSql`INSERT INTO locations (vehicle_id, latitude, longitude, speed, is_stationary, accuracy_score, timestamp) VALUES (${vehicleId}, ${lat}, ${lng}, ${speed}, ${isStat}, ${accScore}, ${ts})`;
     }
 
     return {
@@ -437,6 +443,8 @@ export class DbStorage implements IStorage {
       address: null,
       accuracy: accuracy !== null ? String(accuracy) : null,
       satellites: sats,
+      isStationary: isStat,
+      accuracyScore: accScore,
       timestamp,
     } as Location;
   }

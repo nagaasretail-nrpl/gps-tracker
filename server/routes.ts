@@ -7,6 +7,7 @@ import { setLocationBroadcaster, setVehicleBroadcaster } from "./broadcaster";
 import { getActiveConnections } from "./gt06-server";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
+import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
 import { z } from "zod";
 import crypto from "crypto";
 import Razorpay from "razorpay";
@@ -324,17 +325,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Device not registered. Add the vehicle in the app first.", receivedDeviceId: data.deviceId });
       }
 
+      // Run through the location filter pipeline
+      const lastLoc = await storage.getLatestLocationForVehicle(vehicle.id);
+      const lastKnown: LastKnownLocation | null = lastLoc ? {
+        lat: parseFloat(String(lastLoc.latitude)),
+        lng: parseFloat(String(lastLoc.longitude)),
+        timestamp: lastLoc.timestamp,
+        speedKph: lastLoc.speed ? parseFloat(String(lastLoc.speed)) : null,
+      } : null;
+
+      const filterResult = filterIncomingLocation({
+        imei: data.deviceId,
+        lat: data.latitude,
+        lng: data.longitude,
+        speedKph: data.speed ?? 0,
+        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+      }, lastKnown);
+
+      if (!filterResult.accepted) {
+        console.log(`[device][FILTER] ${data.deviceId} rejected: ${filterResult.reason}${filterResult.details ? ` — ${filterResult.details}` : ""}`);
+        return res.json({ ok: false, filtered: true, reason: filterResult.reason });
+      }
+
+      const filtered = filterResult.location;
+
       const location = await storage.createDeviceLocation(
         vehicle.id,
-        data.latitude,
-        data.longitude,
-        data.speed ?? 0,
+        filtered.lat,
+        filtered.lng,
+        filtered.speedKph ?? data.speed ?? 0,
         data.altitude ?? null,
         data.accuracy ?? null,
-        data.timestamp ? new Date(data.timestamp) : new Date()
+        filtered.timestamp,
+        null,
+        filtered.heading,
+        filtered.isStationary,
+        filtered.accuracyScore,
       );
 
-      const speed = data.speed ?? 0;
+      const speed = filtered.speedKph ?? data.speed ?? 0;
       const newStatus = speed > 5 ? "active" : "stopped";
       let parkedSince: Date | null | undefined = undefined;
       if (newStatus === "stopped" && vehicle.status !== "stopped") {

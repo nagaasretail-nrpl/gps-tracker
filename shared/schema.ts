@@ -190,6 +190,8 @@ export const locations = pgTable("locations", {
   address: text("address"),
   accuracy: decimal("accuracy", { precision: 6, scale: 2 }),
   satellites: integer("satellites"), // GPS satellite count
+  isStationary: boolean("is_stationary").default(false), // true when vehicle is not moving
+  accuracyScore: integer("accuracy_score").default(100), // 0-100 quality score
   timestamp: timestamp("timestamp").notNull().defaultNow(),
 }, (table) => ({
   // Check constraint: exactly one of vehicleId or activityId must be non-null
