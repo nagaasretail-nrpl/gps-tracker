@@ -429,7 +429,7 @@ async function handlePacket(
         filtered.accuracyScore,
       );
 
-      const newStatus = loc.speed > 5 ? "active" : "stopped";
+      const newStatus = (filtered.speedKph ?? loc.speed) > 5 ? "active" : "stopped";
       const existingVehicle = await storage.getVehicle(vehicleId);
       let parkedSince: Date | null | undefined = undefined; // undefined = don't change
       if (newStatus === "stopped" && existingVehicle?.status !== "stopped") {
