@@ -299,19 +299,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = schema.parse(req.body);
       console.log(`[device] Incoming location — deviceId: "${data.deviceId}", lat: ${data.latitude}, lng: ${data.longitude}, speed: ${data.speed}`);
 
-      // Reject coordinates outside the fleet operating region (Indian subcontinent).
-      // This prevents ocean ghost positions from polluting the last-known location.
-      const LAT_MIN = 5, LAT_MAX = 35, LNG_MIN = 65, LNG_MAX = 100;
-      if (
-        data.latitude < LAT_MIN || data.latitude > LAT_MAX ||
-        data.longitude < LNG_MIN || data.longitude > LNG_MAX
-      ) {
-        console.warn(
-          `[device] Rejecting out-of-India coord: lat=${data.latitude}, lng=${data.longitude} for deviceId=${data.deviceId}`
-        );
-        return res.status(400).json({ error: "Coordinates outside valid operating region (India bounds)" });
-      }
-
       const vehicle = await storage.getVehicleByDeviceId(data.deviceId);
 
       if (!vehicle) {
