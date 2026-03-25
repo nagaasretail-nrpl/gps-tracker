@@ -729,7 +729,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       function detectParkingEvents(locs: LocRow[], vid: string): ParkingEvent[] {
-        const SPEED_THRESHOLD = 5;
+        const SPEED_THRESHOLD = 3;
         const MIN_PARK_MS = 5 * 60 * 1000;
 
         const sorted = [...locs]

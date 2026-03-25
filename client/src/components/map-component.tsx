@@ -143,12 +143,18 @@ function buildVehicleInfoHtml(
   const ts = new Date(location.timestamp);
   const timeStr = ts.toLocaleString();
   const address = String(location.address ?? "").trim();
-  const isStopped = speed <= 5;
+  const isStopped = speed <= 3;
   const parkingDuration = isStopped ? formatParkingDuration(vehicle.parkedSince) : "";
+  const parkedSinceStr = isStopped && vehicle.parkedSince
+    ? new Date(vehicle.parkedSince).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "";
   const parkingRow = parkingDuration
-    ? `<div style="background:#fff8e1;border-radius:4px;padding:4px 8px;margin-top:4px;display:flex;align-items:center;gap:6px;">
-        <span style="background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;">P</span>
-        <span style="font-weight:600;color:#92400e;">Parked ${esc(parkingDuration)}</span>
+    ? `<div style="background:#fff8e1;border-radius:4px;padding:6px 8px;margin-top:4px;display:flex;align-items:flex-start;gap:6px;">
+        <span style="background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;margin-top:1px;flex-shrink:0;">P</span>
+        <div>
+          <div style="font-weight:600;color:#92400e;">Parked since: ${esc(parkedSinceStr)}</div>
+          <div style="font-size:11px;color:#b45309;">${esc(parkingDuration)}</div>
+        </div>
        </div>`
     : "";
   const sats = typeof location.satellites === "number" ? location.satellites : null;
@@ -514,7 +520,7 @@ export function MapComponent({
       // Label text: for stopped vehicles show parking duration, else show speed
       const displayName =
         vehicle.name.length > 14 ? vehicle.name.slice(0, 13) + "…" : vehicle.name;
-      const isStopped = speed <= 5;
+      const isStopped = speed <= 3;
       const parkDur = isStopped ? formatParkingDuration(vehicle.parkedSince) : "";
       const labelText = isStopped && parkDur
         ? `${displayName} | P ${parkDur}`
