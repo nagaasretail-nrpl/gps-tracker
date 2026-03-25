@@ -1,4 +1,20 @@
-type LocationFn = (location: any) => void;
+export type BroadcastLocation = {
+  id: string;
+  vehicleId: string;
+  latitude: string;
+  longitude: string;
+  speed: string | null;
+  heading: string | null;
+  altitude: string | null;
+  accuracy: string | null;
+  satellites: number | null;
+  isStationary: boolean | null;
+  accuracyScore: number | null;
+  timestamp: Date;
+  [key: string]: unknown;
+};
+
+type LocationFn = (location: BroadcastLocation) => void;
 type VehicleFn  = (vehicle: any) => void;
 
 let broadcastFn: LocationFn = () => {};
@@ -12,7 +28,7 @@ export function setVehicleBroadcaster(fn: VehicleFn) {
   vehicleFn = fn;
 }
 
-export function broadcastLocationUpdate(location: any) {
+export function broadcastLocationUpdate(location: BroadcastLocation) {
   broadcastFn(location);
 }
 
