@@ -29,7 +29,7 @@ import {
 import { format, parseISO } from "date-fns";
 import type { Vehicle, Location } from "@shared/schema";
 import { filterValidGpsCoords } from "@/lib/gpsUtils";
-import { MapComponent } from "@/components/map-component";
+import { MapComponent, type ParkingEvent } from "@/components/map-component";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
@@ -107,6 +107,38 @@ export default function History() {
     },
     enabled: loadTrigger > 0 && !!selectedVehicle,
   });
+
+  const { data: allParkingEvents } = useQuery<ParkingEvent[]>({
+    queryKey: [
+      "/api/reports/parking",
+      selectedVehicle,
+      startDate.toISOString(),
+      endDate.toISOString(),
+      loadTrigger,
+    ],
+    queryFn: async () => {
+      if (!selectedVehicle) return [];
+      const params = new URLSearchParams({
+        vehicleId: selectedVehicle,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      });
+      const res = await fetch(`/api/reports/parking?${params}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: loadTrigger > 0 && !!selectedVehicle,
+  });
+
+  // Filter parking events to only those that fall in the selected date
+  const selectedDateParkingEvents = useMemo<ParkingEvent[]>(() => {
+    if (!selectedDate || !allParkingEvents) return [];
+    return allParkingEvents.filter((ev) => {
+      const d = new Date(ev.startTime);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return key === selectedDate;
+    });
+  }, [selectedDate, allParkingEvents]);
 
   const dateGroups = useMemo(() => {
     if (!locations || locations.length === 0) return {};
@@ -530,6 +562,7 @@ export default function History() {
               routePolylines={dayRoutePolylines}
               bearingData={historyBearingData}
               focusVehicleId={selectedVehicle}
+              parkingEvents={selectedDateParkingEvents}
               className="h-full"
             />
           ) : (

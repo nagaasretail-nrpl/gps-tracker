@@ -691,6 +691,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Parking Events Report ──────────────────────────────────────────────────
+  app.get("/api/reports/parking", requireAuth, async (req, res) => {
+    try {
+      const { vehicleId, startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+      }
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+
+      type LocRow = Awaited<ReturnType<typeof storage.getLocationHistory>>[number];
+
+      function isValidGpsPoint(loc: LocRow): boolean {
+        if (!loc.timestamp) return false;
+        const tsMs = new Date(loc.timestamp).getTime();
+        if (!isFinite(tsMs) || tsMs <= 0) return false;
+        const lat = parseFloat(String(loc.latitude));
+        const lng = parseFloat(String(loc.longitude));
+        if (!isFinite(lat) || !isFinite(lng)) return false;
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+        if (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001) return false;
+        const spd = parseFloat(String(loc.speed || "0")) || 0;
+        if (spd > 300) return false;
+        return true;
+      }
+
+      interface ParkingEvent {
+        vehicleId: string;
+        startTime: string;
+        endTime: string;
+        durationMin: number;
+        lat: number;
+        lng: number;
+        address: string | null;
+        pointCount: number;
+      }
+
+      function detectParkingEvents(locs: LocRow[], vid: string): ParkingEvent[] {
+        const SPEED_THRESHOLD = 5;
+        const MIN_PARK_MS = 5 * 60 * 1000;
+
+        const sorted = [...locs]
+          .filter(isValidGpsPoint)
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        const events: ParkingEvent[] = [];
+        let group: LocRow[] = [];
+
+        const emitGroup = () => {
+          if (group.length < 2) { group = []; return; }
+          const startTs = new Date(group[0].timestamp).getTime();
+          const endTs = new Date(group[group.length - 1].timestamp).getTime();
+          if (endTs - startTs >= MIN_PARK_MS) {
+            const latSum = group.reduce((s, p) => s + parseFloat(String(p.latitude)), 0);
+            const lngSum = group.reduce((s, p) => s + parseFloat(String(p.longitude)), 0);
+            events.push({
+              vehicleId: vid,
+              startTime: group[0].timestamp instanceof Date
+                ? group[0].timestamp.toISOString()
+                : new Date(group[0].timestamp).toISOString(),
+              endTime: group[group.length - 1].timestamp instanceof Date
+                ? (group[group.length - 1].timestamp as Date).toISOString()
+                : new Date(group[group.length - 1].timestamp).toISOString(),
+              durationMin: Math.round((endTs - startTs) / 60000),
+              lat: Math.round((latSum / group.length) * 1e6) / 1e6,
+              lng: Math.round((lngSum / group.length) * 1e6) / 1e6,
+              address: (group[0].address as string | null | undefined) ?? null,
+              pointCount: group.length,
+            });
+          }
+          group = [];
+        };
+
+        for (const loc of sorted) {
+          const spd = parseFloat(String(loc.speed || "0")) || 0;
+          if (spd <= SPEED_THRESHOLD) {
+            group.push(loc);
+          } else {
+            emitGroup();
+          }
+        }
+        emitGroup();
+
+        return events;
+      }
+
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+
+      let vehicleIds: string[];
+      if (vehicleId && vehicleId !== "all") {
+        if (allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+          return res.json([]);
+        }
+        vehicleIds = [vehicleId as string];
+      } else {
+        const allVehicles = await storage.getVehicles();
+        const allIds = allVehicles.map(v => v.id);
+        vehicleIds = allowedIds === null ? allIds : allIds.filter(id => allowedIds.includes(id));
+      }
+
+      const allEvents: ParkingEvent[] = [];
+      await Promise.all(vehicleIds.map(async (vid) => {
+        const locs = await storage.getLocationHistory(vid, start, end);
+        const evs = detectParkingEvents(locs, vid);
+        allEvents.push(...evs);
+      }));
+
+      allEvents.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+      res.json(allEvents);
+    } catch (error) {
+      console.error("Failed to compute parking events:", error);
+      res.status(500).json({ error: "Failed to compute parking events" });
+    }
+  });
+
   app.post("/api/locations", requireAuth, async (req, res) => {
     try {
       const validatedData = insertLocationSchema.parse(req.body);

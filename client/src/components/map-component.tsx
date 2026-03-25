@@ -13,6 +13,17 @@ interface RoutePolyline {
   color?: string;
 }
 
+export interface ParkingEvent {
+  vehicleId: string;
+  startTime: string;
+  endTime: string;
+  durationMin: number;
+  lat: number;
+  lng: number;
+  address: string | null;
+  pointCount: number;
+}
+
 interface MapComponentProps {
   vehicles?: Vehicle[];
   locations?: Location[];
@@ -28,6 +39,7 @@ interface MapComponentProps {
   bearingData?: Record<string, [number, number][]>;
   focusVehicleId?: string | null;
   connectedImeis?: Set<string>; // set of device IMEIs with live TCP connections
+  parkingEvents?: ParkingEvent[];
 }
 
 // Augment Window to include the optional google namespace and dynamic callbacks.
@@ -338,6 +350,7 @@ export function MapComponent({
   bearingData = {},
   focusVehicleId,
   connectedImeis,
+  parkingEvents = [],
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -705,7 +718,57 @@ export function MapComponent({
       });
       overlaysRef.current.push(marker, infoWindow);
     });
-  }, [status, geofences, routes, pois, routePolylines, focusVehicleId]);
+
+    // ── Parking event "P" markers ─────────────────────────────────────────
+    parkingEvents.forEach((event) => {
+      const { lat, lng } = event;
+      if (!isFinite(lat) || !isFinite(lng)) return;
+      const startDate = new Date(event.startTime);
+      const endDate = new Date(event.endTime);
+      const startStr = startDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const endStr = endDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const durStr = event.durationMin >= 60
+        ? `${Math.floor(event.durationMin / 60)}h ${event.durationMin % 60}m`
+        : `${event.durationMin} min`;
+      const pSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+        <circle cx="14" cy="14" r="13" fill="#f59e0b" stroke="white" stroke-width="2"/>
+        <text x="14" y="19" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="white">P</text>
+      </svg>`;
+      const marker = new google.maps.Marker({
+        position: { lat, lng }, map, title: `Parked ${durStr}`,
+        icon: {
+          url: `data:image/svg+xml,${encodeURIComponent(pSvg)}`,
+          anchor: new google.maps.Point(14, 14),
+          size: new google.maps.Size(28, 28),
+          scaledSize: new google.maps.Size(28, 28),
+        },
+        zIndex: 5,
+      });
+      const addrRow = event.address
+        ? `<div><b style="color:#666;">Address:</b> ${esc(event.address)}</div>`
+        : "";
+      const infoContent = `
+        <div style="min-width:200px;font-family:sans-serif;font-size:12px;line-height:1.8;">
+          <div style="background:#f59e0b;color:#fff;padding:6px 10px;font-weight:700;font-size:13px;border-radius:6px 6px 0 0;">
+            Parked ${esc(durStr)}
+          </div>
+          <div style="padding:8px 10px;background:#fff;border-radius:0 0 6px 6px;">
+            <div><b style="color:#666;">Start:</b> ${esc(startStr)}</div>
+            <div><b style="color:#666;">End:</b> ${esc(endStr)}</div>
+            <div><b style="color:#666;">Duration:</b> ${esc(durStr)}</div>
+            <div><b style="color:#666;">Position:</b> <span style="color:#1a6bc7;font-family:monospace;">${lat.toFixed(5)}, ${lng.toFixed(5)}</span></div>
+            ${addrRow}
+          </div>
+        </div>`;
+      const infoWindow = new google.maps.InfoWindow({ content: infoContent });
+      marker.addListener("click", () => {
+        if (openInfoWindowRef.current) openInfoWindowRef.current.close();
+        infoWindow.open(map, marker);
+        openInfoWindowRef.current = infoWindow;
+      });
+      overlaysRef.current.push(marker, infoWindow);
+    });
+  }, [status, geofences, routes, pois, routePolylines, focusVehicleId, parkingEvents]);
 
   // Update vehicle markers on location/vehicle/image changes
   useEffect(() => { updateVehicleMarkers(); }, [updateVehicleMarkers]);

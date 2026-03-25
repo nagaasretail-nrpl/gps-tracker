@@ -21,6 +21,7 @@ import {
   Menu,
   ChevronLeft,
   Download,
+  ParkingSquare,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { User as UserType } from "@shared/schema";
@@ -43,6 +44,7 @@ const ALL_TILES: TileItem[] = [
   { title: "Alerts", url: "/activities", icon: Activity, menuKey: "/activities" },
   { title: "Places", url: "/pois", icon: MapPin, menuKey: "/pois" },
   { title: "History", url: "/history", icon: History, menuKey: "/history" },
+  { title: "Parking", url: "/parking-report", icon: ParkingSquare, menuKey: "/parking-report" },
   { title: "Reports", url: "/reports", icon: FileText, menuKey: "/reports" },
   { title: "Geofences", url: "/geofences", icon: Shield, menuKey: "/geofences" },
   { title: "Routes", url: "/routes", icon: Route, menuKey: "/routes" },

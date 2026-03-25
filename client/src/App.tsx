@@ -40,6 +40,7 @@ import Renew from "@/pages/renew";
 import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
 import InstallPage from "@/pages/install";
+import ParkingReport from "@/pages/parking-report";
 import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -59,6 +60,7 @@ const PROTECTED_ROUTES: Record<string, string[]> = {
   "/routes": ["/routes"],
   "/pois": ["/pois"],
   "/reports": ["/reports"],
+  "/parking-report": ["/parking-report"],
   "/profile": ["/profile"],
 };
 
@@ -114,6 +116,7 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
       <Route path="/routes" component={guard("/routes", Routes)} />
       <Route path="/pois" component={guard("/pois", Pois)} />
       <Route path="/reports" component={guard("/reports", Reports)} />
+      <Route path="/parking-report" component={guard("/parking-report", ParkingReport)} />
       <Route path="/vehicles" component={guard("/vehicles", Vehicles)} />
       <Route path="/profile" component={guard("/profile", Profile)} />
       <Route path="/admin-users" component={AdminUsers} />

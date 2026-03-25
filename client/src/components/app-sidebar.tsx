@@ -15,6 +15,7 @@ import {
   Users,
   Settings,
   Download,
+  ParkingSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -58,6 +59,7 @@ const fleetMenuItems: MenuItem[] = [
   { title: "Vehicles", url: "/vehicles", icon: Car },
   { title: "Trips", url: "/trips", icon: Navigation },
   { title: "Location History", url: "/history", icon: History },
+  { title: "Parking Report", url: "/parking-report", icon: ParkingSquare },
   { title: "Geofences", url: "/geofences", icon: Shield },
   { title: "Routes", url: "/routes", icon: Route },
   { title: "Points of Interest", url: "/pois", icon: MapPin },
