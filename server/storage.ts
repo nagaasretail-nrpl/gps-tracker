@@ -303,11 +303,14 @@ export class DbStorage implements IStorage {
         satellites,
         timestamp
       FROM locations
-      WHERE latitude >= 5 AND latitude <= 37
-        AND longitude >= 65 AND longitude <= 100
       ORDER BY vehicle_id, timestamp DESC
     `);
-    return result.rows as Location[];
+    const rows = (result.rows ?? []) as Location[];
+    return rows.filter(l => {
+      const lat = parseFloat(String(l.latitude));
+      const lng = parseFloat(String(l.longitude));
+      return lat >= 5 && lat <= 37 && lng >= 65 && lng <= 100;
+    });
   }
 
   async getLatestLocationForVehicle(vehicleId: string): Promise<Location | null> {
@@ -326,13 +329,15 @@ export class DbStorage implements IStorage {
         timestamp
       FROM locations
       WHERE vehicle_id = ${vehicleId}
-        AND latitude >= 5 AND latitude <= 37
-        AND longitude >= 65 AND longitude <= 100
       ORDER BY timestamp DESC
-      LIMIT 1
+      LIMIT 10
     `);
-    if (!result.rows || result.rows.length === 0) return null;
-    return result.rows[0] as Location;
+    const rows = ((result.rows ?? []) as Location[]).filter(l => {
+      const lat = parseFloat(String(l.latitude));
+      const lng = parseFloat(String(l.longitude));
+      return lat >= 5 && lat <= 37 && lng >= 65 && lng <= 100;
+    });
+    return rows.length > 0 ? rows[0] : null;
   }
 
   async getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]> {
@@ -358,13 +363,17 @@ export class DbStorage implements IStorage {
           ROW_NUMBER() OVER (PARTITION BY vehicle_id ORDER BY timestamp DESC) AS rn
         FROM locations
         WHERE timestamp >= ${since}
-          AND latitude >= 5 AND latitude <= 37
-          AND longitude >= 65 AND longitude <= 100
       ) ranked
       WHERE rn <= ${perVehicleLimit}
       ORDER BY "vehicleId", timestamp ASC
     `);
-    return result.rows.map((r: Record<string, unknown>) => ({
+    return ((result.rows ?? []) as Record<string, unknown>[])
+      .filter(r => {
+        const lat = parseFloat(String(r.latitude));
+        const lng = parseFloat(String(r.longitude));
+        return lat >= 5 && lat <= 37 && lng >= 65 && lng <= 100;
+      })
+      .map((r: Record<string, unknown>) => ({
       id: r.id as string,
       vehicleId: r.vehicleId as string,
       activityId: r.activityId as string | null,

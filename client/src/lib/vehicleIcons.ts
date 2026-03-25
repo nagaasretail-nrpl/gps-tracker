@@ -3,6 +3,7 @@ import carRedImg from "@assets/car_(2)_1774081966764.png";
 import tricycleImg from "@assets/tricycle_1774081966767.png";
 import taxiImg from "@assets/taxi_1774081966768.png";
 import deliveryImg from "@assets/delivery_1774081966769.png";
+import busImg from "@assets/image_1774418118107.png";
 
 export type VehicleIconType = "car" | "hatchback" | "taxi" | "tricycle" | "truck" | "motorcycle" | "van" | "bus" | "round" | "pin";
 
@@ -20,7 +21,7 @@ export const VEHICLE_TYPE_OPTIONS: VehicleTypeOption[] = [
   { value: "truck",     label: "Truck",    img: deliveryImg },
   { value: "motorcycle", label: "Moto" },
   { value: "van",       label: "Van" },
-  { value: "bus",       label: "Bus" },
+  { value: "bus",       label: "Bus",  img: busImg },
   { value: "round",     label: "Round" },
   { value: "pin",       label: "Pin" },
 ];
@@ -31,9 +32,9 @@ export function getVehicleImg(type: string): string | null {
     case "hatchback":  return carRedImg;
     case "taxi":       return taxiImg;
     case "tricycle":   return tricycleImg;
+    case "bus":        return busImg;
     case "truck":
-    case "van":
-    case "bus":        return deliveryImg;
+    case "van":        return deliveryImg;
     default:           return null;
   }
 }
