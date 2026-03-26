@@ -82,6 +82,7 @@ const ASSIGNABLE_MENU_GROUPS = [
       { title: "Vehicles", url: "/vehicles" },
       { title: "Trips", url: "/trips" },
       { title: "Location History", url: "/history" },
+      { title: "Parking Report", url: "/parking-report" },
       { title: "Geofences", url: "/geofences" },
       { title: "Routes", url: "/routes" },
       { title: "Points of Interest", url: "/pois" },

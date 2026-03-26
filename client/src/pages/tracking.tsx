@@ -130,9 +130,25 @@ export default function Tracking() {
       );
       const coords = filterValidGpsCoords(rawCoords);
       if (coords.length < 2) return [];
+
+      // Append the vehicle's current latest position so the trail always
+      // ends at the vehicle icon, even when trailLocations is stale.
+      const latestLoc = latestLocations?.find((l) => l.vehicleId === vehicle.id);
+      if (latestLoc) {
+        const latestLat = parseFloat(String(latestLoc.latitude));
+        const latestLng = parseFloat(String(latestLoc.longitude));
+        if (isBasicValidCoord(latestLat, latestLng) && isIndiaCoord(latestLat, latestLng)) {
+          const last = coords[coords.length - 1];
+          const dist = Math.hypot(latestLat - last[0], latestLng - last[1]);
+          if (dist > 0.000009) {
+            coords.push([latestLat, latestLng]);
+          }
+        }
+      }
+
       return [{ vehicleId: vehicle.id, coords, color: vehicle.iconColor ?? "#e4006e" }];
     });
-  }, [vehicles, trailLocations]);
+  }, [vehicles, trailLocations, latestLocations]);
 
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";

@@ -337,6 +337,49 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
   return _loadPromise;
 }
 
+// ── Smooth marker animation helper ─────────────────────────────────────────
+
+function animateMarkerTo(
+  marker: google.maps.Marker,
+  toLat: number,
+  toLng: number,
+  durationMs: number,
+  animRef: { current: Map<string, number> },
+  vehicleId: string,
+) {
+  const existingId = animRef.current.get(vehicleId);
+  if (existingId !== undefined) cancelAnimationFrame(existingId);
+
+  const fromPos = marker.getPosition();
+  if (!fromPos) {
+    marker.setPosition({ lat: toLat, lng: toLng });
+    return;
+  }
+  const fromLat = fromPos.lat();
+  const fromLng = fromPos.lng();
+
+  const dist = Math.hypot(toLat - fromLat, toLng - fromLng);
+  if (dist < 0.000009) {
+    marker.setPosition({ lat: toLat, lng: toLng });
+    animRef.current.delete(vehicleId);
+    return;
+  }
+
+  const start = performance.now();
+  function step(now: number) {
+    const t = Math.min((now - start) / durationMs, 1);
+    const lat = fromLat + (toLat - fromLat) * t;
+    const lng = fromLng + (toLng - fromLng) * t;
+    marker.setPosition({ lat, lng });
+    if (t < 1) {
+      animRef.current.set(vehicleId, requestAnimationFrame(step));
+    } else {
+      animRef.current.delete(vehicleId);
+    }
+  }
+  animRef.current.set(vehicleId, requestAnimationFrame(step));
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 type MapStatus = "loading" | "no-key" | "ready" | "error";
@@ -366,6 +409,7 @@ export function MapComponent({
   const openInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const hasFittedRef = useRef(false);
+  const markerAnimationsRef = useRef<Map<string, number>>(new Map());
   const [status, setStatus] = useState<MapStatus>("loading");
   const [mapType, setMapType] = useState<"streets" | "satellite">("streets");
   // Triggers marker rebuild after PNG base64 images finish pre-loading
@@ -551,7 +595,7 @@ export function MapComponent({
 
       const existingMarker = vehicleMarkersRef.current.get(vehicle.id);
       if (existingMarker) {
-        existingMarker.setPosition({ lat, lng });
+        animateMarkerTo(existingMarker, lat, lng, 800, markerAnimationsRef, vehicle.id);
         existingMarker.setIcon(markerIcon);
         existingMarker.setTitle(vehicle.name);
         const existingIW = vehicleInfoWindowsRef.current.get(vehicle.id);
@@ -636,23 +680,6 @@ export function MapComponent({
         strokeOpacity: isSelected ? 0.85 : 0.35,
       });
       overlaysRef.current.push(poly);
-
-      if (isSelected) {
-        coords.forEach(([lat, lng], idx) => {
-          if (idx === coords.length - 1) return;
-          const dotMarker = new google.maps.Marker({
-            position: { lat, lng }, map,
-            icon: {
-              path: google.maps.SymbolPath.CIRCLE,
-              fillColor: lineColor, fillOpacity: idx === 0 ? 0.3 : 0.6,
-              strokeColor: lineColor, strokeWeight: 1, strokeOpacity: 0.5,
-              scale: idx === 0 ? 3 : 4,
-            },
-            clickable: false,
-          });
-          overlaysRef.current.push(dotMarker);
-        });
-      }
     });
 
     // ── Geofence polygons ─────────────────────────────────────────────────
