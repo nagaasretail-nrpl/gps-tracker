@@ -454,7 +454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Uses updatedVehicle (post-update state) to avoid stale-snapshot false alerts.
       sendPushAlertsForLocation(updatedVehicle, location, speed).catch(() => {});
 
-      res.status(201).json({ ok: true, vehicleId: vehicle.id, status });
+      res.status(201).json({ ok: true, vehicleId: vehicle.id, status: newStatus });
     } catch (error) {
       console.error("Device location error:", error);
       res.status(400).json({ error: "Invalid data", details: error instanceof Error ? error.message : String(error) });

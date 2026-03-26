@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,13 +25,15 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 
 const ALERT_EVENT_TYPES = ["speed_violation", "parking", "idle", "geofence_entry", "geofence_exit"];
 
-function requestNotificationPermission() {
-  if ("Notification" in window && Notification.permission === "default") {
-    Notification.requestPermission();
-  }
+// Convert base64url string to Uint8Array for applicationServerKey
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
-function NotificationPermissionBanner() {
+function NotificationPermissionBanner({ onPermissionGranted }: { onPermissionGranted?: () => void }) {
   const [permission, setPermission] = useState<string>(
     typeof window !== "undefined" && "Notification" in window
       ? Notification.permission
@@ -42,6 +44,9 @@ function NotificationPermissionBanner() {
     if ("Notification" in window) {
       const result = await Notification.requestPermission();
       setPermission(result);
+      if (result === "granted" && onPermissionGranted) {
+        onPermissionGranted();
+      }
     }
   };
 
@@ -77,7 +82,7 @@ function NotificationPermissionBanner() {
 }
 
 // Push subscription card — enables Web Push so alerts arrive even when the browser is closed
-function PushSubscriptionCard() {
+function PushSubscriptionCard({ triggerSubscribe }: { triggerSubscribe?: number }) {
   const { toast } = useToast();
   const [pushState, setPushState] = useState<"loading" | "unsupported" | "subscribed" | "unsubscribed">("loading");
   const [isBusy, setIsBusy] = useState(false);
@@ -97,8 +102,8 @@ function PushSubscriptionCard() {
     });
   }, []);
 
-  const subscribe = async () => {
-    if (!supportsWebPush) return;
+  const doSubscribe = useCallback(async () => {
+    if (!supportsWebPush || isBusy) return;
     setIsBusy(true);
     try {
       const permission = await Notification.requestPermission();
@@ -107,7 +112,6 @@ function PushSubscriptionCard() {
         return;
       }
 
-      // Get VAPID public key from server
       const keyRes = await apiRequest("GET", "/api/push/vapid-public-key");
       const { publicKey } = await keyRes.json();
 
@@ -126,7 +130,14 @@ function PushSubscriptionCard() {
     } finally {
       setIsBusy(false);
     }
-  };
+  }, [supportsWebPush, isBusy, toast]);
+
+  // When parent signals "permission just granted", auto-subscribe if not already subscribed
+  useEffect(() => {
+    if (triggerSubscribe && pushState === "unsubscribed") {
+      doSubscribe();
+    }
+  }, [triggerSubscribe]);
 
   const unsubscribe = async () => {
     if (!supportsWebPush) return;
@@ -194,7 +205,7 @@ function PushSubscriptionCard() {
             ) : (
               <Button
                 size="sm"
-                onClick={subscribe}
+                onClick={doSubscribe}
                 disabled={isBusy}
                 data-testid="button-push-subscribe"
               >
@@ -206,14 +217,6 @@ function PushSubscriptionCard() {
       </CardHeader>
     </Card>
   );
-}
-
-// Convert base64url string to Uint8Array for applicationServerKey
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
 function AlertSection({
@@ -367,6 +370,9 @@ function AlertHistory({ vehicles }: { vehicles: Vehicle[] | undefined }) {
 export default function AlertSettings() {
   const { toast } = useToast();
 
+  // triggerSubscribe is a counter — incrementing it signals PushSubscriptionCard to auto-subscribe
+  const [triggerSubscribe, setTriggerSubscribe] = useState(0);
+
   const { data: saved, isLoading } = useQuery<UserAlertSettings>({
     queryKey: ["/api/alert-settings"],
   });
@@ -405,7 +411,6 @@ export default function AlertSettings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/alert-settings"] });
-      requestNotificationPermission();
       toast({ title: "Alert settings saved" });
     },
     onError: () => {
@@ -428,9 +433,11 @@ export default function AlertSettings() {
             </p>
           </div>
 
-          <NotificationPermissionBanner />
+          {/* Banner: shown when permission is not yet granted. "Allow" also auto-subscribes push. */}
+          <NotificationPermissionBanner onPermissionGranted={() => setTriggerSubscribe((n) => n + 1)} />
 
-          <PushSubscriptionCard />
+          {/* Push subscription card: auto-subscribes when triggerSubscribe increments */}
+          <PushSubscriptionCard triggerSubscribe={triggerSubscribe} />
 
           {isLoading ? (
             [1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24" />)
