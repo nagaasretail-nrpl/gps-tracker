@@ -459,6 +459,8 @@ export function MapComponent({
       cancelled = true;
       mapInstanceRef.current = null;
       hasFittedRef.current = false;
+      markerAnimationsRef.current.forEach((rafId) => cancelAnimationFrame(rafId));
+      markerAnimationsRef.current.clear();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -632,6 +634,11 @@ export function MapComponent({
     // Remove markers for vehicles no longer in the locations list
     vehicleMarkersRef.current.forEach((marker, vid) => {
       if (!currentVehicleIds.has(vid)) {
+        const rafId = markerAnimationsRef.current.get(vid);
+        if (rafId !== undefined) {
+          cancelAnimationFrame(rafId);
+          markerAnimationsRef.current.delete(vid);
+        }
         marker.setMap(null);
         vehicleMarkersRef.current.delete(vid);
         const iw = vehicleInfoWindowsRef.current.get(vid);
