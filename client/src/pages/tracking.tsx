@@ -286,8 +286,10 @@ export default function Tracking() {
               const iconColor = vehicle.iconColor ?? "#e4006e";
               const isMoving = parseFloat(String(location?.speed ?? "0")) > 2;
               const signalColor = hasLocation ? "#22c55e" : "#9ca3af";
-              const gpsLevel = satellitesToBars(location?.satellites);
-              const gprsLevel = connected ? 4 : 0;
+              const gpsLevel = hasLocation
+                ? Math.max(satellitesToBars(location?.satellites ?? 0), 1)
+                : 0;
+              const gprsLevel = connected ? 4 : hasLocation ? 4 : 0;
 
               return (
                 <div
