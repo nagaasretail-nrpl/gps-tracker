@@ -5,16 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, MapPin, Shield } from "lucide-react";
+import { Plus, Trash2, Shield, X, Check } from "lucide-react";
 import type { Geofence, InsertGeofence } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -46,17 +38,7 @@ export default function Geofences() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/geofences"] });
-      setIsAddOpen(false);
-      setNewGeofence({
-        name: "",
-        description: "",
-        type: "polygon",
-        coordinates: [],
-        color: "#10b981",
-        alertOnEntry: true,
-        alertOnExit: true,
-      });
-      setDrawingPoints([]);
+      cancelAdd();
       toast({
         title: "Geofence created",
         description: "The geofence has been created successfully.",
@@ -95,12 +77,12 @@ export default function Geofences() {
     if (isAddOpen) {
       const newPoints = [...drawingPoints, [lat, lng] as [number, number]];
       setDrawingPoints(newPoints);
-      setNewGeofence({ ...newGeofence, coordinates: newPoints });
+      setNewGeofence((prev) => ({ ...prev, coordinates: newPoints }));
     }
   };
 
   const handleSubmit = () => {
-    if (!newGeofence.name || drawingPoints.length < 3) {
+    if (!newGeofence.name?.trim() || drawingPoints.length < 3) {
       toast({
         title: "Validation error",
         description: "Please provide a name and draw at least 3 points on the map.",
@@ -113,178 +95,206 @@ export default function Geofences() {
 
   const clearDrawing = () => {
     setDrawingPoints([]);
-    setNewGeofence({ ...newGeofence, coordinates: [] });
+    setNewGeofence((prev) => ({ ...prev, coordinates: [] }));
+  };
+
+  const cancelAdd = () => {
+    setIsAddOpen(false);
+    setDrawingPoints([]);
+    setNewGeofence({
+      name: "",
+      description: "",
+      type: "polygon",
+      coordinates: [],
+      color: "#10b981",
+      alertOnEntry: true,
+      alertOnExit: true,
+    });
   };
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
-      <div className="w-96 border-r bg-card overflow-y-auto">
-        <div className="p-6 border-b">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Geofences</h2>
-            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" data-testid="button-add-geofence">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Create Geofence</DialogTitle>
-                  <DialogDescription>
-                    Click on the map to draw a geofence polygon.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="name">Name</Label>
-                    <Input
-                      id="name"
-                      value={newGeofence.name}
-                      onChange={(e) => setNewGeofence({ ...newGeofence, name: e.target.value })}
-                      placeholder="e.g., Warehouse Zone"
-                      data-testid="input-geofence-name"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      value={newGeofence.description}
-                      onChange={(e) => setNewGeofence({ ...newGeofence, description: e.target.value })}
-                      placeholder="Optional description"
-                      data-testid="input-geofence-description"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="color">Color</Label>
-                    <Input
-                      id="color"
-                      type="color"
-                      value={newGeofence.color}
-                      onChange={(e) => setNewGeofence({ ...newGeofence, color: e.target.value })}
-                      data-testid="input-geofence-color"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="alert-entry">Alert on Entry</Label>
-                    <Switch
-                      id="alert-entry"
-                      checked={newGeofence.alertOnEntry}
-                      onCheckedChange={(checked) => setNewGeofence({ ...newGeofence, alertOnEntry: checked })}
-                      data-testid="switch-alert-entry"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="alert-exit">Alert on Exit</Label>
-                    <Switch
-                      id="alert-exit"
-                      checked={newGeofence.alertOnExit}
-                      onCheckedChange={(checked) => setNewGeofence({ ...newGeofence, alertOnExit: checked })}
-                      data-testid="switch-alert-exit"
-                    />
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Points drawn: {drawingPoints.length}
-                    {drawingPoints.length > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearDrawing}
-                        className="ml-2"
-                        data-testid="button-clear-drawing"
-                      >
-                        Clear
-                      </Button>
-                    )}
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsAddOpen(false);
-                        clearDrawing();
-                      }}
-                      data-testid="button-cancel"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleSubmit}
-                      disabled={addMutation.isPending}
-                      data-testid="button-submit"
-                    >
-                      {addMutation.isPending ? "Creating..." : "Create Geofence"}
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
+      <div className="w-96 border-r bg-card flex flex-col overflow-hidden">
 
-        <div className="p-4 space-y-3">
-          {isLoading ? (
-            [1, 2, 3].map(i => (
-              <Skeleton key={i} className="h-32" />
-            ))
-          ) : geofences && geofences.length > 0 ? (
-            geofences.map((geofence) => (
-              <Card key={geofence.id} data-testid={`card-geofence-${geofence.id}`}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: geofence.color || "#10b981" }}
-                      />
-                      <CardTitle className="text-sm">{geofence.name}</CardTitle>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deleteMutation.mutate(geofence.id)}
-                      disabled={deleteMutation.isPending}
-                      data-testid={`button-delete-${geofence.id}`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="text-sm space-y-2">
-                  {geofence.description && (
-                    <p className="text-muted-foreground text-xs">{geofence.description}</p>
-                  )}
-                  <div className="flex gap-1 flex-wrap">
-                    {geofence.alertOnEntry && (
-                      <Badge variant="secondary" className="text-xs">Entry Alert</Badge>
-                    )}
-                    {geofence.alertOnExit && (
-                      <Badge variant="secondary" className="text-xs">Exit Alert</Badge>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <div className="text-center py-12">
-              <Shield className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-              <p className="text-sm font-medium text-foreground mb-1">No geofences yet</p>
-              <p className="text-xs text-muted-foreground mb-4">
-                Create virtual boundaries to monitor vehicle zones
-              </p>
+        {isAddOpen ? (
+          <>
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Create Geofence</h2>
               <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIsAddOpen(true)}
-                data-testid="button-create-first-geofence"
+                size="icon"
+                variant="ghost"
+                onClick={cancelAdd}
+                data-testid="button-cancel-add"
               >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Geofence
+                <X className="h-4 w-4" />
               </Button>
             </div>
-          )}
-        </div>
+
+            <div
+              className="flex items-center gap-2 px-4 py-2 text-xs border-b"
+              style={{ background: "hsl(var(--primary)/0.08)" }}
+            >
+              <Shield className="h-3.5 w-3.5 flex-shrink-0" style={{ color: "hsl(var(--primary))" }} />
+              <span className="text-muted-foreground">
+                {drawingPoints.length === 0
+                  ? "Click on the map to draw polygon points"
+                  : `${drawingPoints.length} point${drawingPoints.length !== 1 ? "s" : ""} placed — need at least 3`}
+              </span>
+              {drawingPoints.length >= 3 && (
+                <Check className="h-3.5 w-3.5 ml-auto flex-shrink-0 text-green-500" />
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div>
+                <Label htmlFor="geofence-name">Name</Label>
+                <Input
+                  id="geofence-name"
+                  value={newGeofence.name}
+                  onChange={(e) => setNewGeofence((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g., Warehouse Zone"
+                  data-testid="input-geofence-name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="geofence-description">Description</Label>
+                <Textarea
+                  id="geofence-description"
+                  value={newGeofence.description ?? ""}
+                  onChange={(e) => setNewGeofence((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Optional description"
+                  data-testid="input-geofence-description"
+                />
+              </div>
+              <div>
+                <Label htmlFor="geofence-color">Color</Label>
+                <Input
+                  id="geofence-color"
+                  type="color"
+                  value={newGeofence.color ?? "#10b981"}
+                  onChange={(e) => setNewGeofence((prev) => ({ ...prev, color: e.target.value }))}
+                  data-testid="input-geofence-color"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="alert-entry">Alert on Entry</Label>
+                <Switch
+                  id="alert-entry"
+                  checked={newGeofence.alertOnEntry ?? true}
+                  onCheckedChange={(checked) => setNewGeofence((prev) => ({ ...prev, alertOnEntry: checked }))}
+                  data-testid="switch-alert-entry"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="alert-exit">Alert on Exit</Label>
+                <Switch
+                  id="alert-exit"
+                  checked={newGeofence.alertOnExit ?? true}
+                  onCheckedChange={(checked) => setNewGeofence((prev) => ({ ...prev, alertOnExit: checked }))}
+                  data-testid="switch-alert-exit"
+                />
+              </div>
+
+              {drawingPoints.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearDrawing}
+                  data-testid="button-clear-drawing"
+                >
+                  Clear drawing ({drawingPoints.length} points)
+                </Button>
+              )}
+            </div>
+
+            <div className="border-t p-4 flex gap-2 justify-end">
+              <Button variant="outline" onClick={cancelAdd} data-testid="button-cancel">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={addMutation.isPending}
+                data-testid="button-submit"
+              >
+                {addMutation.isPending ? "Creating..." : "Create Geofence"}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="p-4 border-b flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Geofences</h2>
+              <Button
+                size="icon"
+                onClick={() => setIsAddOpen(true)}
+                data-testid="button-add-geofence"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {isLoading ? (
+                [1, 2, 3].map((i) => <Skeleton key={i} className="h-32" />)
+              ) : geofences && geofences.length > 0 ? (
+                geofences.map((geofence) => (
+                  <Card key={geofence.id} data-testid={`card-geofence-${geofence.id}`}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: geofence.color || "#10b981" }}
+                          />
+                          <CardTitle className="text-sm truncate">{geofence.name}</CardTitle>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteMutation.mutate(geofence.id)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-${geofence.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="text-sm space-y-2">
+                      {geofence.description && (
+                        <p className="text-muted-foreground text-xs">{geofence.description}</p>
+                      )}
+                      <div className="flex gap-1 flex-wrap">
+                        {geofence.alertOnEntry && (
+                          <Badge variant="secondary" className="text-xs">Entry Alert</Badge>
+                        )}
+                        {geofence.alertOnExit && (
+                          <Badge variant="secondary" className="text-xs">Exit Alert</Badge>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <div className="text-center py-12">
+                  <Shield className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-sm font-medium text-foreground mb-1">No geofences yet</p>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Create virtual boundaries to monitor vehicle zones
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsAddOpen(true)}
+                    data-testid="button-create-first-geofence"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Geofence
+                  </Button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="flex-1 relative">
@@ -296,13 +306,6 @@ export default function Geofences() {
             className="h-full"
             onMapClick={isAddOpen ? handleMapClick : undefined}
           />
-        )}
-        {isAddOpen && drawingPoints.length > 0 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-card border rounded-md px-4 py-2 shadow-lg">
-            <p className="text-sm font-medium">
-              Drawing mode active - Click to add points ({drawingPoints.length} points)
-            </p>
-          </div>
         )}
       </div>
     </div>

@@ -45,6 +45,9 @@ import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
 
+// Routes that bypass allowedMenus restrictions — always visible for all authenticated users.
+const ALWAYS_ACCESSIBLE_ROUTES = new Set(["/geofences", "/pois", "/parking-report"]);
+
 // "/" (live tracking) is not in PROTECTED_ROUTES — always accessible, safe fallback.
 // "/dashboard" uses legacy key "/" (same as the stored allowedMenus value).
 const PROTECTED_ROUTES: Record<string, string[]> = {
@@ -78,6 +81,11 @@ function RouteGuard({ user, userLoaded, path, component: Component }: {
   }
 
   if (!user || user.role === "admin") {
+    return <Component />;
+  }
+
+  // Always accessible routes bypass per-user menu restrictions entirely
+  if (ALWAYS_ACCESSIBLE_ROUTES.has(path)) {
     return <Component />;
   }
 

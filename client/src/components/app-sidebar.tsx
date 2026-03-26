@@ -38,6 +38,9 @@ const nistaLogo = "/nista-logo.png";
 
 type UserWithoutPassword = Omit<UserType, "password">;
 
+// Routes that bypass allowedMenus restrictions — always shown for all authenticated users.
+const ALWAYS_ACCESSIBLE = new Set(["/geofences", "/pois", "/parking-report"]);
+
 interface MenuItem {
   title: string;
   url: string;
@@ -88,6 +91,8 @@ export function AppSidebar() {
 
   const isAllowed = (item: MenuItem): boolean => {
     if (!currentUser || isAdmin) return true;
+    // Always-accessible routes are never hidden regardless of allowedMenus
+    if (ALWAYS_ACCESSIBLE.has(item.url)) return true;
     const allowed = currentUser.allowedMenus;
     // null or empty array both mean unrestricted (no specific menus configured)
     if (allowed == null || allowed.length === 0) return true;
