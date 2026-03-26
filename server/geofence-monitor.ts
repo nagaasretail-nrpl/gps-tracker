@@ -156,8 +156,11 @@ async function sendGeofencePush(vehicleId: string, geofenceName: string, action:
       if (allowed.length === 0 || !allowed.includes(vehicleId)) continue;
     }
 
-    const settings = await storage.getUserAlertSettings(userId);
-    if (!settings?.geofenceAlertEnabled) continue;
+    // Use persisted settings or synthesize defaults so first-time users get geofence alerts
+    const settings = await storage.getUserAlertSettings(userId) ?? {
+      geofenceAlertEnabled: true,
+    };
+    if (!settings.geofenceAlertEnabled) continue;
 
     const alertKey = `geofence:${vehicleId}:${geofenceName}:${action}`;
     if (canSendPush(userId, alertKey)) {

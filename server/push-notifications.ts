@@ -103,8 +103,18 @@ export async function sendPushAlertsForLocation(
       if (allowed.length === 0 || !allowed.includes(vehicle.id)) continue;
     }
 
-    const settings = await storage.getUserAlertSettings(userId);
-    if (!settings) continue;
+    // Use persisted settings or fall back to defaults (e.g. geofenceAlertEnabled: true)
+    // so users who have never saved settings still receive geofence alerts.
+    const settings = await storage.getUserAlertSettings(userId) ?? {
+      userId,
+      speedAlertEnabled: false,
+      speedThresholdKph: 80,
+      parkingAlertEnabled: false,
+      parkingThresholdMin: 60,
+      idleAlertEnabled: false,
+      idleThresholdMin: 10,
+      geofenceAlertEnabled: true,
+    };
 
     // Speed alert — fires regardless of stopped/active status
     if (settings.speedAlertEnabled && speedKph > settings.speedThresholdKph) {
