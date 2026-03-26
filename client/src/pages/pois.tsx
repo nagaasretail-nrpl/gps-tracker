@@ -131,11 +131,9 @@ export default function Pois() {
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
-      {/* ── Left sidebar ─────────────────────────────────────────────────── */}
       <div className="w-96 border-r bg-card flex flex-col overflow-hidden">
 
         {isAddOpen ? (
-          /* ── Inline add form (no dialog — map stays clickable) ── */
           <>
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <h2 className="text-sm font-semibold">Add Point of Interest</h2>
@@ -220,7 +218,6 @@ export default function Pois() {
             </div>
           </>
         ) : (
-          /* ── Normal list view ── */
           <>
             <div className="p-4 border-b flex items-center justify-between">
               <h2 className="text-lg font-semibold">Points of Interest</h2>
@@ -294,7 +291,6 @@ export default function Pois() {
         )}
       </div>
 
-      {/* ── Map (always rendered, always interactive) ───────────────────── */}
       <div className="flex-1 relative">
         {isLoading ? (
           <Skeleton className="h-full w-full" />

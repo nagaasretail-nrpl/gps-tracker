@@ -286,10 +286,8 @@ export default function Tracking() {
               const iconColor = vehicle.iconColor ?? "#e4006e";
               const isMoving = parseFloat(String(location?.speed ?? "0")) > 2;
               const signalColor = hasLocation ? "#22c55e" : "#9ca3af";
-              const gpsLevel = hasLocation
-                ? Math.max(satellitesToBars(location?.satellites ?? 0), 1)
-                : 0;
-              const gprsLevel = connected ? 4 : hasLocation ? 3 : 0;
+              const gpsLevel = satellitesToBars(location?.satellites);
+              const gprsLevel = connected ? 4 : 0;
 
               return (
                 <div
@@ -373,7 +371,7 @@ export default function Tracking() {
                           ? "Connected"
                           : hasLocation
                           ? `Last connected ${formatTimestamp(location!.timestamp)}`
-                          : "Waiting for GPS…"}
+                          : "Waiting for GPS"}
                       </span>
                       {vehicle.status === "stopped" && vehicle.parkedSince && (
                         <span
