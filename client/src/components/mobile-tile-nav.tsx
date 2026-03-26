@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   Download,
   ParkingSquare,
+  Bell,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { User as UserType } from "@shared/schema";
@@ -52,6 +53,7 @@ const ALL_TILES: TileItem[] = [
   { title: "Track", url: "/track", icon: Play, menuKey: "/track" },
   { title: "Statistics", url: "/stats", icon: TrendingUp, menuKey: "/stats" },
   { title: "Profile", url: "/profile", icon: User, menuKey: "/profile" },
+  { title: "Notifications", url: "/alert-settings", icon: Bell },
   { title: "Users", url: "/admin-users", icon: Users, adminOnly: true },
   { title: "Settings", url: "/admin-settings", icon: Settings, adminOnly: true },
 ];
