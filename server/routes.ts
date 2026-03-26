@@ -8,7 +8,7 @@ import { getActiveConnections } from "./gt06-server";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
 import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
-import { sendPushToUser, canSendPush, markPushSent, VAPID_PUBLIC_KEY } from "./push-notifications";
+import { VAPID_PUBLIC_KEY, sendPushAlertsForLocation } from "./push-notifications";
 import { z } from "zod";
 import crypto from "crypto";
 import Razorpay from "razorpay";
@@ -130,81 +130,6 @@ async function checkSubscriptionExpiry(req: Request, res: Response, next: NextFu
     );
   }
   next();
-}
-
-// Helper: find all users who have push subscriptions for a given vehicle and send push alerts
-async function sendPushAlertsForLocation(
-  vehicle: { id: string; name: string; allowedVehicleIds?: string[] | null; parkedSince?: Date | null; status?: string },
-  location: { speed?: string | null },
-  speedKph: number
-): Promise<void> {
-  // Get all users who have push subscriptions
-  const allSubs = await storage.getAllPushSubscriptions();
-  if (allSubs.length === 0) return;
-
-  // Unique user IDs that have at least one push subscription
-  const userIds = [...new Set(allSubs.map(s => s.userId))];
-
-  for (const userId of userIds) {
-    // Enforce per-user vehicle access control before sending any push
-    const userRecord = await storage.getUserById(userId);
-    if (!userRecord) continue;
-    // Admin (role === "admin") can receive alerts for all vehicles;
-    // non-admin users only receive alerts for vehicles in their allowedVehicleIds list.
-    if (userRecord.role !== "admin") {
-      const allowed = userRecord.allowedVehicleIds ?? [];
-      if (allowed.length === 0 || !allowed.includes(vehicle.id)) continue;
-    }
-
-    const settings = await storage.getUserAlertSettings(userId);
-    if (!settings) continue;
-
-    // Speed alert
-    if (settings.speedAlertEnabled && speedKph > settings.speedThresholdKph) {
-      if (canSendPush(userId, `speed:${vehicle.id}`)) {
-        await sendPushToUser(userId, {
-          title: `Speed Alert — ${vehicle.name}`,
-          body: `Speed ${speedKph.toFixed(0)} km/h exceeds limit of ${settings.speedThresholdKph} km/h`,
-          url: "/tracking",
-        });
-        markPushSent(userId, `speed:${vehicle.id}`);
-      }
-    }
-
-    // Parking alert — only fire when vehicle is currently stopped (status === "stopped")
-    // and has a parkedSince timestamp (guards against false positives on active vehicles).
-    if (settings.parkingAlertEnabled && vehicle.status === "stopped" && vehicle.parkedSince) {
-      const parkedMs = Date.now() - new Date(vehicle.parkedSince).getTime();
-      const parkedMin = parkedMs / 60000;
-      if (parkedMin >= settings.parkingThresholdMin) {
-        if (canSendPush(userId, `parking:${vehicle.id}`)) {
-          await sendPushToUser(userId, {
-            title: `Parking Alert — ${vehicle.name}`,
-            body: `Vehicle has been parked for ${Math.floor(parkedMin)} minutes`,
-            url: "/tracking",
-          });
-          markPushSent(userId, `parking:${vehicle.id}`);
-        }
-      }
-    }
-
-    // Idle alert — only fire when vehicle is stopped (speed ≤ 5, status === "stopped")
-    // and has a parkedSince timestamp. Explicit speed guard prevents idle alerts on moving vehicles.
-    if (settings.idleAlertEnabled && speedKph <= 5 && vehicle.status === "stopped" && vehicle.parkedSince) {
-      const idleMs = Date.now() - new Date(vehicle.parkedSince).getTime();
-      const idleMin = idleMs / 60000;
-      if (idleMin >= settings.idleThresholdMin) {
-        if (canSendPush(userId, `idle:${vehicle.id}`)) {
-          await sendPushToUser(userId, {
-            title: `Idle Alert — ${vehicle.name}`,
-            body: `Vehicle has been idle for ${Math.floor(idleMin)} minutes`,
-            url: "/tracking",
-          });
-          markPushSent(userId, `idle:${vehicle.id}`);
-        }
-      }
-    }
-  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -452,7 +377,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Server-side push notifications: check alert thresholds for all users
       // who have push subscriptions and the alert enabled for this vehicle type.
       // Uses updatedVehicle (post-update state) to avoid stale-snapshot false alerts.
-      sendPushAlertsForLocation(updatedVehicle, location, speed).catch(() => {});
+      sendPushAlertsForLocation(updatedVehicle, speed).catch(() => {});
 
       res.status(201).json({ ok: true, vehicleId: vehicle.id, status: newStatus });
     } catch (error) {

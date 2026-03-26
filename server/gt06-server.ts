@@ -16,6 +16,7 @@ import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation } from "./geofence-monitor";
 import { broadcastLocationUpdate, broadcastVehicleUpdate } from "./broadcaster";
 import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
+import { sendPushAlertsForLocation } from "./push-notifications";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
 
@@ -454,6 +455,18 @@ async function handlePacket(
       checkSpeedViolation(location).catch((e) => console.error("[GT06] Speed check error:", e));
       broadcastLocationUpdate({ ...location, vehicleId });
       if (updatedVehicle) broadcastVehicleUpdate(updatedVehicle);
+
+      // Server-side push notifications for speed/parking/idle thresholds.
+      // Uses post-update vehicle snapshot so status/parkedSince reflect current state.
+      if (updatedVehicle) {
+        const gpsSpeed = filtered.speedKph ?? loc.speed;
+        const updatedParkedSince =
+          parkedSince !== undefined ? parkedSince : updatedVehicle.parkedSince ?? null;
+        sendPushAlertsForLocation(
+          { id: vehicleId, name: updatedVehicle.name, status: newStatus, parkedSince: updatedParkedSince },
+          gpsSpeed
+        ).catch((e) => console.error("[GT06] Push alert error:", e));
+      }
 
       socket.write(buildAck(0x12, pkt.serial));
       break;

@@ -66,3 +66,95 @@ export function markPushSent(userId: string, alertType: string): void {
 }
 
 export { VAPID_PUBLIC_KEY };
+
+// Vehicle snapshot type used by sendPushAlertsForLocation
+export interface VehicleSnapshot {
+  id: string;
+  name: string;
+  status: string;
+  parkedSince?: Date | null;
+}
+
+/**
+ * Check speed/parking/idle thresholds for all users who have push subscriptions
+ * and whose allowed vehicle list includes this vehicle, then send push notifications.
+ *
+ * Call this after every GPS location update (both HTTP /api/device/location and GT06 TCP).
+ *
+ * @param vehicle - post-update vehicle snapshot (must reflect current status/parkedSince)
+ * @param speedKph - current speed in km/h
+ */
+export async function sendPushAlertsForLocation(
+  vehicle: VehicleSnapshot,
+  speedKph: number
+): Promise<void> {
+  const allSubs = await storage.getAllPushSubscriptions();
+  if (allSubs.length === 0) return;
+
+  const userIds = [...new Set(allSubs.map(s => s.userId))];
+
+  for (const userId of userIds) {
+    // Enforce per-user vehicle access control:
+    // admins see all vehicles; non-admins only their allowedVehicleIds.
+    const userRecord = await storage.getUserById(userId);
+    if (!userRecord) continue;
+    if (userRecord.role !== "admin") {
+      const allowed = userRecord.allowedVehicleIds ?? [];
+      if (allowed.length === 0 || !allowed.includes(vehicle.id)) continue;
+    }
+
+    const settings = await storage.getUserAlertSettings(userId);
+    if (!settings) continue;
+
+    // Speed alert — fires regardless of stopped/active status
+    if (settings.speedAlertEnabled && speedKph > settings.speedThresholdKph) {
+      if (canSendPush(userId, `speed:${vehicle.id}`)) {
+        await sendPushToUser(userId, {
+          title: `Speed Alert — ${vehicle.name}`,
+          body: `Speed ${speedKph.toFixed(0)} km/h exceeds limit of ${settings.speedThresholdKph} km/h`,
+          url: "/tracking",
+        });
+        markPushSent(userId, `speed:${vehicle.id}`);
+      }
+    }
+
+    // Parking alert — only when vehicle is confirmed stopped (post-update status check)
+    if (
+      settings.parkingAlertEnabled &&
+      vehicle.status === "stopped" &&
+      vehicle.parkedSince
+    ) {
+      const parkedMin = (Date.now() - new Date(vehicle.parkedSince).getTime()) / 60000;
+      if (parkedMin >= settings.parkingThresholdMin) {
+        if (canSendPush(userId, `parking:${vehicle.id}`)) {
+          await sendPushToUser(userId, {
+            title: `Parking Alert — ${vehicle.name}`,
+            body: `Vehicle has been parked for ${Math.floor(parkedMin)} minutes`,
+            url: "/tracking",
+          });
+          markPushSent(userId, `parking:${vehicle.id}`);
+        }
+      }
+    }
+
+    // Idle alert — vehicle stopped (speed ≤ 5) with parkedSince set, explicit status guard
+    if (
+      settings.idleAlertEnabled &&
+      speedKph <= 5 &&
+      vehicle.status === "stopped" &&
+      vehicle.parkedSince
+    ) {
+      const idleMin = (Date.now() - new Date(vehicle.parkedSince).getTime()) / 60000;
+      if (idleMin >= settings.idleThresholdMin) {
+        if (canSendPush(userId, `idle:${vehicle.id}`)) {
+          await sendPushToUser(userId, {
+            title: `Idle Alert — ${vehicle.name}`,
+            body: `Vehicle has been idle for ${Math.floor(idleMin)} minutes`,
+            url: "/tracking",
+          });
+          markPushSent(userId, `idle:${vehicle.id}`);
+        }
+      }
+    }
+  }
+}

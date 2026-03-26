@@ -236,7 +236,10 @@ export function filterIncomingLocation(
   }
 
   if (previous) {
-    const deltaMs = timestamp.getTime() - previous.timestamp.getTime();
+    const prevTimestamp = previous.timestamp instanceof Date
+      ? previous.timestamp
+      : new Date(previous.timestamp);
+    const deltaMs = timestamp.getTime() - prevTimestamp.getTime();
     if (deltaMs < 0) {
       return {
         accepted: false,
@@ -269,7 +272,7 @@ export function filterIncomingLocation(
     }
 
     const derivedSpeed = computeDerivedSpeedKph(
-      { lat: previous.lat, lng: previous.lng, timestamp: previous.timestamp },
+      { lat: previous.lat, lng: previous.lng, timestamp: previous.timestamp instanceof Date ? previous.timestamp : new Date(previous.timestamp) },
       { lat: input.lat, lng: input.lng, timestamp }
     );
 
@@ -315,7 +318,7 @@ export function filterIncomingLocation(
 
   const finalDerivedSpeed = previous
     ? computeDerivedSpeedKph(
-        { lat: previous.lat, lng: previous.lng, timestamp: previous.timestamp },
+        { lat: previous.lat, lng: previous.lng, timestamp: previous.timestamp instanceof Date ? previous.timestamp : new Date(previous.timestamp) },
         { lat: filteredLat, lng: filteredLng, timestamp }
       )
     : input.speedKph ?? 0;
