@@ -635,25 +635,71 @@ export class DbStorage implements IStorage {
   }
 
   async getUserAlertSettings(userId: string): Promise<UserAlertSettings | undefined> {
-    try {
-      const result = await db.select().from(userAlertSettings).where(eq(userAlertSettings.userId, userId)).limit(1);
-      return result?.[0];
-    } catch (err) {
-      if (err instanceof TypeError && String(err.message).includes("map")) return undefined;
-      throw err;
-    }
+    // Use db.execute with explicit text cast for boolean columns to work around the Neon HTTP
+    // driver boolean coercion bug — the driver returns all booleans as false regardless of value.
+    const result = await db.execute(sql`
+      SELECT user_id AS "userId",
+             speed_alert_enabled::text AS "speedAlertEnabled",
+             speed_threshold_kph AS "speedThresholdKph",
+             parking_alert_enabled::text AS "parkingAlertEnabled",
+             parking_threshold_min AS "parkingThresholdMin",
+             idle_alert_enabled::text AS "idleAlertEnabled",
+             idle_threshold_min AS "idleThresholdMin",
+             geofence_alert_enabled::text AS "geofenceAlertEnabled"
+      FROM user_alert_settings
+      WHERE user_id = ${userId}
+      LIMIT 1
+    `);
+    const rows = (result.rows ?? []) as Record<string, unknown>[];
+    if (rows.length === 0) return undefined;
+    const row = rows[0];
+    const parseBool = (v: unknown) => v === "true" || v === "t" || v === true || v === 1;
+    return {
+      userId: row["userId"] as string,
+      speedAlertEnabled: parseBool(row["speedAlertEnabled"]),
+      speedThresholdKph: Number(row["speedThresholdKph"]),
+      parkingAlertEnabled: parseBool(row["parkingAlertEnabled"]),
+      parkingThresholdMin: Number(row["parkingThresholdMin"]),
+      idleAlertEnabled: parseBool(row["idleAlertEnabled"]),
+      idleThresholdMin: Number(row["idleThresholdMin"]),
+      geofenceAlertEnabled: parseBool(row["geofenceAlertEnabled"]),
+    } as UserAlertSettings;
   }
 
   async upsertUserAlertSettings(userId: string, settings: Partial<UserAlertSettings>): Promise<UserAlertSettings> {
-    const existing = await this.getUserAlertSettings(userId);
-    if (existing) {
-      await db.update(userAlertSettings).set(settings).where(eq(userAlertSettings.userId, userId));
-      const updated = await this.getUserAlertSettings(userId);
-      return updated!;
-    } else {
-      const result = await db.insert(userAlertSettings).values({ userId, ...settings }).returning();
-      return result[0];
-    }
+    const speedEnabled = settings.speedAlertEnabled ?? false;
+    const speedKph = settings.speedThresholdKph ?? 80;
+    const parkingEnabled = settings.parkingAlertEnabled ?? false;
+    const parkingMin = settings.parkingThresholdMin ?? 60;
+    const idleEnabled = settings.idleAlertEnabled ?? false;
+    const idleMin = settings.idleThresholdMin ?? 10;
+    const geofenceEnabled = settings.geofenceAlertEnabled ?? true;
+
+    // Use raw SQL INSERT ... ON CONFLICT DO UPDATE to avoid Neon HTTP driver boolean bug
+    // with drizzle db.update().set() which silently coerces booleans to false.
+    await neonSql`
+      INSERT INTO user_alert_settings (
+        user_id, speed_alert_enabled, speed_threshold_kph,
+        parking_alert_enabled, parking_threshold_min,
+        idle_alert_enabled, idle_threshold_min,
+        geofence_alert_enabled
+      ) VALUES (
+        ${userId}, ${speedEnabled}, ${speedKph},
+        ${parkingEnabled}, ${parkingMin},
+        ${idleEnabled}, ${idleMin},
+        ${geofenceEnabled}
+      )
+      ON CONFLICT (user_id) DO UPDATE SET
+        speed_alert_enabled = EXCLUDED.speed_alert_enabled,
+        speed_threshold_kph = EXCLUDED.speed_threshold_kph,
+        parking_alert_enabled = EXCLUDED.parking_alert_enabled,
+        parking_threshold_min = EXCLUDED.parking_threshold_min,
+        idle_alert_enabled = EXCLUDED.idle_alert_enabled,
+        idle_threshold_min = EXCLUDED.idle_threshold_min,
+        geofence_alert_enabled = EXCLUDED.geofence_alert_enabled
+    `;
+    const updated = await this.getUserAlertSettings(userId);
+    return updated!;
   }
 }
 
