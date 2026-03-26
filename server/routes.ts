@@ -171,8 +171,9 @@ async function sendPushAlertsForLocation(
       }
     }
 
-    // Parking alert — vehicle has been stopped for too long
-    if (settings.parkingAlertEnabled && vehicle.parkedSince) {
+    // Parking alert — only fire when vehicle is currently stopped (status === "stopped")
+    // and has a parkedSince timestamp (guards against false positives on active vehicles).
+    if (settings.parkingAlertEnabled && vehicle.status === "stopped" && vehicle.parkedSince) {
       const parkedMs = Date.now() - new Date(vehicle.parkedSince).getTime();
       const parkedMin = parkedMs / 60000;
       if (parkedMin >= settings.parkingThresholdMin) {
@@ -187,8 +188,9 @@ async function sendPushAlertsForLocation(
       }
     }
 
-    // Idle alert — vehicle is stationary (speed ≤ 2) but not parking (was just recently moving)
-    if (settings.idleAlertEnabled && speedKph <= 2 && vehicle.parkedSince) {
+    // Idle alert — only fire when vehicle is stopped (speed ≤ 5, status === "stopped")
+    // and has a parkedSince timestamp. Explicit speed guard prevents idle alerts on moving vehicles.
+    if (settings.idleAlertEnabled && speedKph <= 5 && vehicle.status === "stopped" && vehicle.parkedSince) {
       const idleMs = Date.now() - new Date(vehicle.parkedSince).getTime();
       const idleMin = idleMs / 60000;
       if (idleMin >= settings.idleThresholdMin) {
@@ -437,13 +439,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (parkedSince !== undefined) vehicleUpdate.parkedSince = parkedSince;
       await storage.updateVehicle(vehicle.id, vehicleUpdate);
 
+      // Build updated vehicle snapshot so push conditions use post-update state.
+      // parkedSince: use the newly set value if defined, otherwise keep vehicle.parkedSince.
+      const updatedParkedSince =
+        parkedSince !== undefined ? parkedSince : vehicle.parkedSince ?? null;
+      const updatedVehicle = { ...vehicle, status: newStatus, parkedSince: updatedParkedSince };
+
       checkGeofences(location).catch(err => console.error("Geofence check error:", err));
       checkSpeedViolation(location).catch(err => console.error("Speed check error:", err));
       broadcastLocation(location);
 
       // Server-side push notifications: check alert thresholds for all users
       // who have push subscriptions and the alert enabled for this vehicle type.
-      sendPushAlertsForLocation(vehicle, location, speed).catch(() => {});
+      // Uses updatedVehicle (post-update state) to avoid stale-snapshot false alerts.
+      sendPushAlertsForLocation(updatedVehicle, location, speed).catch(() => {});
 
       res.status(201).json({ ok: true, vehicleId: vehicle.id, status });
     } catch (error) {
