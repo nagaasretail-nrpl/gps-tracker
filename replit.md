@@ -121,3 +121,66 @@ The `@neondatabase/serverless` v0.10.4 HTTP driver has two bugs:
 ## Running the App
 
 The `Start application` workflow runs `npm run dev` which starts both the Express backend (port 5000) and the Vite dev server proxied through it.
+
+## VPS Production Deployment (nistagps.com — 34.133.128.65)
+
+The production app runs on a VPS under PM2 using `ecosystem.config.cjs`.
+
+### One-Time VPS Setup (secrets + PM2)
+
+SSH into the VPS and set required secrets as persistent shell environment variables:
+
+```bash
+echo 'export DATABASE_URL="postgres://user:pass@host/db?sslmode=require"' >> ~/.bashrc
+echo 'export SESSION_SECRET="<random-32-char-string>"' >> ~/.bashrc
+echo 'export VAPID_PRIVATE_KEY="<your-vapid-private-key>"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+> **VAPID_PRIVATE_KEY** — find the value in Replit Secrets. The matching public key is already committed in `ecosystem.config.cjs` as `VAPID_PUBLIC_KEY`. Both must be from the same `web-push.generateVAPIDKeys()` call.
+
+Create the log directory and start PM2 for the first time:
+
+```bash
+sudo mkdir -p /var/log/gps-tracker && sudo chown $USER /var/log/gps-tracker
+cd /opt/gps-tracker
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup   # follow the printed instructions to enable auto-start on reboot
+```
+
+### Deploying Updates
+
+From your local machine (requires SSH access):
+
+```bash
+./scripts/deploy-vps.sh
+```
+
+Or directly on the VPS:
+
+```bash
+cd /opt/gps-tracker && bash scripts/deploy-vps.sh --local
+```
+
+The script: `git pull` → `npm install` → Vite build → esbuild → `pm2 reload --update-env`.
+
+### Why `--update-env` matters for Push Notifications
+
+`pm2 reload ecosystem.config.cjs --update-env` forces PM2 to re-read the current shell environment, so any changes to `VAPID_PRIVATE_KEY`, `DATABASE_URL`, or `SESSION_SECRET` take effect without a full process restart. Without `--update-env`, PM2 keeps the old env snapshot even after a reload.
+
+If push notifications are silently not delivering on production, verify:
+1. `VAPID_PRIVATE_KEY` is exported in the shell environment on the VPS.
+2. PM2 was reloaded with `--update-env` after the var was set.
+3. `pm2 env 0` (or the relevant process index) shows `VAPID_PRIVATE_KEY` is non-empty.
+
+### PM2 Quick Reference
+
+```bash
+pm2 list                              # show running processes
+pm2 logs gps-tracker                  # tail live logs
+pm2 logs gps-tracker --lines 200      # last 200 log lines
+pm2 env 0                             # inspect env vars of process #0
+pm2 reload ecosystem.config.cjs --update-env   # deploy + hot-reload
+pm2 restart gps-tracker               # full restart (drops connections briefly)
+```
