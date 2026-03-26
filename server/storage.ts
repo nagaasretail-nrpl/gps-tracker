@@ -667,13 +667,17 @@ export class DbStorage implements IStorage {
   }
 
   async upsertUserAlertSettings(userId: string, settings: Partial<UserAlertSettings>): Promise<UserAlertSettings> {
-    const speedEnabled = settings.speedAlertEnabled ?? false;
-    const speedKph = settings.speedThresholdKph ?? 80;
-    const parkingEnabled = settings.parkingAlertEnabled ?? false;
-    const parkingMin = settings.parkingThresholdMin ?? 60;
-    const idleEnabled = settings.idleAlertEnabled ?? false;
-    const idleMin = settings.idleThresholdMin ?? 10;
-    const geofenceEnabled = settings.geofenceAlertEnabled ?? true;
+    // Merge with existing row to preserve any fields not included in a partial update.
+    const existing = await this.getUserAlertSettings(userId);
+    const merged = {
+      speedAlertEnabled: settings.speedAlertEnabled ?? existing?.speedAlertEnabled ?? false,
+      speedThresholdKph: settings.speedThresholdKph ?? existing?.speedThresholdKph ?? 80,
+      parkingAlertEnabled: settings.parkingAlertEnabled ?? existing?.parkingAlertEnabled ?? false,
+      parkingThresholdMin: settings.parkingThresholdMin ?? existing?.parkingThresholdMin ?? 60,
+      idleAlertEnabled: settings.idleAlertEnabled ?? existing?.idleAlertEnabled ?? false,
+      idleThresholdMin: settings.idleThresholdMin ?? existing?.idleThresholdMin ?? 10,
+      geofenceAlertEnabled: settings.geofenceAlertEnabled ?? existing?.geofenceAlertEnabled ?? true,
+    };
 
     // Use raw SQL INSERT ... ON CONFLICT DO UPDATE to avoid Neon HTTP driver boolean bug
     // with drizzle db.update().set() which silently coerces booleans to false.
@@ -684,10 +688,10 @@ export class DbStorage implements IStorage {
         idle_alert_enabled, idle_threshold_min,
         geofence_alert_enabled
       ) VALUES (
-        ${userId}, ${speedEnabled}, ${speedKph},
-        ${parkingEnabled}, ${parkingMin},
-        ${idleEnabled}, ${idleMin},
-        ${geofenceEnabled}
+        ${userId}, ${merged.speedAlertEnabled}, ${merged.speedThresholdKph},
+        ${merged.parkingAlertEnabled}, ${merged.parkingThresholdMin},
+        ${merged.idleAlertEnabled}, ${merged.idleThresholdMin},
+        ${merged.geofenceAlertEnabled}
       )
       ON CONFLICT (user_id) DO UPDATE SET
         speed_alert_enabled = EXCLUDED.speed_alert_enabled,
