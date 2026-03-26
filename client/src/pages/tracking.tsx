@@ -5,11 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, List, X } from "lucide-react";
-import type { Vehicle, Location } from "@shared/schema";
+import type { Vehicle, Location, UserAlertSettings } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { filterValidGpsCoords, isBasicValidCoord, isIndiaCoord } from "@/lib/gpsUtils";
 import { getVehicleImg } from "@/lib/vehicleIcons";
+
+const NOTIFICATION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes between same alert type per vehicle
+
+function fireNotification(title: string, body: string) {
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, { body, icon: "/nista-logo.png" });
+  }
+}
 
 /** Render 4-bar signal indicator like a mobile signal icon */
 function SignalBars({ level, color, title }: { level: number; color: string; title?: string }) {
@@ -65,6 +73,8 @@ export default function Tracking() {
   const [mobileListOpen, setMobileListOpen] = useState(true);
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
+  // lastNotified[vehicleId][alertType] = timestamp of last notification
+  const lastNotifiedRef = useRef<Record<string, Record<string, number>>>({});
 
   const { data: vehicles, isLoading: vehiclesLoading } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
@@ -85,6 +95,10 @@ export default function Tracking() {
   const { data: activeConnections } = useQuery<ActiveConnection[]>({
     queryKey: ["/api/device/connections"],
     refetchInterval: 10000,
+  });
+
+  const { data: alertSettings } = useQuery<UserAlertSettings>({
+    queryKey: ["/api/alert-settings"],
   });
 
   const prevLocations = usePrevious(latestLocations);
@@ -169,6 +183,66 @@ export default function Tracking() {
               return [...filtered, newLoc];
             });
             queryClient.invalidateQueries({ queryKey: ["/api/locations/trail"] });
+
+            // Check alert thresholds and fire browser notifications
+            const settings = queryClient.getQueryData<UserAlertSettings>(["/api/alert-settings"]);
+            if (settings && newLoc.vehicleId) {
+              const vehicleId = newLoc.vehicleId;
+              const allVehicles = queryClient.getQueryData<Vehicle[]>(["/api/vehicles"]);
+              const vehicle = allVehicles?.find((v) => v.id === vehicleId);
+              const vehicleName = vehicle?.name ?? vehicleId;
+              const now = Date.now();
+
+              const canFire = (type: string) => {
+                const last = lastNotifiedRef.current[vehicleId]?.[type] ?? 0;
+                return now - last > NOTIFICATION_COOLDOWN_MS;
+              };
+              const markFired = (type: string) => {
+                if (!lastNotifiedRef.current[vehicleId]) lastNotifiedRef.current[vehicleId] = {};
+                lastNotifiedRef.current[vehicleId][type] = now;
+              };
+
+              // Speed alert
+              if (settings.speedAlertEnabled) {
+                const speed = parseFloat(String(newLoc.speed ?? "0"));
+                if (speed > settings.speedThresholdKph && canFire("speed")) {
+                  fireNotification(
+                    `Speed Alert — ${vehicleName}`,
+                    `Speed ${speed.toFixed(0)} km/h exceeds limit of ${settings.speedThresholdKph} km/h`
+                  );
+                  markFired("speed");
+                }
+              }
+
+              // Idle alert — vehicle is live (connected) but speed ≤ 2 for longer than threshold
+              if (settings.idleAlertEnabled && vehicle?.parkedSince) {
+                const idleMs = now - new Date(vehicle.parkedSince).getTime();
+                const idleMin = idleMs / 60000;
+                const speed = parseFloat(String(newLoc.speed ?? "0"));
+                const connections = queryClient.getQueryData<{ imei: string }[]>(["/api/device/connections"]) ?? [];
+                const isConnected = connections.some((c) => c.imei === vehicle.deviceId);
+                if (isConnected && speed <= 2 && idleMin >= settings.idleThresholdMin && canFire("idle")) {
+                  fireNotification(
+                    `Idle Alert — ${vehicleName}`,
+                    `Vehicle has been idle for ${Math.floor(idleMin)} minutes`
+                  );
+                  markFired("idle");
+                }
+              }
+
+              // Parking alert — vehicle stationary longer than threshold
+              if (settings.parkingAlertEnabled && vehicle?.parkedSince) {
+                const parkedMs = now - new Date(vehicle.parkedSince).getTime();
+                const parkedMin = parkedMs / 60000;
+                if (parkedMin >= settings.parkingThresholdMin && canFire("parking")) {
+                  fireNotification(
+                    `Parking Alert — ${vehicleName}`,
+                    `Vehicle has been parked for ${Math.floor(parkedMin)} minutes`
+                  );
+                  markFired("parking");
+                }
+              }
+            }
           }
         }
         if (msg.type === "vehicle") {

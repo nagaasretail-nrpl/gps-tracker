@@ -18,6 +18,7 @@ import {
   type Activity,
   type InsertActivity,
   type AppSetting,
+  type UserAlertSettings,
   vehicles,
   locations,
   geofences,
@@ -28,6 +29,7 @@ import {
   users,
   activities,
   appSettings,
+  userAlertSettings,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db, neonSql } from "./db";
@@ -101,6 +103,10 @@ export interface IStorage {
   getSettings(): Promise<AppSetting[]>;
   getSetting(key: string): Promise<AppSetting | undefined>;
   setSetting(key: string, value: string): Promise<AppSetting>;
+
+  // User Alert Settings
+  getUserAlertSettings(userId: string): Promise<UserAlertSettings | undefined>;
+  upsertUserAlertSettings(userId: string, settings: Partial<UserAlertSettings>): Promise<UserAlertSettings>;
 }
 
 export class DbStorage implements IStorage {
@@ -624,6 +630,28 @@ export class DbStorage implements IStorage {
       return updated!;
     } else {
       const result = await db.insert(appSettings).values({ key, value }).returning();
+      return result[0];
+    }
+  }
+
+  async getUserAlertSettings(userId: string): Promise<UserAlertSettings | undefined> {
+    try {
+      const result = await db.select().from(userAlertSettings).where(eq(userAlertSettings.userId, userId)).limit(1);
+      return result?.[0];
+    } catch (err) {
+      if (err instanceof TypeError && String(err.message).includes("map")) return undefined;
+      throw err;
+    }
+  }
+
+  async upsertUserAlertSettings(userId: string, settings: Partial<UserAlertSettings>): Promise<UserAlertSettings> {
+    const existing = await this.getUserAlertSettings(userId);
+    if (existing) {
+      await db.update(userAlertSettings).set(settings).where(eq(userAlertSettings.userId, userId));
+      const updated = await this.getUserAlertSettings(userId);
+      return updated!;
+    } else {
+      const result = await db.insert(userAlertSettings).values({ userId, ...settings }).returning();
       return result[0];
     }
   }

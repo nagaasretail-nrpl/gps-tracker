@@ -312,3 +312,20 @@ export const insertTripSchema = createInsertSchema(trips).omit({
 
 export type InsertTrip = z.infer<typeof insertTripSchema>;
 export type Trip = typeof trips.$inferSelect;
+
+// User alert settings table (per-user notification preferences)
+export const userAlertSettings = pgTable("user_alert_settings", {
+  userId: varchar("user_id").primaryKey(),
+  speedAlertEnabled: boolean("speed_alert_enabled").default(false).notNull(),
+  speedThresholdKph: integer("speed_threshold_kph").default(80).notNull(),
+  parkingAlertEnabled: boolean("parking_alert_enabled").default(false).notNull(),
+  parkingThresholdMin: integer("parking_threshold_min").default(60).notNull(),
+  idleAlertEnabled: boolean("idle_alert_enabled").default(false).notNull(),
+  idleThresholdMin: integer("idle_threshold_min").default(10).notNull(),
+  geofenceAlertEnabled: boolean("geofence_alert_enabled").default(true).notNull(),
+});
+
+export const insertUserAlertSettingsSchema = createInsertSchema(userAlertSettings);
+
+export type InsertUserAlertSettings = z.infer<typeof insertUserAlertSettingsSchema>;
+export type UserAlertSettings = typeof userAlertSettings.$inferSelect;

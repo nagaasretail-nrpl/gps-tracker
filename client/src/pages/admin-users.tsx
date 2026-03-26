@@ -87,6 +87,7 @@ const ASSIGNABLE_MENU_GROUPS = [
       { title: "Routes", url: "/routes" },
       { title: "Points of Interest", url: "/pois" },
       { title: "Reports", url: "/reports" },
+      { title: "Alert Settings", url: "/alert-settings" },
     ],
   },
   {

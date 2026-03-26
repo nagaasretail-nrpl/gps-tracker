@@ -24,6 +24,7 @@ import {
   insertActivitySchema,
   updateProfileSchema,
   adminUpdateUserSchema,
+  insertUserAlertSettingsSchema,
   type User,
 } from "@shared/schema";
 
@@ -1336,6 +1337,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
   }
+
+  // Alert settings (per-user notification preferences)
+  app.get("/api/alert-settings", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.user as { id: string }).id;
+      let settings = await storage.getUserAlertSettings(userId);
+      if (!settings) {
+        // Return defaults without persisting — only persist on first PUT
+        settings = {
+          userId,
+          speedAlertEnabled: false,
+          speedThresholdKph: 80,
+          parkingAlertEnabled: false,
+          parkingThresholdMin: 60,
+          idleAlertEnabled: false,
+          idleThresholdMin: 10,
+          geofenceAlertEnabled: true,
+        };
+      }
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch alert settings" });
+    }
+  });
+
+  app.put("/api/alert-settings", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.user as { id: string }).id;
+      const schema = insertUserAlertSettingsSchema.omit({ userId: true });
+      const validated = schema.parse(req.body);
+      const settings = await storage.upsertUserAlertSettings(userId, validated);
+      res.json(settings);
+    } catch (error) {
+      if (error instanceof Error && error.name === "ZodError") {
+        return res.status(400).json({ error: "Invalid alert settings" });
+      }
+      res.status(500).json({ error: "Failed to save alert settings" });
+    }
+  });
 
   // Set up location broadcasting for GT06 TCP server
   setLocationBroadcaster(broadcastLocation);
