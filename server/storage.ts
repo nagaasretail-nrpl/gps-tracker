@@ -19,6 +19,8 @@ import {
   type InsertActivity,
   type AppSetting,
   type UserAlertSettings,
+  type PushSubscription,
+  type InsertPushSubscription,
   vehicles,
   locations,
   geofences,
@@ -30,6 +32,7 @@ import {
   activities,
   appSettings,
   userAlertSettings,
+  pushSubscriptions,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db, neonSql } from "./db";
@@ -107,6 +110,12 @@ export interface IStorage {
   // User Alert Settings
   getUserAlertSettings(userId: string): Promise<UserAlertSettings | undefined>;
   upsertUserAlertSettings(userId: string, settings: Partial<UserAlertSettings>): Promise<UserAlertSettings>;
+
+  // Push Subscriptions
+  savePushSubscription(sub: InsertPushSubscription): Promise<PushSubscription>;
+  deletePushSubscription(userId: string, endpoint: string): Promise<boolean>;
+  getPushSubscriptionsByUser(userId: string): Promise<PushSubscription[]>;
+  getAllPushSubscriptions(): Promise<PushSubscription[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -704,6 +713,35 @@ export class DbStorage implements IStorage {
     `;
     const updated = await this.getUserAlertSettings(userId);
     return updated!;
+  }
+
+  async savePushSubscription(sub: InsertPushSubscription): Promise<PushSubscription> {
+    // Use INSERT ... ON CONFLICT DO UPDATE to upsert (same user+endpoint pair is idempotent)
+    await neonSql`
+      INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+      VALUES (${sub.userId}, ${sub.endpoint}, ${sub.p256dh}, ${sub.auth})
+      ON CONFLICT (user_id, endpoint) DO UPDATE SET
+        p256dh = EXCLUDED.p256dh,
+        auth = EXCLUDED.auth
+    `;
+    const rows = await db.select().from(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.userId, sub.userId), eq(pushSubscriptions.endpoint, sub.endpoint)))
+      .limit(1);
+    return rows[0];
+  }
+
+  async deletePushSubscription(userId: string, endpoint: string): Promise<boolean> {
+    const result = await db.delete(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.userId, userId), eq(pushSubscriptions.endpoint, endpoint)));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  async getPushSubscriptionsByUser(userId: string): Promise<PushSubscription[]> {
+    return await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+  }
+
+  async getAllPushSubscriptions(): Promise<PushSubscription[]> {
+    return await db.select().from(pushSubscriptions);
   }
 }
 

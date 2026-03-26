@@ -8,6 +8,7 @@ import { getActiveConnections } from "./gt06-server";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
 import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
+import { sendPushToUser, canSendPush, markPushSent, VAPID_PUBLIC_KEY } from "./push-notifications";
 import { z } from "zod";
 import crypto from "crypto";
 import Razorpay from "razorpay";
@@ -129,6 +130,69 @@ async function checkSubscriptionExpiry(req: Request, res: Response, next: NextFu
     );
   }
   next();
+}
+
+// Helper: find all users who have push subscriptions for a given vehicle and send push alerts
+async function sendPushAlertsForLocation(
+  vehicle: { id: string; name: string; allowedVehicleIds?: string[] | null; parkedSince?: Date | null; status?: string },
+  location: { speed?: string | null },
+  speedKph: number
+): Promise<void> {
+  // Get all users who have push subscriptions
+  const allSubs = await storage.getAllPushSubscriptions();
+  if (allSubs.length === 0) return;
+
+  // Unique user IDs that have at least one push subscription
+  const userIds = [...new Set(allSubs.map(s => s.userId))];
+
+  for (const userId of userIds) {
+    const settings = await storage.getUserAlertSettings(userId);
+    if (!settings) continue;
+
+    // Speed alert
+    if (settings.speedAlertEnabled && speedKph > settings.speedThresholdKph) {
+      if (canSendPush(userId, `speed:${vehicle.id}`)) {
+        await sendPushToUser(userId, {
+          title: `Speed Alert — ${vehicle.name}`,
+          body: `Speed ${speedKph.toFixed(0)} km/h exceeds limit of ${settings.speedThresholdKph} km/h`,
+          url: "/tracking",
+        });
+        markPushSent(userId, `speed:${vehicle.id}`);
+      }
+    }
+
+    // Parking alert — vehicle has been stopped for too long
+    if (settings.parkingAlertEnabled && vehicle.parkedSince) {
+      const parkedMs = Date.now() - new Date(vehicle.parkedSince).getTime();
+      const parkedMin = parkedMs / 60000;
+      if (parkedMin >= settings.parkingThresholdMin) {
+        if (canSendPush(userId, `parking:${vehicle.id}`)) {
+          await sendPushToUser(userId, {
+            title: `Parking Alert — ${vehicle.name}`,
+            body: `Vehicle has been parked for ${Math.floor(parkedMin)} minutes`,
+            url: "/tracking",
+          });
+          markPushSent(userId, `parking:${vehicle.id}`);
+        }
+      }
+    }
+
+    // Idle alert — vehicle is stationary (speed ≤ 2) but not parking (was just recently moving)
+    if (settings.idleAlertEnabled && speedKph <= 2 && vehicle.parkedSince) {
+      const idleMs = Date.now() - new Date(vehicle.parkedSince).getTime();
+      const idleMin = idleMs / 60000;
+      if (idleMin >= settings.idleThresholdMin) {
+        if (canSendPush(userId, `idle:${vehicle.id}`)) {
+          await sendPushToUser(userId, {
+            title: `Idle Alert — ${vehicle.name}`,
+            body: `Vehicle has been idle for ${Math.floor(idleMin)} minutes`,
+            url: "/tracking",
+          });
+          markPushSent(userId, `idle:${vehicle.id}`);
+        }
+      }
+    }
+  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -366,6 +430,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       checkGeofences(location).catch(err => console.error("Geofence check error:", err));
       checkSpeedViolation(location).catch(err => console.error("Speed check error:", err));
       broadcastLocation(location);
+
+      // Server-side push notifications: check alert thresholds for all users
+      // who have push subscriptions and the alert enabled for this vehicle type.
+      sendPushAlertsForLocation(vehicle, location, speed).catch(() => {});
 
       res.status(201).json({ ok: true, vehicleId: vehicle.id, status });
     } catch (error) {
@@ -1374,6 +1442,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid alert settings" });
       }
       res.status(500).json({ error: "Failed to save alert settings" });
+    }
+  });
+
+  // Web Push — VAPID public key (needed by frontend to subscribe)
+  app.get("/api/push/vapid-public-key", requireAuth, (_req, res) => {
+    if (!VAPID_PUBLIC_KEY) {
+      return res.status(503).json({ error: "Push notifications not configured" });
+    }
+    res.json({ publicKey: VAPID_PUBLIC_KEY });
+  });
+
+  // Web Push — save a push subscription for the authenticated user
+  app.post("/api/push/subscribe", requireAuth, async (req, res) => {
+    try {
+      const schema = z.object({
+        endpoint: z.string().url(),
+        keys: z.object({
+          p256dh: z.string().min(1),
+          auth: z.string().min(1),
+        }),
+      });
+      const { endpoint, keys } = schema.parse(req.body);
+      const userId = (req.user as { id: string }).id;
+      const sub = await storage.savePushSubscription({ userId, endpoint, p256dh: keys.p256dh, auth: keys.auth });
+      res.status(201).json({ ok: true, id: sub.id });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid subscription data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to save push subscription" });
+    }
+  });
+
+  // Web Push — remove a push subscription for the authenticated user
+  app.delete("/api/push/subscribe", requireAuth, async (req, res) => {
+    try {
+      const schema = z.object({ endpoint: z.string().url() });
+      const { endpoint } = schema.parse(req.body);
+      const userId = (req.user as { id: string }).id;
+      await storage.deletePushSubscription(userId, endpoint);
+      res.json({ ok: true });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid request" });
+      }
+      res.status(500).json({ error: "Failed to remove push subscription" });
     }
   });
 

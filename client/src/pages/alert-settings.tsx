@@ -16,6 +16,8 @@ import {
   BellOff,
   CheckCircle,
   Clock,
+  Smartphone,
+  SmartphoneNfc,
 } from "lucide-react";
 import type { UserAlertSettings, Event, Vehicle } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
@@ -72,6 +74,146 @@ function NotificationPermissionBanner() {
       </CardContent>
     </Card>
   );
+}
+
+// Push subscription card — enables Web Push so alerts arrive even when the browser is closed
+function PushSubscriptionCard() {
+  const { toast } = useToast();
+  const [pushState, setPushState] = useState<"loading" | "unsupported" | "subscribed" | "unsubscribed">("loading");
+  const [isBusy, setIsBusy] = useState(false);
+
+  const supportsWebPush =
+    "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+  useEffect(() => {
+    if (!supportsWebPush) {
+      setPushState("unsupported");
+      return;
+    }
+    navigator.serviceWorker.ready.then((reg) => {
+      reg.pushManager.getSubscription().then((sub) => {
+        setPushState(sub ? "subscribed" : "unsubscribed");
+      });
+    });
+  }, []);
+
+  const subscribe = async () => {
+    if (!supportsWebPush) return;
+    setIsBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast({ title: "Permission denied", description: "Enable notifications in browser settings to use push alerts.", variant: "destructive" });
+        return;
+      }
+
+      // Get VAPID public key from server
+      const keyRes = await apiRequest("GET", "/api/push/vapid-public-key");
+      const { publicKey } = await keyRes.json();
+
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+
+      await apiRequest("POST", "/api/push/subscribe", sub.toJSON());
+      setPushState("subscribed");
+      toast({ title: "Push notifications enabled", description: "You will receive vehicle alerts on this device." });
+    } catch (err) {
+      console.error("[push] subscribe error:", err);
+      toast({ title: "Error", description: "Failed to enable push notifications.", variant: "destructive" });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const unsubscribe = async () => {
+    if (!supportsWebPush) return;
+    setIsBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await apiRequest("DELETE", "/api/push/subscribe", { endpoint: sub.endpoint });
+        await sub.unsubscribe();
+      }
+      setPushState("unsubscribed");
+      toast({ title: "Push notifications disabled" });
+    } catch (err) {
+      console.error("[push] unsubscribe error:", err);
+      toast({ title: "Error", description: "Failed to disable push notifications.", variant: "destructive" });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  if (pushState === "loading") {
+    return <Skeleton className="h-20" />;
+  }
+
+  if (pushState === "unsupported") {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {pushState === "subscribed" ? (
+              <SmartphoneNfc className="h-4 w-4 text-primary flex-shrink-0" />
+            ) : (
+              <Smartphone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            )}
+            <div className="min-w-0">
+              <CardTitle className="text-sm">Push Notifications</CardTitle>
+              <CardDescription className="text-xs mt-0.5">
+                {pushState === "subscribed"
+                  ? "This device will receive alerts even when the app is closed."
+                  : "Enable to receive alerts on this device even when the app is closed."}
+              </CardDescription>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {pushState === "subscribed" && (
+              <Badge variant="secondary" className="text-xs" data-testid="badge-push-enabled">
+                Active
+              </Badge>
+            )}
+            {pushState === "subscribed" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={unsubscribe}
+                disabled={isBusy}
+                data-testid="button-push-unsubscribe"
+              >
+                {isBusy ? "Disabling…" : "Disable"}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={subscribe}
+                disabled={isBusy}
+                data-testid="button-push-subscribe"
+              >
+                {isBusy ? "Enabling…" : "Enable"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+    </Card>
+  );
+}
+
+// Convert base64url string to Uint8Array for applicationServerKey
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
 function AlertSection({
@@ -282,11 +424,13 @@ export default function AlertSettings() {
           <div>
             <h1 className="text-xl font-semibold" data-testid="text-page-title">Alert Settings</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Configure which vehicle events trigger browser notifications.
+              Configure which vehicle events trigger notifications on this device.
             </p>
           </div>
 
           <NotificationPermissionBanner />
+
+          <PushSubscriptionCard />
 
           {isLoading ? (
             [1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24" />)

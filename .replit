@@ -60,6 +60,9 @@ integrations = ["javascript_websocket:1.0.0", "javascript_mem_db:1.0.0"]
 
 [userenv.shared]
 PORT = "5000"
+VAPID_PUBLIC_KEY = "BNLm4iaibNIMx49PfmWQKtW79kS43pqavN4jZrWNOKTQIdI_C6GpiLM2gURN4_CBLrtF4j48tOYRhMPEYtMejj8"
+VAPID_PRIVATE_KEY = "HMwl9k8_MgV0engoJAdfEM1NU4zIJT_7wzuGlYdasNc"
+VAPID_EMAIL = "mailto:admin@nistagps.com"
 
 [postMerge]
 path = "scripts/post-merge.sh"

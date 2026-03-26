@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nistagps-v2';
+const CACHE_NAME = 'nistagps-v3';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
@@ -44,20 +44,15 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          // Clone the response
           const clonedResponse = response.clone();
-          
-          // Cache successful responses
           if (response.status === 200) {
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, clonedResponse);
             });
           }
-          
           return response;
         })
         .catch(() => {
-          // Return cached response if network fails
           return caches.match(event.request);
         })
     );
@@ -70,33 +65,26 @@ self.addEventListener('fetch', (event) => {
       if (response) {
         return response;
       }
-      
       return fetch(event.request).then((response) => {
-        // Don't cache non-successful responses
         if (!response || response.status !== 200) {
           return response;
         }
-
-        // Clone and cache the response
         const clonedResponse = response.clone();
         caches.open(CACHE_NAME).then((cache) => {
           cache.put(event.request, clonedResponse);
         });
-
         return response;
       }).catch(() => {
-        // Return offline page if available
         return caches.match('/');
       });
     })
   );
 });
 
-// Background Sync for API calls (optional - when back online)
+// Background Sync for API calls
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-data') {
     event.waitUntil(
-      // Retry failed API calls when connection is restored
       fetch('/api/locations').catch((err) => console.log('Sync failed:', err))
     );
   }
@@ -107,4 +95,55 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+});
+
+// Web Push: handle incoming push events and show notification
+self.addEventListener('push', (event) => {
+  let payload = {
+    title: 'NistaGPS Alert',
+    body: 'A vehicle alert was triggered.',
+    url: '/tracking',
+    icon: '/nista-logo.png',
+  };
+
+  if (event.data) {
+    try {
+      const data = event.data.json();
+      payload = { ...payload, ...data };
+    } catch (_) {
+      payload.body = event.data.text();
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: payload.icon,
+      badge: '/favicon.png',
+      data: { url: payload.url },
+      tag: payload.title,
+      renotify: true,
+    })
+  );
+});
+
+// Web Push: handle notification click — focus or open the app
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/tracking';
+  const fullUrl = new URL(url, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          client.navigate(fullUrl);
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(fullUrl);
+      }
+    })
+  );
 });

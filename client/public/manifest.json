@@ -24,6 +24,22 @@
       "purpose": "any maskable"
     }
   ],
+  "shortcuts": [
+    {
+      "name": "Live Tracking",
+      "short_name": "Tracking",
+      "description": "View real-time vehicle tracking",
+      "url": "/tracking",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Alert Settings",
+      "short_name": "Alerts",
+      "description": "Configure vehicle alert notifications",
+      "url": "/alert-settings",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    }
+  ],
   "categories": ["navigation", "utilities"],
   "lang": "en"
 }

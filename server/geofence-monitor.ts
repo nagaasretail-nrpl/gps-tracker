@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import type { Geofence, Location } from "@shared/schema";
+import { sendPushToUser, canSendPush, markPushSent } from "./push-notifications";
 
 interface Point {
   lat: number;
@@ -102,6 +103,9 @@ export async function checkGeofences(location: Location): Promise<void> {
         if (eventBroadcaster) {
           eventBroadcaster(event);
         }
+
+        // Send push notifications to users with geofence alerts enabled
+        sendGeofencePush(vehicleId, geofence.name, "entered").catch(() => {});
       }
     } else {
       // Generate exit event if previously inside and alerts are enabled
@@ -123,12 +127,40 @@ export async function checkGeofences(location: Location): Promise<void> {
         if (eventBroadcaster) {
           eventBroadcaster(event);
         }
+
+        // Send push notifications to users with geofence alerts enabled
+        sendGeofencePush(vehicleId, geofence.name, "exited").catch(() => {});
       }
     }
   }
 
   // Update state for this vehicle
   vehicleGeofenceState.set(vehicleId, newState);
+}
+
+// Send geofence push notifications to all users with geofence alerts enabled
+async function sendGeofencePush(vehicleId: string, geofenceName: string, action: "entered" | "exited"): Promise<void> {
+  const allSubs = await storage.getAllPushSubscriptions();
+  const userIds = [...new Set(allSubs.map(s => s.userId))];
+
+  // Look up vehicle name
+  const vehicle = await storage.getVehicle(vehicleId);
+  const vehicleName = vehicle?.name ?? vehicleId;
+
+  for (const userId of userIds) {
+    const settings = await storage.getUserAlertSettings(userId);
+    if (!settings?.geofenceAlertEnabled) continue;
+
+    const alertKey = `geofence:${vehicleId}:${geofenceName}:${action}`;
+    if (canSendPush(userId, alertKey)) {
+      await sendPushToUser(userId, {
+        title: `Geofence Alert — ${vehicleName}`,
+        body: `${vehicleName} ${action} geofence: ${geofenceName}`,
+        url: "/tracking",
+      });
+      markPushSent(userId, alertKey);
+    }
+  }
 }
 
 // Check for speed limit violations
