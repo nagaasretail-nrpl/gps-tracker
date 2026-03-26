@@ -6,15 +6,20 @@
 #
 # PREREQUISITES (one-time setup on the VPS — do this before first deploy):
 #
-#   1. Set secrets as persistent environment variables on the VPS:
+#   1. Set secrets as persistent system environment variables on the VPS:
 #
-#        ssh user@34.133.128.65
-#        echo 'export DATABASE_URL="postgres://user:pass@host/db?sslmode=require"' >> ~/.bashrc
-#        echo 'export SESSION_SECRET="<random-32-char-string>"' >> ~/.bashrc
+#      Recommended (survives reboots, PM2 startup systemd service picks it up):
+#        sudo -e /etc/environment
+#        # Add the following lines (no "export", just KEY=VALUE):
+#        DATABASE_URL="postgres://user:pass@host/db?sslmode=require"
+#        SESSION_SECRET="<random-32-char-string>"
+#        VAPID_PRIVATE_KEY="<your-vapid-private-key>"
+#
+#      Alternative (current user shell only — may not persist through reboots):
 #        echo 'export VAPID_PRIVATE_KEY="<your-vapid-private-key>"' >> ~/.bashrc
 #        source ~/.bashrc
 #
-#      The VAPID private key can be found in your Replit Secrets as VAPID_PRIVATE_KEY.
+#      The VAPID_PRIVATE_KEY value is in your Replit project's Secrets.
 #
 #   2. Ensure the log directory exists:
 #        sudo mkdir -p /var/log/gps-tracker
@@ -81,6 +86,23 @@ deploy() {
   echo ""
   echo "✓ Deploy complete. PM2 status:"
   pm2 list
+
+  echo ""
+  echo "==> Verifying VAPID_PRIVATE_KEY is set in PM2 process environment..."
+  PROC_ID=$(pm2 id gps-tracker 2>/dev/null | tr -d '[],' | awk '{print $1}' | head -1)
+  if [ -n "$PROC_ID" ]; then
+    if pm2 env "$PROC_ID" 2>/dev/null | grep -q "VAPID_PRIVATE_KEY"; then
+      VAPID_VAL=$(pm2 env "$PROC_ID" 2>/dev/null | grep "VAPID_PRIVATE_KEY" | awk '{print $NF}')
+      if [ -z "$VAPID_VAL" ] || [ "$VAPID_VAL" = '""' ] || [ "$VAPID_VAL" = "''" ]; then
+        echo "WARNING: VAPID_PRIVATE_KEY is empty in PM2 env. Push notifications will be disabled."
+        echo "         Set it via /etc/environment or ~/.bashrc and re-run with --update-env."
+      else
+        echo "✓ VAPID_PRIVATE_KEY is set (non-empty). Push notifications will be active."
+      fi
+    else
+      echo "WARNING: VAPID_PRIVATE_KEY not found in PM2 env for process ${PROC_ID}."
+    fi
+  fi
 }
 
 if $LOCAL_MODE; then
@@ -118,5 +140,18 @@ else
     echo ''
     echo '✓ Deploy complete. PM2 status:'
     pm2 list
+
+    echo ''
+    echo '==> Verifying VAPID_PRIVATE_KEY is set in PM2 process environment...'
+    PROC_ID=\$(pm2 id gps-tracker 2>/dev/null | tr -d '[],' | awk '{print \$1}' | head -1)
+    if [ -n \"\$PROC_ID\" ]; then
+      VAPID_VAL=\$(pm2 env \"\$PROC_ID\" 2>/dev/null | grep VAPID_PRIVATE_KEY | awk '{print \$NF}')
+      if [ -z \"\$VAPID_VAL\" ] || [ \"\$VAPID_VAL\" = '\"\"' ]; then
+        echo 'WARNING: VAPID_PRIVATE_KEY is empty. Push notifications will be disabled.'
+        echo '         Add it to /etc/environment and re-run: pm2 reload ecosystem.config.cjs --update-env'
+      else
+        echo '✓ VAPID_PRIVATE_KEY is set. Push notifications will be active.'
+      fi
+    fi
   "
 fi

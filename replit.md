@@ -128,11 +128,17 @@ The production app runs on a VPS under PM2 using `ecosystem.config.cjs`.
 
 ### One-Time VPS Setup (secrets + PM2)
 
-SSH into the VPS and set required secrets as persistent shell environment variables:
+SSH into the VPS and set secrets as **persistent system environment variables**:
 
 ```bash
-echo 'export DATABASE_URL="postgres://user:pass@host/db?sslmode=require"' >> ~/.bashrc
-echo 'export SESSION_SECRET="<random-32-char-string>"' >> ~/.bashrc
+# Recommended — survives reboots and is picked up by PM2's systemd startup service:
+sudo -e /etc/environment
+# Add the following lines (no "export", just KEY=VALUE):
+#   DATABASE_URL="postgres://user:pass@host/db?sslmode=require"
+#   SESSION_SECRET="<random-32-char-string>"
+#   VAPID_PRIVATE_KEY="<your-vapid-private-key>"
+
+# Alternative (current-user shell only — may not persist after reboot):
 echo 'export VAPID_PRIVATE_KEY="<your-vapid-private-key>"' >> ~/.bashrc
 source ~/.bashrc
 ```
