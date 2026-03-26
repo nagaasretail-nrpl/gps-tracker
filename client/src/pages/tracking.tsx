@@ -146,7 +146,7 @@ export default function Tracking() {
         }
       }
 
-      return [{ vehicleId: vehicle.id, coords, color: vehicle.iconColor ?? "#e4006e" }];
+      return [{ vehicleId: vehicle.id, coords, color: "#e4006e" }];
     });
   }, [vehicles, trailLocations, latestLocations]);
 
@@ -280,10 +280,16 @@ export default function Tracking() {
               const location = getVehicleLocation(vehicle.id);
               const isSelected = selectedVehicle === vehicle.id;
               const connected = isDeviceConnected(vehicle);
+              const hasLocation = location != null;
               const speed = parseFloat(String(location?.speed ?? "0")).toFixed(0);
               const pngImg = getVehicleImg(vehicle.type ?? "car");
               const iconColor = vehicle.iconColor ?? "#e4006e";
               const isMoving = parseFloat(String(location?.speed ?? "0")) > 2;
+              const signalColor = hasLocation ? "#22c55e" : "#9ca3af";
+              const gpsLevel = hasLocation
+                ? Math.max(satellitesToBars(location?.satellites ?? 0), 1)
+                : 0;
+              const gprsLevel = connected ? 4 : hasLocation ? 3 : 0;
 
               return (
                 <div
@@ -327,14 +333,14 @@ export default function Tracking() {
                         {/* Signal indicators: GPS (satellite) + GPRS (SIM connection) */}
                         <div className="flex items-center gap-1" data-testid={`signal-${vehicle.id}`}>
                           <SignalBars
-                            level={satellitesToBars(location?.satellites)}
-                            color="#22c55e"
+                            level={gpsLevel}
+                            color={signalColor}
                             title={`GPS: ${location?.satellites ?? 0} satellites`}
                           />
                           <SignalBars
-                            level={connected ? 4 : 0}
-                            color="#3b82f6"
-                            title={connected ? "GPRS: Connected" : "GPRS: Offline"}
+                            level={gprsLevel}
+                            color={signalColor}
+                            title={connected ? "GPRS: Connected" : hasLocation ? "GPRS: Previously connected" : "GPRS: Never connected"}
                           />
                         </div>
                         <span
@@ -355,17 +361,18 @@ export default function Tracking() {
                       <span
                         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                         style={{
-                          backgroundColor:
-                            vehicle.status === "active"
-                              ? "#22c55e"
-                              : vehicle.status === "stopped"
-                              ? "#eab308"
-                              : "#9ca3af",
+                          backgroundColor: connected
+                            ? "#22c55e"
+                            : hasLocation
+                            ? "#eab308"
+                            : "#9ca3af",
                         }}
                       />
                       <span className="text-xs text-muted-foreground truncate">
-                        {location
-                          ? formatTimestamp(location.timestamp)
+                        {connected
+                          ? "Connected"
+                          : hasLocation
+                          ? `Last connected ${formatTimestamp(location!.timestamp)}`
                           : "Waiting for GPS…"}
                       </span>
                       {vehicle.status === "stopped" && vehicle.parkedSince && (
