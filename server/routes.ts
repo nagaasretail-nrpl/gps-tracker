@@ -146,6 +146,16 @@ async function sendPushAlertsForLocation(
   const userIds = [...new Set(allSubs.map(s => s.userId))];
 
   for (const userId of userIds) {
+    // Enforce per-user vehicle access control before sending any push
+    const userRecord = await storage.getUserById(userId);
+    if (!userRecord) continue;
+    // Admin (role === "admin") can receive alerts for all vehicles;
+    // non-admin users only receive alerts for vehicles in their allowedVehicleIds list.
+    if (userRecord.role !== "admin") {
+      const allowed = userRecord.allowedVehicleIds ?? [];
+      if (allowed.length === 0 || !allowed.includes(vehicle.id)) continue;
+    }
+
     const settings = await storage.getUserAlertSettings(userId);
     if (!settings) continue;
 

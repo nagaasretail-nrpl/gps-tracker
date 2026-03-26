@@ -148,6 +148,14 @@ async function sendGeofencePush(vehicleId: string, geofenceName: string, action:
   const vehicleName = vehicle?.name ?? vehicleId;
 
   for (const userId of userIds) {
+    // Enforce per-user vehicle access control — admins see all vehicles, non-admins only their allowed list
+    const userRecord = await storage.getUserById(userId);
+    if (!userRecord) continue;
+    if (userRecord.role !== "admin") {
+      const allowed = userRecord.allowedVehicleIds ?? [];
+      if (allowed.length === 0 || !allowed.includes(vehicleId)) continue;
+    }
+
     const settings = await storage.getUserAlertSettings(userId);
     if (!settings?.geofenceAlertEnabled) continue;
 
