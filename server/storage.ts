@@ -509,7 +509,7 @@ export class DbStorage implements IStorage {
       )
     `;
     const rows = await db.select().from(geofences).where(eq(geofences.id, id));
-    return rows[0];
+    return this.fixGeofenceBooleans(rows[0]);
   }
 
   async deleteGeofence(id: string): Promise<boolean> {

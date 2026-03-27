@@ -318,6 +318,17 @@ export default function Geofences() {
                   />
                 </div>
                 <div>
+                  <Label htmlFor="m-geofence-description" className="text-xs">Description</Label>
+                  <Textarea
+                    id="m-geofence-description"
+                    value={newGeofence.description ?? ""}
+                    onChange={(e) => setNewGeofence((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder="Optional description"
+                    className="min-h-[60px]"
+                    data-testid="input-geofence-description-mobile"
+                  />
+                </div>
+                <div>
                   <Label htmlFor="m-geofence-color" className="text-xs">Color</Label>
                   <Input
                     id="m-geofence-color"
