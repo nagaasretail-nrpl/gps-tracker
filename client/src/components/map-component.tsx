@@ -540,7 +540,9 @@ export function MapComponent({
       currentVehicleIds.add(vehicle.id);
 
       const speed = parseFloat(String(location.speed ?? "0"));
-      const markerColor = speed > 2 ? "#22c55e" : (vehicle.iconColor ?? "#e4006e");
+      // Non-arrow icons always use the user's chosen iconColor.
+      // Arrow icon overrides this below with status-based colors.
+      const markerColor = vehicle.iconColor ?? "#e4006e";
 
       let heading = parseFloat(String(location.heading ?? "0")) || 0;
       if (!heading) {

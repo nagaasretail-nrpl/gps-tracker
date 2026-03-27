@@ -122,9 +122,6 @@ function VehicleAppearanceCard({ vehicle }: { vehicle: Vehicle }) {
                 />
               </label>
             </div>
-            {localType === "arrow" && (
-              <p className="text-xs text-muted-foreground mt-1">Arrow icon uses status-based colors (green/orange/red) automatically.</p>
-            )}
           </div>
         )}
 
