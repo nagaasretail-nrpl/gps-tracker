@@ -563,15 +563,16 @@ export function MapComponent({
       const [anchorX, anchorY] = getIconAnchor(iconType);
       const pngUrl = getVehicleImg(iconType);
 
-      // For "arrow" icon type, override color based on vehicle status
+      // For "arrow" icon type, override color based on vehicle status semantics:
+      // active (moving) → green, idle (ignition on, speed near zero) → orange, stopped → red
       let effectiveMarkerColor = markerColor;
       if (iconType === "arrow") {
-        if (speed > 3) {
+        if (vehicle.status === "active" || speed > 3) {
           effectiveMarkerColor = "#22c55e"; // moving → green
-        } else if (location.ignition || (vehicle as any).ignition) {
-          effectiveMarkerColor = "#f97316"; // ignition on, not moving → orange
+        } else if (location.ignition === true) {
+          effectiveMarkerColor = "#f97316"; // ignition on, not moving → orange (idle)
         } else {
-          effectiveMarkerColor = "#ef4444"; // stopped → red
+          effectiveMarkerColor = "#ef4444"; // stopped / offline → red
         }
       }
 
