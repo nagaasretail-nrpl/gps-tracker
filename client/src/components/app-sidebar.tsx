@@ -17,6 +17,7 @@ import {
   Download,
   ParkingSquare,
   Bell,
+  Palette,
 } from "lucide-react";
 import {
   Sidebar,
@@ -40,7 +41,7 @@ const nistaLogo = "/nista-logo.png";
 type UserWithoutPassword = Omit<UserType, "password">;
 
 // Routes that bypass allowedMenus restrictions — always shown for all authenticated users.
-const ALWAYS_ACCESSIBLE = new Set(["/geofences", "/pois", "/parking-report", "/alert-settings"]);
+const ALWAYS_ACCESSIBLE = new Set(["/geofences", "/pois", "/parking-report", "/alert-settings", "/vehicle-appearance"]);
 
 interface MenuItem {
   title: string;
@@ -78,6 +79,7 @@ const adminMenuItems: MenuItem[] = [
 
 const userMenuItems: MenuItem[] = [
   { title: "My Profile", url: "/profile", icon: User },
+  { title: "Vehicle Appearance", url: "/vehicle-appearance", icon: Palette },
 ];
 
 export function AppSidebar() {

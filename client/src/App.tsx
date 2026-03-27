@@ -42,12 +42,13 @@ import Privacy from "@/pages/privacy";
 import InstallPage from "@/pages/install";
 import ParkingReport from "@/pages/parking-report";
 import AlertSettings from "@/pages/alert-settings";
+import VehicleAppearance from "@/pages/vehicle-appearance";
 import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
 
 // Routes that bypass allowedMenus restrictions — always visible for all authenticated users.
-const ALWAYS_ACCESSIBLE_ROUTES = new Set(["/geofences", "/pois", "/parking-report", "/alert-settings"]);
+const ALWAYS_ACCESSIBLE_ROUTES = new Set(["/geofences", "/pois", "/parking-report", "/alert-settings", "/vehicle-appearance"]);
 
 // "/" (live tracking) is not in PROTECTED_ROUTES — always accessible, safe fallback.
 // "/dashboard" uses legacy key "/" (same as the stored allowedMenus value).
@@ -129,6 +130,7 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
       <Route path="/vehicles" component={guard("/vehicles", Vehicles)} />
       <Route path="/profile" component={guard("/profile", Profile)} />
       <Route path="/alert-settings" component={guard("/alert-settings", AlertSettings)} />
+      <Route path="/vehicle-appearance" component={guard("/vehicle-appearance", VehicleAppearance)} />
       <Route path="/admin-users" component={AdminUsers} />
       <Route path="/admin-settings" component={AdminSettings} />
       <Route path="/renew" component={() =>

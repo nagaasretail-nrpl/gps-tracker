@@ -563,6 +563,18 @@ export function MapComponent({
       const [anchorX, anchorY] = getIconAnchor(iconType);
       const pngUrl = getVehicleImg(iconType);
 
+      // For "arrow" icon type, override color based on vehicle status
+      let effectiveMarkerColor = markerColor;
+      if (iconType === "arrow") {
+        if (speed > 3) {
+          effectiveMarkerColor = "#22c55e"; // moving → green
+        } else if (location.ignition || (vehicle as any).ignition) {
+          effectiveMarkerColor = "#f97316"; // ignition on, not moving → orange
+        } else {
+          effectiveMarkerColor = "#ef4444"; // stopped → red
+        }
+      }
+
       // Label text: for stopped vehicles show parking duration, else show speed
       const displayName =
         vehicle.name.length > 14 ? vehicle.name.slice(0, 13) + "…" : vehicle.name;
@@ -587,7 +599,7 @@ export function MapComponent({
         };
       } else {
         // SVG-only vehicle type: inline SVG content + label
-        const svgStr = getMarkerSvg(iconType, markerColor, heading);
+        const svgStr = getMarkerSvg(iconType, effectiveMarkerColor, heading);
         markerIcon = buildSvgCompositeIcon(svgStr, labelText, anchorX, anchorY);
       }
 

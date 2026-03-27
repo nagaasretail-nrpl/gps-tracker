@@ -275,7 +275,7 @@ export default function Trips() {
                   {days.map(day => {
                     const dayKey = `${vid}-${day}`;
                     const daySegs = grouped[vid][day];
-                    const isOpen = expandedDays[dayKey] !== false;
+                    const isOpen = expandedDays[dayKey] === true;
                     const dayDist = daySegs.reduce((s, t) => s + t.distanceKm, 0);
                     return (
                       <div key={day} data-testid={`section-day-${dayKey}`}>

@@ -5,7 +5,7 @@ import taxiImg from "@assets/taxi_1774081966768.png";
 import deliveryImg from "@assets/delivery_1774081966769.png";
 import busImg from "@assets/image_1774418118107.png";
 
-export type VehicleIconType = "car" | "hatchback" | "taxi" | "tricycle" | "truck" | "motorcycle" | "van" | "bus" | "round" | "pin";
+export type VehicleIconType = "car" | "hatchback" | "taxi" | "tricycle" | "truck" | "motorcycle" | "van" | "bus" | "round" | "pin" | "arrow";
 
 export interface VehicleTypeOption {
   value: VehicleIconType;
@@ -24,6 +24,7 @@ export const VEHICLE_TYPE_OPTIONS: VehicleTypeOption[] = [
   { value: "bus",       label: "Bus",  img: busImg },
   { value: "round",     label: "Round" },
   { value: "pin",       label: "Pin" },
+  { value: "arrow",     label: "Arrow" },
 ];
 
 export function getVehicleImg(type: string): string | null {
@@ -40,7 +41,7 @@ export function getVehicleImg(type: string): string | null {
 }
 
 export function isDirectionalType(type: string): boolean {
-  return ["car", "hatchback", "taxi", "tricycle", "truck", "motorcycle", "van", "bus"].includes(type);
+  return ["car", "hatchback", "taxi", "tricycle", "truck", "motorcycle", "van", "bus", "arrow"].includes(type);
 }
 
 export function getIconAnchor(type: string): [number, number] {
@@ -76,5 +77,8 @@ export function getMarkerSvg(type: string, color: string, heading: number): stri
 
     case "pin":
       return `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><path d="M20 2 C12 2 7 8 7 15 C7 24 20 38 20 38 C20 38 33 24 33 15 C33 8 28 2 20 2 Z" fill="${c}" stroke="white" stroke-width="2"/><circle cx="20" cy="15" r="6" fill="white" opacity="0.5"/></svg>`;
+
+    case "arrow":
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><g transform="rotate(${h},20,20)"><polygon points="20,3 32,34 20,27 8,34" fill="${c}" stroke="white" stroke-width="2.5" stroke-linejoin="round"/></g></svg>`;
   }
 }

@@ -490,6 +490,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Appearance-only PATCH — any authenticated user with access to the vehicle
+  app.patch("/api/vehicles/:id/appearance", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as { id: string; role: string };
+      const allowedIds = await getAllowedVehicleIds(user);
+      if (allowedIds !== null && !allowedIds.includes(req.params.id)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const appearanceSchema = z.object({
+        type: z.string().optional(),
+        iconColor: z.string().optional(),
+      });
+      const parsed = appearanceSchema.parse(req.body);
+      if (Object.keys(parsed).length === 0) {
+        return res.status(400).json({ error: "No appearance fields provided" });
+      }
+      const vehicle = await storage.updateVehicle(req.params.id, parsed);
+      if (!vehicle) {
+        return res.status(404).json({ error: "Vehicle not found" });
+      }
+      res.json(vehicle);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid appearance data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update vehicle appearance", details: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   app.delete("/api/vehicles/:id", requireAdmin, async (req, res) => {
     try {
       const deleted = await storage.deleteVehicle(req.params.id);
