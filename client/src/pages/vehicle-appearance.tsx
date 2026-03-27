@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -20,9 +20,16 @@ function VehicleAppearanceCard({ vehicle }: { vehicle: Vehicle }) {
   const [localType, setLocalType] = useState(vehicle.type ?? "car");
   const [localColor, setLocalColor] = useState(vehicle.iconColor ?? "#2563eb");
 
+  // prevStateRef captures the last committed state before optimistic update,
+  // so onMutate can return it as rollback context for onError.
+  const prevStateRef = useRef({ type: vehicle.type ?? "car", color: vehicle.iconColor ?? "#2563eb" });
+
   const mutation = useMutation({
     mutationFn: async (data: { type?: string; iconColor?: string }) =>
       apiRequest("PATCH", `/api/vehicles/${vehicle.id}/appearance`, data),
+    onMutate: () => {
+      return { prevType: prevStateRef.current.type, prevColor: prevStateRef.current.color };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
     },
@@ -30,23 +37,22 @@ function VehicleAppearanceCard({ vehicle }: { vehicle: Vehicle }) {
       if (context) {
         setLocalType(context.prevType);
         setLocalColor(context.prevColor);
+        prevStateRef.current = { type: context.prevType, color: context.prevColor };
       }
       toast({ title: "Failed to save appearance", variant: "destructive" });
     },
   });
 
   const handleTypeChange = (newType: string) => {
-    const prevType = localType;
-    const prevColor = localColor;
+    prevStateRef.current = { type: localType, color: localColor };
     setLocalType(newType);
-    mutation.mutate({ type: newType, iconColor: localColor }, { context: { prevType, prevColor } });
+    mutation.mutate({ type: newType, iconColor: localColor });
   };
 
   const handleColorChange = (newColor: string) => {
-    const prevType = localType;
-    const prevColor = localColor;
+    prevStateRef.current = { type: localType, color: localColor };
     setLocalColor(newColor);
-    mutation.mutate({ type: localType, iconColor: newColor }, { context: { prevType, prevColor } });
+    mutation.mutate({ type: localType, iconColor: newColor });
   };
 
   return (
