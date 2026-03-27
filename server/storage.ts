@@ -470,18 +470,46 @@ export class DbStorage implements IStorage {
       .orderBy(locations.timestamp);
   }
 
+  private fixGeofenceBooleans(g: Geofence): Geofence {
+    return {
+      ...g,
+      active: g.active === true || (g.active as unknown) === "true" || (g.active as unknown) === "t",
+      alertOnEntry: g.alertOnEntry === true || (g.alertOnEntry as unknown) === "true" || (g.alertOnEntry as unknown) === "t",
+      alertOnExit: g.alertOnExit === true || (g.alertOnExit as unknown) === "true" || (g.alertOnExit as unknown) === "t",
+    };
+  }
+
   async getGeofences(): Promise<Geofence[]> {
-    return await db.select().from(geofences);
+    const rows = await db.select().from(geofences);
+    return rows.map(g => this.fixGeofenceBooleans(g));
   }
 
   async getGeofence(id: string): Promise<Geofence | undefined> {
     const result = await db.select().from(geofences).where(eq(geofences.id, id)).limit(1);
-    return result[0];
+    return result[0] ? this.fixGeofenceBooleans(result[0]) : undefined;
   }
 
   async createGeofence(insertGeofence: InsertGeofence): Promise<Geofence> {
-    const result = await db.insert(geofences).values(insertGeofence).returning();
-    return result[0];
+    const id = (await neonSql`SELECT gen_random_uuid() AS id`)[0].id as string;
+    const coords = JSON.stringify(insertGeofence.coordinates);
+    const alertOnEntry = insertGeofence.alertOnEntry !== false;
+    const alertOnExit = insertGeofence.alertOnExit !== false;
+    await neonSql`
+      INSERT INTO geofences (id, name, description, type, coordinates, color, active, alert_on_entry, alert_on_exit)
+      VALUES (
+        ${id},
+        ${insertGeofence.name},
+        ${insertGeofence.description ?? null},
+        ${insertGeofence.type ?? "polygon"},
+        ${coords}::jsonb,
+        ${insertGeofence.color ?? "#10b981"},
+        TRUE,
+        ${alertOnEntry},
+        ${alertOnExit}
+      )
+    `;
+    const rows = await db.select().from(geofences).where(eq(geofences.id, id));
+    return rows[0];
   }
 
   async deleteGeofence(id: string): Promise<boolean> {

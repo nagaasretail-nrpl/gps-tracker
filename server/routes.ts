@@ -892,12 +892,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/geofences", requireAdmin, async (req, res) => {
+    let validatedData;
     try {
-      const validatedData = insertGeofenceSchema.parse(req.body);
+      validatedData = insertGeofenceSchema.parse(req.body);
+    } catch (error) {
+      return res.status(400).json({ error: "Invalid geofence data", details: error instanceof Error ? error.message : String(error) });
+    }
+    try {
       const geofence = await storage.createGeofence(validatedData);
       res.status(201).json(geofence);
     } catch (error) {
-      res.status(400).json({ error: "Invalid geofence data" });
+      console.error("Geofence create error:", error);
+      res.status(500).json({ error: "Failed to save geofence" });
     }
   });
 
