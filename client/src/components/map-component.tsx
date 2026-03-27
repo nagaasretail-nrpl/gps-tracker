@@ -571,8 +571,8 @@ export function MapComponent({
       if (iconType === "arrow") {
         if (vehicle.status === "active" || speed > 3) {
           effectiveMarkerColor = "#22c55e"; // moving → green
-        } else if (location.ignition === true) {
-          effectiveMarkerColor = "#f97316"; // ignition on, not moving → orange (idle)
+        } else if (vehicle.status === "idle" || location.ignition === true) {
+          effectiveMarkerColor = "#f97316"; // ignition on / idle status → orange
         } else {
           effectiveMarkerColor = "#ef4444"; // stopped / offline → red
         }
