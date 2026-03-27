@@ -498,9 +498,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (allowedIds !== null && !allowedIds.includes(req.params.id)) {
         return res.status(403).json({ error: "Access denied" });
       }
+      const KNOWN_ICON_TYPES = ["car", "hatchback", "taxi", "tricycle", "truck", "motorcycle", "van", "bus", "round", "pin", "arrow"] as const;
       const appearanceSchema = z.object({
-        type: z.string().optional(),
-        iconColor: z.string().optional(),
+        type: z.enum(KNOWN_ICON_TYPES).optional(),
+        iconColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a 6-digit hex color").optional(),
       });
       const parsed = appearanceSchema.parse(req.body);
       if (Object.keys(parsed).length === 0) {

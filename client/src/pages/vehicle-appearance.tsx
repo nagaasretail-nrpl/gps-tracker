@@ -26,19 +26,27 @@ function VehicleAppearanceCard({ vehicle }: { vehicle: Vehicle }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
     },
-    onError: () => {
+    onError: (_err, _vars, context: { prevType: string; prevColor: string } | undefined) => {
+      if (context) {
+        setLocalType(context.prevType);
+        setLocalColor(context.prevColor);
+      }
       toast({ title: "Failed to save appearance", variant: "destructive" });
     },
   });
 
   const handleTypeChange = (newType: string) => {
+    const prevType = localType;
+    const prevColor = localColor;
     setLocalType(newType);
-    mutation.mutate({ type: newType, iconColor: localColor });
+    mutation.mutate({ type: newType, iconColor: localColor }, { context: { prevType, prevColor } });
   };
 
   const handleColorChange = (newColor: string) => {
+    const prevType = localType;
+    const prevColor = localColor;
     setLocalColor(newColor);
-    mutation.mutate({ type: localType, iconColor: newColor });
+    mutation.mutate({ type: localType, iconColor: newColor }, { context: { prevType, prevColor } });
   };
 
   return (
