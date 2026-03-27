@@ -61,7 +61,8 @@ function VehicleAppearanceCard({ vehicle }: { vehicle: Vehicle }) {
           <p className="text-sm font-medium mb-2">Icon Type</p>
           <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-6">
             {VEHICLE_TYPE_OPTIONS.map(vt => {
-              const previewColor = localType === "arrow" ? "#22c55e" : localColor;
+              // Arrow always previews in green (status color); other types use user's chosen color
+              const previewColor = vt.value === "arrow" ? "#22c55e" : localColor;
               return (
                 <button
                   key={vt.value}
@@ -76,7 +77,7 @@ function VehicleAppearanceCard({ vehicle }: { vehicle: Vehicle }) {
                     </div>
                   ) : (
                     <span
-                      dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, vt.value === "arrow" ? "#22c55e" : previewColor, 0) }}
+                      dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, previewColor, 0) }}
                       className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
                     />
                   )}
