@@ -292,7 +292,7 @@ export default function Tracking() {
     const d = new Date(timestamp);
     const day = d.getDate();
     const mon = d.toLocaleString("default", { month: "short" });
-    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
     return `${day} ${mon}, ${time}`;
   };
 

@@ -34,7 +34,7 @@ function formatRelative(ts: string): string {
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   const d = new Date(ts);
-  return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}, ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}, ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}`;
 }
 
 export default function AdminDevices() {
