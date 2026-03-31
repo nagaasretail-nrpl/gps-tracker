@@ -94,7 +94,7 @@ export default function Tracking() {
 
   const { data: activeConnections } = useQuery<ActiveConnection[]>({
     queryKey: ["/api/device/connections"],
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
   const { data: alertSettings } = useQuery<UserAlertSettings>({
@@ -289,7 +289,11 @@ export default function Tracking() {
     if (seconds < 60) return `${seconds}s ago`;
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
-    return new Date(timestamp).toLocaleDateString();
+    const d = new Date(timestamp);
+    const day = d.getDate();
+    const mon = d.toLocaleString("default", { month: "short" });
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return `${day} ${mon}, ${time}`;
   };
 
   const isDeviceConnected = (vehicle: Vehicle) =>
@@ -363,7 +367,7 @@ export default function Tracking() {
               const gpsLevel = hasLocation
                 ? Math.max(satellitesToBars(location?.satellites ?? 0), 1)
                 : 0;
-              const gprsLevel = connected ? 4 : hasLocation ? 4 : 0;
+              const gprsLevel = connected ? 4 : 0;
 
               return (
                 <div
@@ -413,8 +417,8 @@ export default function Tracking() {
                           />
                           <SignalBars
                             level={gprsLevel}
-                            color={signalColor}
-                            title={connected ? "GPRS: Connected" : hasLocation ? "GPRS: Previously connected" : "GPRS: Never connected"}
+                            color={connected ? "#22c55e" : "#9ca3af"}
+                            title={connected ? "GPRS: Connected" : "GPRS: Disconnected"}
                           />
                         </div>
                         <span

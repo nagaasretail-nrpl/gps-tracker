@@ -24,6 +24,7 @@ import {
   ParkingSquare,
   Bell,
   Palette,
+  Cpu,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { User as UserType } from "@shared/schema";
@@ -58,6 +59,7 @@ const ALL_TILES: TileItem[] = [
   { title: "Appearance", url: "/vehicle-appearance", icon: Palette },
   { title: "Users", url: "/admin-users", icon: Users, adminOnly: true },
   { title: "Settings", url: "/admin-settings", icon: Settings, adminOnly: true },
+  { title: "Devices", url: "/admin-devices", icon: Cpu, adminOnly: true },
 ];
 
 interface MobileTileNavProps {

@@ -18,6 +18,7 @@ import {
   ParkingSquare,
   Bell,
   Palette,
+  Cpu,
 } from "lucide-react";
 import {
   Sidebar,
@@ -75,6 +76,7 @@ const fleetMenuItems: MenuItem[] = [
 const adminMenuItems: MenuItem[] = [
   { title: "User Management", url: "/admin-users", icon: Users },
   { title: "Settings", url: "/admin-settings", icon: Settings },
+  { title: "Devices", url: "/admin-devices", icon: Cpu },
 ];
 
 const userMenuItems: MenuItem[] = [

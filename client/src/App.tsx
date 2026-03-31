@@ -43,6 +43,7 @@ import InstallPage from "@/pages/install";
 import ParkingReport from "@/pages/parking-report";
 import AlertSettings from "@/pages/alert-settings";
 import VehicleAppearance from "@/pages/vehicle-appearance";
+import AdminDevices from "@/pages/admin-devices";
 import NotFound from "@/pages/not-found";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -133,6 +134,7 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
       <Route path="/vehicle-appearance" component={guard("/vehicle-appearance", VehicleAppearance)} />
       <Route path="/admin-users" component={AdminUsers} />
       <Route path="/admin-settings" component={AdminSettings} />
+      <Route path="/admin-devices" component={AdminDevices} />
       <Route path="/renew" component={() =>
         currentUser ? (
           <Renew

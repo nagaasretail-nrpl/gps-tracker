@@ -40,6 +40,7 @@ interface MapComponentProps {
   focusVehicleId?: string | null;
   connectedImeis?: Set<string>; // set of device IMEIs with live TCP connections
   parkingEvents?: ParkingEvent[];
+  showParkingPopups?: boolean; // auto-open parking InfoWindows when rendered
 }
 
 // Augment Window to include the optional google namespace and dynamic callbacks.
@@ -400,6 +401,7 @@ export function MapComponent({
   focusVehicleId,
   connectedImeis,
   parkingEvents = [],
+  showParkingPopups = false,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -821,9 +823,14 @@ export function MapComponent({
         infoWindow.open(map, marker);
         openInfoWindowRef.current = infoWindow;
       });
+      if (showParkingPopups) {
+        if (openInfoWindowRef.current) openInfoWindowRef.current.close();
+        infoWindow.open(map, marker);
+        openInfoWindowRef.current = infoWindow;
+      }
       overlaysRef.current.push(marker, infoWindow);
     });
-  }, [status, geofences, routes, pois, routePolylines, focusVehicleId, parkingEvents]);
+  }, [status, geofences, routes, pois, routePolylines, focusVehicleId, parkingEvents, showParkingPopups]);
 
   // Update vehicle markers on location/vehicle/image changes
   useEffect(() => { updateVehicleMarkers(); }, [updateVehicleMarkers]);

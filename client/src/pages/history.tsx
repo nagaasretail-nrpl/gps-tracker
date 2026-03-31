@@ -409,7 +409,7 @@ export default function History() {
                         onClick={() => toggleExpand(key)}
                         data-testid={`date-toggle-${key}`}
                         className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 ${
-                          isActive ? "bg-primary/5" : "bg-card hover-elevate"
+                          isActive ? "bg-muted/60" : "bg-card hover-elevate"
                         }`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
@@ -497,7 +497,7 @@ export default function History() {
                         <button
                           onClick={() => toggleExpand(key)}
                           className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 ${
-                            isActive ? "bg-primary/5" : "bg-card hover-elevate"
+                            isActive ? "bg-muted/60" : "bg-card hover-elevate"
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
@@ -563,6 +563,7 @@ export default function History() {
               bearingData={historyBearingData}
               focusVehicleId={selectedVehicle}
               parkingEvents={selectedDateParkingEvents}
+              showParkingPopups={true}
               className="h-full"
             />
           ) : (
