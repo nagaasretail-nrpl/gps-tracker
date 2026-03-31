@@ -824,9 +824,7 @@ export function MapComponent({
         openInfoWindowRef.current = infoWindow;
       });
       if (showParkingPopups) {
-        if (openInfoWindowRef.current) openInfoWindowRef.current.close();
         infoWindow.open(map, marker);
-        openInfoWindowRef.current = infoWindow;
       }
       overlaysRef.current.push(marker, infoWindow);
     });
