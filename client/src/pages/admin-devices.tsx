@@ -1,9 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Wifi, WifiOff, Cpu, AlertTriangle } from "lucide-react";
-import type { Vehicle } from "@shared/schema";
+import type { Vehicle, User } from "@shared/schema";
+
+type UserWithoutPassword = Omit<User, "password">;
 
 interface ActiveConnection {
   imei: string;
@@ -35,20 +38,36 @@ function formatRelative(ts: string): string {
 }
 
 export default function AdminDevices() {
+  const [, navigate] = useLocation();
+
+  const { data: authData, isFetched: authFetched } = useQuery<{ user: UserWithoutPassword }>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  const isAdmin = authData?.user?.role === "admin";
+
   const { data: vehicles, isLoading: vehiclesLoading } = useQuery<Vehicle[]>({
     queryKey: ["/api/vehicles"],
     refetchInterval: 10000,
+    enabled: isAdmin,
   });
 
   const { data: connections, isLoading: connectionsLoading } = useQuery<ActiveConnection[]>({
     queryKey: ["/api/device/connections"],
     refetchInterval: 5000,
+    enabled: isAdmin,
   });
 
   const { data: unknownDevices, isLoading: unknownLoading } = useQuery<UnknownDevice[]>({
     queryKey: ["/api/device/unknown"],
     refetchInterval: 15000,
+    enabled: isAdmin,
   });
+
+  if (authFetched && !isAdmin) {
+    navigate("/tracking");
+    return null;
+  }
 
   const isLoading = vehiclesLoading || connectionsLoading;
 
