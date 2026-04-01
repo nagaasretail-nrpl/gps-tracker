@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { filterValidGpsCoords, isBasicValidCoord, isIndiaCoord } from "@/lib/gpsUtils";
 import { getVehicleImg } from "@/lib/vehicleIcons";
+import { VehicleDetailPanel } from "@/components/vehicle-detail-panel";
 
 const NOTIFICATION_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes between same alert type per vehicle
 
@@ -541,65 +542,80 @@ export default function Tracking() {
         </div>
       )}
 
-      {/* Map */}
-      <div className="flex-1 relative">
-        {locationsLoading && !latestLocations ? (
-          <Skeleton className="h-full w-full" />
-        ) : (
-          <MapComponent
-            key={validLatestLocations && validLatestLocations.length > 0 ? "has-locations" : "no-locations"}
-            vehicles={vehicles}
-            locations={validLatestLocations}
-            center={mapCenter}
-            zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
-            className="h-full w-full"
-            onVehicleClick={(id) => {
-              setSelectedVehicle((prev) => (prev === id ? null : id));
-            }}
-            onMapClick={() => {}}
-            routePolylines={routePolylines}
-            bearingData={bearingData}
-            focusVehicleId={selectedVehicle}
-            connectedImeis={new Set(
-              (activeConnections ?? [])
-                .filter((c) => c.connected || c.recentlyActive)
-                .map((c) => c.imei)
-            )}
-          />
-        )}
+      {/* Map + Detail Panel */}
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        {/* Map */}
+        <div className="flex-1 relative min-h-0">
+          {locationsLoading && !latestLocations ? (
+            <Skeleton className="h-full w-full" />
+          ) : (
+            <MapComponent
+              key={validLatestLocations && validLatestLocations.length > 0 ? "has-locations" : "no-locations"}
+              vehicles={vehicles}
+              locations={validLatestLocations}
+              center={mapCenter}
+              zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
+              className="h-full w-full"
+              onVehicleClick={(id) => {
+                setSelectedVehicle((prev) => (prev === id ? null : id));
+              }}
+              onMapClick={() => {}}
+              routePolylines={routePolylines}
+              bearingData={bearingData}
+              focusVehicleId={selectedVehicle}
+              connectedImeis={new Set(
+                (activeConnections ?? [])
+                  .filter((c) => c.connected || c.recentlyActive)
+                  .map((c) => c.imei)
+              )}
+            />
+          )}
 
-        {/* Mobile controls (only when list is closed) */}
-        {!mobileListOpen && (
-          <>
-            {/* Small list button at top-left */}
-            <Button
-              size="icon"
-              variant="secondary"
-              className="md:hidden absolute top-3 left-3 z-40 shadow-md"
-              onClick={() => setMobileListOpen(true)}
-              data-testid="button-open-vehicle-list"
-              aria-label="Open vehicle list"
-            >
-              <List className="h-4 w-4" />
-            </Button>
+          {/* Mobile controls (only when list is closed) */}
+          {!mobileListOpen && (
+            <>
+              {/* Small list button at top-left */}
+              <Button
+                size="icon"
+                variant="secondary"
+                className="md:hidden absolute top-3 left-3 z-40 shadow-md"
+                onClick={() => setMobileListOpen(true)}
+                data-testid="button-open-vehicle-list"
+                aria-label="Open vehicle list"
+              >
+                <List className="h-4 w-4" />
+              </Button>
 
-            {/* Bottom pill showing selected vehicle and change button */}
-            {selectedVehicle ? (
-              <div className="md:hidden absolute bottom-4 left-4 right-4 z-40">
-                <Button
-                  variant="default"
-                  className="w-full shadow-xl justify-between bg-primary text-primary-foreground"
-                  onClick={() => setMobileListOpen(true)}
-                  data-testid="button-change-vehicle"
-                >
-                  <span className="truncate flex-1 text-left font-bold text-sm">
-                    {vehicles?.find((v) => v.id === selectedVehicle)?.name ?? "Selected Vehicle"}
-                  </span>
-                  <span className="text-xs font-medium opacity-80 shrink-0 ml-2">Change Vehicle</span>
-                </Button>
-              </div>
-            ) : null}
-          </>
+              {/* Mobile bottom pill — only shown when detail panel is closed */}
+              {selectedVehicle && !latestLocations?.find((l) => l.vehicleId === selectedVehicle) && (
+                <div className="md:hidden absolute bottom-4 left-4 right-4 z-40">
+                  <Button
+                    variant="default"
+                    className="w-full shadow-xl justify-between bg-primary text-primary-foreground"
+                    onClick={() => setMobileListOpen(true)}
+                    data-testid="button-change-vehicle"
+                  >
+                    <span className="truncate flex-1 text-left font-bold text-sm">
+                      {vehicles?.find((v) => v.id === selectedVehicle)?.name ?? "Selected Vehicle"}
+                    </span>
+                    <span className="text-xs font-medium opacity-80 shrink-0 ml-2">Change Vehicle</span>
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Vehicle detail panel (desktop) — slides in below map when vehicle selected */}
+        {selectedVehicle && vehicles && latestLocations && (
+          <div className="hidden md:block shrink-0">
+            <VehicleDetailPanel
+              vehicleId={selectedVehicle}
+              vehicles={vehicles}
+              locations={latestLocations}
+              onClose={() => setSelectedVehicle(null)}
+            />
+          </div>
         )}
       </div>
     </div>
