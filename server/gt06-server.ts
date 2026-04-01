@@ -227,12 +227,12 @@ function parseLocationWithReason(data: Buffer): ParseLocationResult {
   const lngRaw     = data.readUInt32BE(11);
 
   if (!gpsValid) {
+    // parseLocation() already emits a console.warn for this case; just capture reason
     const reason = `GPS fix not valid (status=0x${lowByte.toString(16)}, sats=${satellites})`;
-    console.warn(`[GT06] Discarding location: ${reason}`);
     return { parsed: null, reason };
   }
 
-  // Reuse existing parseLocation for the full decode
+  // Reuse existing parseLocation for the full decode (it handles its own console.warn)
   const result = parseLocation(data);
   if (!result) {
     // Determine specific reason

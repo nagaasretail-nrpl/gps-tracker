@@ -898,9 +898,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Active GT06 device connections — enriched with DB-derived "recently active" status.
-  // Admins receive full diagnostic data (rejection log, remote IP, packet counts).
-  // Regular authenticated users receive only connection status for their allowed vehicles.
+  /**
+   * GET /api/device/connections
+   *
+   * Returns connection status for registered vehicles, layering in-memory TCP sessions
+   * over DB-derived "recently active" state so the list survives server restarts.
+   *
+   * Response payload shape differs by role:
+   *
+   * Admin (full diagnostics):
+   *   { imei, vehicleId, vehicleName, connected, recentlyActive, packetCount,
+   *     remoteAddr, connectedAt, lastPacketAt, lastLocationAt, lastRejection }
+   *
+   * Regular user (connection status only, scoped to their allowed vehicles):
+   *   { imei, vehicleId, vehicleName, connected, recentlyActive, packetCount }
+   *
+   * "connected"      — live TCP session in memory (resets on restart)
+   * "recentlyActive" — DB location within last 3 min (survives restart)
+   */
   app.get("/api/device/connections", requireAuth, async (req, res) => {
     const RECENTLY_ACTIVE_MS = 3 * 60 * 1000; // 3 minutes
     const now = Date.now();
