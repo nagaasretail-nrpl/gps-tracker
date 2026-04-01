@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation, setEventBroadcaster } from "./geofence-monitor";
 import { setLocationBroadcaster, setVehicleBroadcaster } from "./broadcaster";
-import { getActiveConnections } from "./gt06-server";
+import { getActiveConnections, getUnknownImeiLog, getRejectionForImei } from "./device-registry";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
 import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
@@ -29,8 +29,7 @@ import {
   type User,
 } from "@shared/schema";
 
-// In-memory log of unrecognised device IDs (last 20 attempts)
-const unknownDeviceLog: { deviceId: string; lat: number; lng: number; speed: number; seenAt: string }[] = [];
+import { logUnknownImei as registryLogUnknownImei } from "./device-registry";
 
 // Subscription plan type
 interface SubscriptionPlan {
@@ -282,7 +281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Return recent unknown device IDs — useful for diagnosing IMEI mismatches
   app.get("/api/device/unknown", requireAuth, (_req, res) => {
-    res.json(unknownDeviceLog);
+    res.json(getUnknownImeiLog());
   });
 
   // Public device data ingestion endpoint (no session auth — uses deviceId as identifier)
@@ -305,12 +304,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!vehicle) {
         console.log(`[device] No vehicle found with deviceId: "${data.deviceId}"`);
-        // Record for diagnostic display in the UI
-        const existing = unknownDeviceLog.findIndex(e => e.deviceId === data.deviceId);
-        const entry = { deviceId: data.deviceId, lat: data.latitude, lng: data.longitude, speed: data.speed ?? 0, seenAt: new Date().toISOString() };
-        if (existing >= 0) unknownDeviceLog[existing] = entry;
-        else unknownDeviceLog.unshift(entry);
-        if (unknownDeviceLog.length > 20) unknownDeviceLog.pop();
+        registryLogUnknownImei(data.deviceId, req.ip ?? "http");
         return res.status(404).json({ error: "Device not registered. Add the vehicle in the app first.", receivedDeviceId: data.deviceId });
       }
 
@@ -906,9 +900,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Active GT06 device connections
+  // Active GT06 device connections — enriched with DB-derived "recently active" status
   app.get("/api/device/connections", requireAuth, async (_req, res) => {
-    res.json(getActiveConnections());
+    const RECENTLY_ACTIVE_MS = 3 * 60 * 1000; // 3 minutes
+    const now = Date.now();
+
+    // In-memory active TCP connections (keyed by IMEI)
+    const tcpConns = getActiveConnections();
+    const tcpByImei = new Map(tcpConns.map((c) => [c.imei, c]));
+
+    // All registered vehicles
+    const vehicles = await storage.getVehicles();
+
+    const result = await Promise.all(
+      vehicles.map(async (v) => {
+        const imei = v.deviceId ?? "";
+        const tcp = imei ? tcpByImei.get(imei) : undefined;
+        const isConnected = !!tcp;
+
+        // DB-derived: latest location timestamp for this vehicle
+        const lastLoc = imei ? await storage.getLatestLocationForVehicle(v.id) : null;
+        const lastLocationAt = lastLoc?.timestamp ?? null;
+        const recentlyActive = lastLocationAt
+          ? now - new Date(lastLocationAt).getTime() < RECENTLY_ACTIVE_MS
+          : false;
+
+        // Per-IMEI rejection log entry
+        const rejection = imei ? getRejectionForImei(imei) : undefined;
+
+        return {
+          imei,
+          vehicleId: v.id,
+          vehicleName: v.name,
+          remoteAddr: tcp?.remoteAddr ?? null,
+          connectedAt: tcp?.connectedAt ?? null,
+          lastPacketAt: tcp?.lastPacketAt ?? null,
+          packetCount: tcp?.packetCount ?? 0,
+          connected: isConnected,
+          recentlyActive,
+          lastLocationAt,
+          lastRejection: rejection
+            ? { reason: rejection.reason, at: rejection.rejectedAt, count: rejection.count }
+            : null,
+        };
+      })
+    );
+
+    res.json(result);
   });
 
   // Geofences (protected routes)

@@ -59,12 +59,18 @@ function usePrevious<T>(value: T): T | undefined {
   return ref.current;
 }
 
-interface ActiveConnection {
+interface DeviceConnectionInfo {
   imei: string;
-  remoteAddr: string;
-  connectedAt: string;
-  lastPacketAt: string;
+  vehicleId: string;
+  vehicleName: string;
+  remoteAddr: string | null;
+  connectedAt: string | null;
+  lastPacketAt: string | null;
   packetCount: number;
+  connected: boolean;
+  recentlyActive: boolean;
+  lastLocationAt: string | null;
+  lastRejection: { reason: string; at: string; count: number } | null;
 }
 
 export default function Tracking() {
@@ -92,7 +98,7 @@ export default function Tracking() {
     staleTime: 30000,
   });
 
-  const { data: activeConnections } = useQuery<ActiveConnection[]>({
+  const { data: activeConnections } = useQuery<DeviceConnectionInfo[]>({
     queryKey: ["/api/device/connections"],
     refetchInterval: 5000,
   });
@@ -219,8 +225,8 @@ export default function Tracking() {
                 const idleMs = now - new Date(vehicle.parkedSince).getTime();
                 const idleMin = idleMs / 60000;
                 const speed = parseFloat(String(newLoc.speed ?? "0"));
-                const connections = queryClient.getQueryData<{ imei: string }[]>(["/api/device/connections"]) ?? [];
-                const isConnected = connections.some((c) => c.imei === vehicle.deviceId);
+                const connections = queryClient.getQueryData<DeviceConnectionInfo[]>(["/api/device/connections"]) ?? [];
+                const isConnected = connections.some((c) => c.imei === vehicle.deviceId && (c.connected || c.recentlyActive));
                 if (isConnected && speed <= 2 && idleMin >= settings.idleThresholdMin && canFire("idle")) {
                   fireNotification(
                     `Idle Alert — ${vehicleName}`,
@@ -297,7 +303,9 @@ export default function Tracking() {
   };
 
   const isDeviceConnected = (vehicle: Vehicle) =>
-    (activeConnections ?? []).some((c) => c.imei === vehicle.deviceId);
+    (activeConnections ?? []).some(
+      (c) => c.imei === vehicle.deviceId && (c.connected || c.recentlyActive)
+    );
 
   const selectedTrailCount = useMemo(() => {
     if (!selectedVehicle || !trailLocations) return 0;
@@ -480,26 +488,37 @@ export default function Tracking() {
       </ScrollArea>
 
       {/* Live connections footer */}
-      {activeConnections !== undefined && (
-        <div className="border-t p-2.5">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-            Live Connections
-          </p>
-          {activeConnections.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No devices connected</p>
-          ) : (
-            <div className="space-y-1">
-              {activeConnections.map((conn) => (
-                <div key={conn.imei} className="text-xs flex items-center gap-1.5" data-testid={`conn-${conn.imei}`}>
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
-                  <span className="font-mono truncate">{conn.imei}</span>
-                  <span className="text-muted-foreground ml-auto shrink-0">{conn.packetCount}p</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {activeConnections !== undefined && (() => {
+        const liveConns = activeConnections.filter((c) => c.connected);
+        const recentConns = activeConnections.filter((c) => !c.connected && c.recentlyActive);
+        const totalActive = liveConns.length + recentConns.length;
+        return (
+          <div className="border-t p-2.5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              Live Connections
+            </p>
+            {totalActive === 0 ? (
+              <p className="text-xs text-muted-foreground">No devices connected</p>
+            ) : (
+              <div className="space-y-1">
+                {liveConns.map((conn) => (
+                  <div key={conn.imei} className="text-xs flex items-center gap-1.5" data-testid={`conn-${conn.imei}`}>
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" />
+                    <span className="font-mono truncate">{conn.vehicleName || conn.imei}</span>
+                    <span className="text-muted-foreground ml-auto shrink-0">{conn.packetCount}p</span>
+                  </div>
+                ))}
+                {recentConns.map((conn) => (
+                  <div key={conn.imei} className="text-xs flex items-center gap-1.5" data-testid={`conn-recent-${conn.imei}`}>
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span className="font-mono truncate text-muted-foreground">{conn.vehicleName || conn.imei}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 
@@ -536,7 +555,11 @@ export default function Tracking() {
             routePolylines={routePolylines}
             bearingData={bearingData}
             focusVehicleId={selectedVehicle}
-            connectedImeis={new Set((activeConnections ?? []).map((c) => c.imei))}
+            connectedImeis={new Set(
+              (activeConnections ?? [])
+                .filter((c) => c.connected || c.recentlyActive)
+                .map((c) => c.imei)
+            )}
           />
         )}
 

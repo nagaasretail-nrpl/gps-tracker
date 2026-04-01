@@ -17,6 +17,11 @@ import { checkGeofences, checkSpeedViolation } from "./geofence-monitor";
 import { broadcastLocationUpdate, broadcastVehicleUpdate } from "./broadcaster";
 import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
 import { sendPushAlertsForLocation } from "./push-notifications";
+import {
+  activeConnections,
+  logUnknownImei,
+  logRejection,
+} from "./device-registry";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
 
@@ -30,21 +35,6 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// ─── Active connection registry ───────────────────────────────────────────
-interface ActiveConnection {
-  imei: string;
-  remoteAddr: string;
-  connectedAt: Date;
-  lastPacketAt: Date;
-  packetCount: number;
-}
-
-const activeConnections = new Map<string, ActiveConnection>();
-
-export function getActiveConnections(): ActiveConnection[] {
-  return Array.from(activeConnections.values());
 }
 
 // ─── CRC-16/X-25 (poly=0x1021 reflected=0x8408, init=0xFFFF, xorOut=0xFFFF)
@@ -218,6 +208,62 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   return { lat, lng, speed, course, timestamp, satellites };
 }
 
+// ─── Parse Location with reason string ───────────────────────────────────
+interface ParseLocationResult {
+  parsed: ParsedLocation | null;
+  reason: string;
+}
+
+function parseLocationWithReason(data: Buffer): ParseLocationResult {
+  if (data.length < 18) return { parsed: null, reason: "Packet too short" };
+
+  const gpsInfo    = data[6];
+  const satellites = gpsInfo & 0x0f;
+  const statusWord = data.readUInt16BE(16);
+  const lowByte    = statusWord & 0xff;
+  const highByte   = (statusWord >> 8) & 0xff;
+  const gpsValid   = Boolean(lowByte & 0x10);
+  const latRaw     = data.readUInt32BE(7);
+  const lngRaw     = data.readUInt32BE(11);
+
+  if (!gpsValid) {
+    const reason = `GPS fix not valid (status=0x${lowByte.toString(16)}, sats=${satellites})`;
+    console.warn(`[GT06] Discarding location: ${reason}`);
+    return { parsed: null, reason };
+  }
+
+  // Reuse existing parseLocation for the full decode
+  const result = parseLocation(data);
+  if (!result) {
+    // Determine specific reason
+    if (satellites < 4) {
+      return { parsed: null, reason: `Too few satellites: ${satellites} (need ≥4)` };
+    }
+    // Coord decode failure
+    const formats: Array<(r: number) => number> = [
+      r => r / 1800000.0,
+      r => Math.floor(r / 1000000) + (r % 1000000) / 10000.0 / 60.0,
+      r => Math.floor(r / 100000) + (r % 100000) / 1000.0 / 60.0,
+      r => r / 30000.0,
+    ];
+    const latSouth = Boolean(highByte & 0x01);
+    const lonWest  = Boolean(highByte & 0x02);
+    for (const fn of formats) {
+      let lat = fn(latRaw);
+      let lng = fn(lngRaw);
+      if (latSouth) lat = -lat;
+      if (lonWest)  lng = -lng;
+      if (lat > 5 && lat < 35 && lng > 65 && lng < 100) {
+        // Should have been accepted — hemisphere flip issue
+        return { parsed: null, reason: `Outside India bounds after hemisphere: lat=${lat.toFixed(4)}, lng=${lng.toFixed(4)}` };
+      }
+    }
+    return { parsed: null, reason: `No coord format matches India bounds (rawLat=${latRaw}, rawLng=${lngRaw})` };
+  }
+
+  return { parsed: result, reason: "" };
+}
+
 // ─── Parse a Complete Packet ──────────────────────────────────────────────
 interface Packet {
   length: number;
@@ -353,6 +399,7 @@ async function handlePacket(
         console.log(`[GT06] Matched vehicle: ${vehicle.name} (${vehicle.id})`);
       } else {
         console.warn(`[GT06] Unknown device IMEI: ${deviceImei} — not registered in fleet`);
+        logUnknownImei(deviceImei, remoteAddr);
       }
 
       // Always ACK so device continues sending location data
@@ -369,13 +416,14 @@ async function handlePacket(
         break;
       }
 
-      const loc = parseLocation(pkt.data);
-      if (!loc) {
+      const loc = parseLocationWithReason(pkt.data);
+      if (!loc.parsed) {
         // Always ACK location packets even if discarded (prevents device retransmits).
-        // parseLocation() already logs a specific reason via console.warn.
+        logRejection(deviceImei, loc.reason);
         socket.write(buildAck(0x12, pkt.serial));
         break;
       }
+      const locData = loc.parsed;
 
       // ── Location filter pipeline ─────────────────────────────────────────
       // Run the incoming coordinate through the multi-stage filter (bounds
@@ -396,16 +444,18 @@ async function handlePacket(
 
       const filterResult = filterIncomingLocation({
         imei: deviceImei,
-        lat: loc.lat,
-        lng: loc.lng,
-        speedKph: loc.speed,
-        heading: loc.course ?? null,
-        satellites: loc.satellites,
-        timestamp: loc.timestamp,
+        lat: locData.lat,
+        lng: locData.lng,
+        speedKph: locData.speed,
+        heading: locData.course ?? null,
+        satellites: locData.satellites,
+        timestamp: locData.timestamp,
       }, lastKnown);
 
       if (!filterResult.accepted) {
-        console.log(`[GT06][FILTER] ${deviceImei} rejected: ${filterResult.reason}${filterResult.details ? ` — ${filterResult.details}` : ""}`);
+        const filterReason = `${filterResult.reason}${filterResult.details ? ` — ${filterResult.details}` : ""}`;
+        console.log(`[GT06][FILTER] ${deviceImei} rejected: ${filterReason}`);
+        logRejection(deviceImei, filterReason);
         socket.write(buildAck(0x12, pkt.serial));
         break;
       }
@@ -419,24 +469,24 @@ async function handlePacket(
         conn.packetCount += 1;
       }
 
-      console.log(`[GT06] Location ${deviceImei}: lat=${filtered.lat.toFixed(6)}, lng=${filtered.lng.toFixed(6)}, speed=${filtered.speedKph ?? loc.speed} km/h, sats=${loc.satellites}`);
+      console.log(`[GT06] Location ${deviceImei}: lat=${filtered.lat.toFixed(6)}, lng=${filtered.lng.toFixed(6)}, speed=${filtered.speedKph ?? locData.speed} km/h, sats=${locData.satellites}`);
 
       // Store location and update vehicle status
       const location = await storage.createDeviceLocation(
         vehicleId,
         filtered.lat,
         filtered.lng,
-        filtered.speedKph ?? loc.speed,
+        filtered.speedKph ?? locData.speed,
         null,
         null,
         filtered.timestamp,
-        loc.satellites,
+        locData.satellites,
         filtered.heading,
         filtered.isStationary,
         filtered.accuracyScore,
       );
 
-      const newStatus = (filtered.speedKph ?? loc.speed) > 5 ? "active" : "stopped";
+      const newStatus = (filtered.speedKph ?? locData.speed) > 5 ? "active" : "stopped";
       const existingVehicle = await storage.getVehicle(vehicleId);
       let parkedSince: Date | null | undefined = undefined; // undefined = don't change
       if (newStatus === "stopped" && existingVehicle?.status !== "stopped") {
@@ -459,7 +509,7 @@ async function handlePacket(
       // Server-side push notifications for speed/parking/idle thresholds.
       // Uses post-update vehicle snapshot so status/parkedSince reflect current state.
       if (updatedVehicle) {
-        const gpsSpeed = filtered.speedKph ?? loc.speed;
+        const gpsSpeed = filtered.speedKph ?? locData.speed;
         const updatedParkedSince =
           parkedSince !== undefined ? parkedSince : updatedVehicle.parkedSince ?? null;
         sendPushAlertsForLocation(
