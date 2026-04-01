@@ -198,8 +198,6 @@ export default function AdminDevices() {
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">
                         {device.lastLocationAt
                           ? formatRelative(device.lastLocationAt)
-                          : device.lastPacketAt
-                          ? formatRelative(device.lastPacketAt)
                           : "—"}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">

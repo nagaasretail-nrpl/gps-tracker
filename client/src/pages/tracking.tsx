@@ -302,6 +302,9 @@ export default function Tracking() {
     return `${day} ${mon}, ${time}`;
   };
 
+  // "Connected" for UI purposes means either a live TCP session OR a DB location
+  // within the last 3 minutes. This ensures devices that were connected before a
+  // server restart still show as active until their window expires.
   const isDeviceConnected = (vehicle: Vehicle) =>
     (activeConnections ?? []).some(
       (c) => c.imei === vehicle.deviceId && (c.connected || c.recentlyActive)
