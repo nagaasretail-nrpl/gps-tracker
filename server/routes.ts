@@ -900,20 +900,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Active GT06 device connections — enriched with DB-derived "recently active" status
-  app.get("/api/device/connections", requireAdmin, async (_req, res) => {
+  // Active GT06 device connections — enriched with DB-derived "recently active" status.
+  // Admins receive full diagnostic data (rejection log, remote IP, packet counts).
+  // Regular authenticated users receive only connection status for their allowed vehicles.
+  app.get("/api/device/connections", requireAuth, async (req, res) => {
     const RECENTLY_ACTIVE_MS = 3 * 60 * 1000; // 3 minutes
     const now = Date.now();
+    const reqUser = req.user as { id: string; role: string };
+    const isAdmin = reqUser.role === "admin";
 
     // In-memory active TCP connections (keyed by IMEI)
     const tcpConns = getActiveConnections();
     const tcpByImei = new Map(tcpConns.map((c) => [c.imei, c]));
 
-    // All registered vehicles
+    // Scope vehicles: admins see all, regular users see only their allowed vehicles
+    const allowedIds = await getAllowedVehicleIds(reqUser);
     const vehicles = await storage.getVehicles();
+    const scoped = allowedIds === null ? vehicles : vehicles.filter((v) => allowedIds.includes(v.id));
 
     const result = await Promise.all(
-      vehicles.map(async (v) => {
+      scoped.map(async (v) => {
         const imei = v.deviceId ?? "";
         const tcp = imei ? tcpByImei.get(imei) : undefined;
         const isConnected = !!tcp;
@@ -925,23 +931,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? now - new Date(lastLocationAt).getTime() < RECENTLY_ACTIVE_MS
           : false;
 
-        // Per-IMEI rejection log entry
-        const rejection = imei ? getRejectionForImei(imei) : undefined;
+        if (isAdmin) {
+          // Full diagnostic payload for admins
+          const rejection = imei ? getRejectionForImei(imei) : undefined;
+          return {
+            imei,
+            vehicleId: v.id,
+            vehicleName: v.name,
+            remoteAddr: tcp?.remoteAddr ?? null,
+            connectedAt: tcp?.connectedAt ?? null,
+            lastPacketAt: tcp?.lastPacketAt ?? null,
+            packetCount: tcp?.packetCount ?? 0,
+            connected: isConnected,
+            recentlyActive,
+            lastLocationAt,
+            lastRejection: rejection
+              ? { reason: rejection.reason, at: rejection.rejectedAt, count: rejection.count }
+              : null,
+          };
+        }
 
+        // Minimal payload for regular users — connection status only
         return {
           imei,
           vehicleId: v.id,
           vehicleName: v.name,
-          remoteAddr: tcp?.remoteAddr ?? null,
-          connectedAt: tcp?.connectedAt ?? null,
-          lastPacketAt: tcp?.lastPacketAt ?? null,
-          packetCount: tcp?.packetCount ?? 0,
           connected: isConnected,
           recentlyActive,
-          lastLocationAt,
-          lastRejection: rejection
-            ? { reason: rejection.reason, at: rejection.rejectedAt, count: rejection.count }
-            : null,
+          packetCount: tcp?.packetCount ?? 0,
         };
       })
     );
