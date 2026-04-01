@@ -280,7 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Return recent unknown device IDs — useful for diagnosing IMEI mismatches
-  app.get("/api/device/unknown", requireAuth, (_req, res) => {
+  app.get("/api/device/unknown", requireAdmin, (_req, res) => {
     res.json(getUnknownImeiLog());
   });
 
@@ -901,7 +901,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Active GT06 device connections — enriched with DB-derived "recently active" status
-  app.get("/api/device/connections", requireAuth, async (_req, res) => {
+  app.get("/api/device/connections", requireAdmin, async (_req, res) => {
     const RECENTLY_ACTIVE_MS = 3 * 60 * 1000; // 3 minutes
     const now = Date.now();
 
