@@ -358,12 +358,15 @@ export class DbStorage implements IStorage {
 
   async getLatestLocationTimestampsForVehicles(vehicleIds: string[]): Promise<Map<string, Date>> {
     if (vehicleIds.length === 0) return new Map();
+    // Use sql.join with individual params — Neon HTTP driver can't serialize JS arrays
+    // into Postgres array parameters for ANY(), but handles individual bindings correctly.
+    const idList = sql.join(vehicleIds.map((id) => sql`${id}`), sql`, `);
     const result = await db.execute(sql`
       SELECT DISTINCT ON (vehicle_id)
         vehicle_id AS "vehicleId",
         timestamp
       FROM locations
-      WHERE vehicle_id = ANY(${vehicleIds})
+      WHERE vehicle_id IN (${idList})
         AND latitude::float >= 5 AND latitude::float <= 37
         AND longitude::float >= 65 AND longitude::float <= 100
       ORDER BY vehicle_id, timestamp DESC
