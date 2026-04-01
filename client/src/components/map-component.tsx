@@ -422,7 +422,7 @@ export function MapComponent({
   useEffect(() => {
     let cancelled = false;
 
-    async function init() {
+    async function init(attempt = 0) {
       try {
         const res = await fetch("/api/settings/public");
         if (!res.ok) throw new Error("Failed to fetch settings");
@@ -451,7 +451,15 @@ export function MapComponent({
         mapInstanceRef.current = map;
         if (!cancelled) setStatus("ready");
       } catch (_err) {
-        if (!cancelled) setStatus("error");
+        if (cancelled) return;
+        // Retry up to 4 times with exponential backoff (2s, 4s, 8s, 16s)
+        // to handle transient server unavailability during restarts.
+        if (attempt < 4) {
+          const delay = Math.min(2000 * Math.pow(2, attempt), 16000);
+          setTimeout(() => { if (!cancelled) init(attempt + 1); }, delay);
+        } else {
+          setStatus("error");
+        }
       }
     }
 
