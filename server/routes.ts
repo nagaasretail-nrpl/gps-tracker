@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation, setEventBroadcaster } from "./geofence-monitor";
 import { setLocationBroadcaster, setVehicleBroadcaster } from "./broadcaster";
-import { getActiveConnections, getUnknownImeiLog, getRejectionForImei } from "./device-registry";
+import { getActiveConnections, getUnknownImeiLog, getRejectionForImei, logUnknownImei as registryLogUnknownImei } from "./device-registry";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
 import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
@@ -28,8 +28,6 @@ import {
   insertUserAlertSettingsSchema,
   type User,
 } from "@shared/schema";
-
-import { logUnknownImei as registryLogUnknownImei } from "./device-registry";
 
 // Subscription plan type
 interface SubscriptionPlan {
@@ -918,50 +916,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const vehicles = await storage.getVehicles();
     const scoped = allowedIds === null ? vehicles : vehicles.filter((v) => allowedIds.includes(v.id));
 
-    const result = await Promise.all(
-      scoped.map(async (v) => {
-        const imei = v.deviceId ?? "";
-        const tcp = imei ? tcpByImei.get(imei) : undefined;
-        const isConnected = !!tcp;
+    // Single batch query for all latest location timestamps (avoids N+1)
+    const vehicleIds = scoped.map((v) => v.id);
+    const latestTimestamps = await storage.getLatestLocationTimestampsForVehicles(vehicleIds);
 
-        // DB-derived: latest location timestamp for this vehicle
-        const lastLoc = imei ? await storage.getLatestLocationForVehicle(v.id) : null;
-        const lastLocationAt = lastLoc?.timestamp ?? null;
-        const recentlyActive = lastLocationAt
-          ? now - new Date(lastLocationAt).getTime() < RECENTLY_ACTIVE_MS
-          : false;
+    const result = scoped.map((v) => {
+      const imei = v.deviceId ?? "";
+      const tcp = imei ? tcpByImei.get(imei) : undefined;
+      const isConnected = !!tcp;
 
-        if (isAdmin) {
-          // Full diagnostic payload for admins
-          const rejection = imei ? getRejectionForImei(imei) : undefined;
-          return {
-            imei,
-            vehicleId: v.id,
-            vehicleName: v.name,
-            remoteAddr: tcp?.remoteAddr ?? null,
-            connectedAt: tcp?.connectedAt ?? null,
-            lastPacketAt: tcp?.lastPacketAt ?? null,
-            packetCount: tcp?.packetCount ?? 0,
-            connected: isConnected,
-            recentlyActive,
-            lastLocationAt,
-            lastRejection: rejection
-              ? { reason: rejection.reason, at: rejection.rejectedAt, count: rejection.count }
-              : null,
-          };
-        }
+      const lastLocationAt = latestTimestamps.get(v.id) ?? null;
+      const recentlyActive = lastLocationAt
+        ? now - lastLocationAt.getTime() < RECENTLY_ACTIVE_MS
+        : false;
 
-        // Minimal payload for regular users — connection status only
+      if (isAdmin) {
+        // Full diagnostic payload for admins
+        const rejection = imei ? getRejectionForImei(imei) : undefined;
         return {
           imei,
           vehicleId: v.id,
           vehicleName: v.name,
+          remoteAddr: tcp?.remoteAddr ?? null,
+          connectedAt: tcp?.connectedAt ?? null,
+          lastPacketAt: tcp?.lastPacketAt ?? null,
+          packetCount: tcp?.packetCount ?? 0,
           connected: isConnected,
           recentlyActive,
-          packetCount: tcp?.packetCount ?? 0,
+          lastLocationAt,
+          lastRejection: rejection
+            ? { reason: rejection.reason, at: rejection.rejectedAt, count: rejection.count }
+            : null,
         };
-      })
-    );
+      }
+
+      // Minimal payload for regular users — connection status only
+      return {
+        imei,
+        vehicleId: v.id,
+        vehicleName: v.name,
+        connected: isConnected,
+        recentlyActive,
+        packetCount: tcp?.packetCount ?? 0,
+      };
+    });
 
     res.json(result);
   });

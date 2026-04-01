@@ -254,8 +254,8 @@ function parseLocationWithReason(data: Buffer): ParseLocationResult {
       if (latSouth) lat = -lat;
       if (lonWest)  lng = -lng;
       if (lat > 5 && lat < 35 && lng > 65 && lng < 100) {
-        // Should have been accepted — hemisphere flip issue
-        return { parsed: null, reason: `Outside India bounds after hemisphere: lat=${lat.toFixed(4)}, lng=${lng.toFixed(4)}` };
+        // Coords land within India bounds in this format but parseLocation still rejected — possible decode bug
+        return { parsed: null, reason: `Coord within India bounds but parseLocation rejected it (possible decode issue): lat=${lat.toFixed(4)}, lng=${lng.toFixed(4)}` };
       }
     }
     return { parsed: null, reason: `No coord format matches India bounds (rawLat=${latRaw}, rawLng=${lngRaw})` };

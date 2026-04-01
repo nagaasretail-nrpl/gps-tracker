@@ -69,6 +69,7 @@ export interface IStorage {
   getLocations(vehicleId?: string, activityId?: string, startDate?: Date, endDate?: Date): Promise<Location[]>;
   getLatestLocations(): Promise<Location[]>;
   getLatestLocationForVehicle(vehicleId: string): Promise<Location | null>;
+  getLatestLocationTimestampsForVehicles(vehicleIds: string[]): Promise<Map<string, Date>>;
   getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]>;
   getLocationTrail(since: Date, perVehicleLimit: number): Promise<Location[]>;
   getActivityLocationHistory(activityId: string): Promise<Location[]>;
@@ -353,6 +354,25 @@ export class DbStorage implements IStorage {
       return lat >= 5 && lat <= 37 && lng >= 65 && lng <= 100;
     });
     return rows.length > 0 ? rows[0] : null;
+  }
+
+  async getLatestLocationTimestampsForVehicles(vehicleIds: string[]): Promise<Map<string, Date>> {
+    if (vehicleIds.length === 0) return new Map();
+    const result = await db.execute(sql`
+      SELECT DISTINCT ON (vehicle_id)
+        vehicle_id AS "vehicleId",
+        timestamp
+      FROM locations
+      WHERE vehicle_id = ANY(${vehicleIds})
+        AND latitude::float >= 5 AND latitude::float <= 37
+        AND longitude::float >= 65 AND longitude::float <= 100
+      ORDER BY vehicle_id, timestamp DESC
+    `);
+    const map = new Map<string, Date>();
+    for (const row of (result.rows ?? []) as { vehicleId: string; timestamp: string | Date }[]) {
+      map.set(row.vehicleId, new Date(row.timestamp));
+    }
+    return map;
   }
 
   async getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]> {
