@@ -3,7 +3,13 @@
  *
  * Imported by both gt06-server.ts (writes) and routes.ts (reads).
  * All state is in-memory; it resets on server restart, which is expected.
+ *
+ * Bounded retention: unknown IMEI log and rejection log are capped to prevent
+ * unbounded memory growth over long server uptime.
  */
+
+const MAX_UNKNOWN_IMEIS = 500;
+const MAX_REJECTION_ENTRIES = 1000;
 
 // ─── Active TCP Connections ───────────────────────────────────────────────
 export interface ActiveConnection {
@@ -37,6 +43,11 @@ export function logUnknownImei(imei: string, remoteAddr: string): void {
     existing.remoteAddr = remoteAddr;
     existing.connectCount += 1;
   } else {
+    // Evict oldest entry when at capacity (delete first inserted key)
+    if (unknownImeiLog.size >= MAX_UNKNOWN_IMEIS) {
+      const oldestKey = unknownImeiLog.keys().next().value;
+      if (oldestKey !== undefined) unknownImeiLog.delete(oldestKey);
+    }
     unknownImeiLog.set(imei, {
       imei,
       remoteAddr,
@@ -69,6 +80,11 @@ export function logRejection(imei: string, reason: string): void {
     existing.rejectedAt = new Date();
     existing.count += 1;
   } else {
+    // Evict oldest entry when at capacity
+    if (rejectionLog.size >= MAX_REJECTION_ENTRIES) {
+      const oldestKey = rejectionLog.keys().next().value;
+      if (oldestKey !== undefined) rejectionLog.delete(oldestKey);
+    }
     rejectionLog.set(imei, {
       imei,
       reason,
