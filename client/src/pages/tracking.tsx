@@ -59,18 +59,20 @@ function usePrevious<T>(value: T): T | undefined {
   return ref.current;
 }
 
+/** Common fields returned to all authenticated users */
 interface DeviceConnectionInfo {
   imei: string;
   vehicleId: string;
   vehicleName: string;
-  remoteAddr: string | null;
-  connectedAt: string | null;
-  lastPacketAt: string | null;
-  packetCount: number;
   connected: boolean;
   recentlyActive: boolean;
-  lastLocationAt: string | null;
-  lastRejection: { reason: string; at: string; count: number } | null;
+  packetCount: number;
+  /** Admin-only fields — undefined for non-admin users */
+  remoteAddr?: string | null;
+  connectedAt?: string | null;
+  lastPacketAt?: string | null;
+  lastLocationAt?: string | null;
+  lastRejection?: { reason: string; at: string; count: number } | null;
 }
 
 export default function Tracking() {
