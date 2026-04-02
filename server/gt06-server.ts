@@ -418,12 +418,14 @@ async function handlePacket(
         break;
       }
 
+      // Record last contact for every 0x12 packet from a known vehicle,
+      // regardless of whether GPS fix is valid or passes the filter.
+      storage.updateVehicleLastSeen(vehicleId, new Date()).catch(() => {});
+
       const loc = parseLocationWithReason(pkt.data);
       if (!loc.parsed) {
         // Always ACK location packets even if discarded (prevents device retransmits).
         logRejection(deviceImei, loc.reason);
-        // Still update last-seen so the UI shows "No GPS fix" rather than "Waiting for GPS"
-        storage.updateVehicleLastSeen(vehicleId, new Date()).catch(() => {});
         socket.write(buildAck(0x12, pkt.serial));
         break;
       }
