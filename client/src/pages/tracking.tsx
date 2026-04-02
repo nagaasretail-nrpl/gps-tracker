@@ -373,7 +373,7 @@ export default function Tracking() {
               const isSelected = selectedVehicle === vehicle.id;
               const connected = isDeviceConnected(vehicle);
               const hasLocation = location != null;
-              const lastSeenAt = vehicle.lastSeenAt ? new Date(vehicle.lastSeenAt as string) : null;
+              const lastSeenAt = vehicle.lastSeenAt ? new Date(vehicle.lastSeenAt) : null;
               const speed = parseFloat(String(location?.speed ?? "0")).toFixed(0);
               const pngImg = getVehicleImg(vehicle.type ?? "car");
               const iconColor = vehicle.iconColor ?? "#e4006e";

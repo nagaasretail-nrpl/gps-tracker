@@ -398,7 +398,9 @@ async function handlePacket(
         setVehicleId(vehicle.id);
         console.log(`[GT06] Matched vehicle: ${vehicle.name} (${vehicle.id})`);
         // Record that this device has contacted the server (even with no GPS fix yet)
-        storage.updateVehicleLastSeen(vehicle.id, new Date()).catch(() => {});
+        storage.updateVehicleLastSeen(vehicle.id, new Date()).catch((e: Error) => {
+          console.error(`[GT06] Failed to update lastSeenAt for ${vehicle.id}:`, e.message);
+        });
       } else {
         console.warn(`[GT06] Unknown device IMEI: ${deviceImei} — not registered in fleet`);
         logUnknownImei(deviceImei, remoteAddr);
@@ -420,7 +422,9 @@ async function handlePacket(
 
       // Record last contact for every 0x12 packet from a known vehicle,
       // regardless of whether GPS fix is valid or passes the filter.
-      storage.updateVehicleLastSeen(vehicleId, new Date()).catch(() => {});
+      storage.updateVehicleLastSeen(vehicleId, new Date()).catch((e: Error) => {
+        console.error(`[GT06] Failed to update lastSeenAt for ${vehicleId}:`, e.message);
+      });
 
       const loc = parseLocationWithReason(pkt.data);
       if (!loc.parsed) {
