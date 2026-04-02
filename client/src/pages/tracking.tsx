@@ -469,7 +469,7 @@ export default function Tracking() {
                           : hasLocation
                           ? `Last connected ${formatTimestamp(location!.timestamp)}`
                           : lastSeenAt
-                          ? `No GPS fix — ${formatTimestamp(lastSeenAt)}`
+                          ? `No GPS fix (last contact ${formatTimestamp(lastSeenAt)})`
                           : "Waiting for GPS"}
                       </span>
                       {vehicle.status === "stopped" && vehicle.parkedSince && (
