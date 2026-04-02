@@ -140,6 +140,7 @@ export const vehicles = pgTable("vehicles", {
   fuelTankCapacity: decimal("fuel_tank_capacity", { precision: 10, scale: 2 }), // liters; null = not set
   devicePhone: text("device_phone"), // SIM card phone number on the GPS tracker
   parkedSince: timestamp("parked_since"), // set when vehicle transitions from moving → stopped
+  lastSeenAt: timestamp("last_seen_at"), // set whenever any GT06 TCP packet arrives from this IMEI
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

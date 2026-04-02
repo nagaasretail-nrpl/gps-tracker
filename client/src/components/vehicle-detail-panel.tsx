@@ -196,9 +196,12 @@ export function VehicleDetailPanel({ vehicleId, vehicles, locations, onClose }: 
                 <InfoRow
                   label="GPS quality"
                   value={
-                    satellites == null ? "No fix" :
-                    satellites >= 8 ? "Good" :
-                    satellites >= 4 ? "Moderate" : "Poor"
+                    satellites == null
+                      ? vehicle.lastSeenAt
+                        ? `No fix (contact ${formatDate(vehicle.lastSeenAt)})`
+                        : "No fix"
+                      : satellites >= 8 ? "Good"
+                      : satellites >= 4 ? "Moderate" : "Poor"
                   }
                 />
                 <InfoRow label="Accuracy" value={

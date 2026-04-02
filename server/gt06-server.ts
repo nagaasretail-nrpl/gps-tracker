@@ -397,6 +397,8 @@ async function handlePacket(
       if (vehicle) {
         setVehicleId(vehicle.id);
         console.log(`[GT06] Matched vehicle: ${vehicle.name} (${vehicle.id})`);
+        // Record that this device has contacted the server (even with no GPS fix yet)
+        storage.updateVehicleLastSeen(vehicle.id, new Date()).catch(() => {});
       } else {
         console.warn(`[GT06] Unknown device IMEI: ${deviceImei} — not registered in fleet`);
         logUnknownImei(deviceImei, remoteAddr);
@@ -420,6 +422,8 @@ async function handlePacket(
       if (!loc.parsed) {
         // Always ACK location packets even if discarded (prevents device retransmits).
         logRejection(deviceImei, loc.reason);
+        // Still update last-seen so the UI shows "No GPS fix" rather than "Waiting for GPS"
+        storage.updateVehicleLastSeen(vehicleId, new Date()).catch(() => {});
         socket.write(buildAck(0x12, pkt.serial));
         break;
       }

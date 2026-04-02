@@ -63,6 +63,7 @@ export interface IStorage {
   getVehicleByDeviceId(deviceId: string): Promise<Vehicle | undefined>;
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: string, vehicle: Partial<Vehicle>): Promise<Vehicle | undefined>;
+  updateVehicleLastSeen(id: string, at: Date): Promise<void>;
   deleteVehicle(id: string): Promise<boolean>;
 
   // Locations
@@ -271,6 +272,10 @@ export class DbStorage implements IStorage {
     await db.update(vehicles).set(set).where(eq(vehicles.id, id));
     const rows = await db.select().from(vehicles).where(eq(vehicles.id, id));
     return rows[0];
+  }
+
+  async updateVehicleLastSeen(id: string, at: Date): Promise<void> {
+    await neonSql`UPDATE vehicles SET last_seen_at = ${at.toISOString()} WHERE id = ${id}`;
   }
 
   async deleteVehicle(id: string): Promise<boolean> {
