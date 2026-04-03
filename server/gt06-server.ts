@@ -390,6 +390,12 @@ export function startGT06Server() {
         } else {
           if (rxBuf.length < 6) break; // need at least 6 to read 2-byte length
           const pktLen = rxBuf.readUInt16BE(2);
+          // Guard against malformed extended packets with huge length values
+          if (pktLen > 4096) {
+            console.warn(`[GT06] Extended packet with absurd pktLen=${pktLen} from ${remoteAddr} — discarding`);
+            rxBuf = Buffer.alloc(0);
+            break;
+          }
           totalLen = pktLen + 6; // 2 start + 2 len + pktLen + 2 stop
         }
 
