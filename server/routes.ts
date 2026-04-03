@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation, setEventBroadcaster } from "./geofence-monitor";
 import { setLocationBroadcaster, setVehicleBroadcaster } from "./broadcaster";
-import { getActiveConnections, getUnknownImeiLog, getRejectionForImei, logUnknownImei as registryLogUnknownImei } from "./device-registry";
+import { getActiveConnections, getUnknownImeiLog, getRejectionForImei, getRawAttemptLog, logUnknownImei as registryLogUnknownImei } from "./device-registry";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
 import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
@@ -280,6 +280,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Return recent unknown device IDs — useful for diagnosing IMEI mismatches
   app.get("/api/device/unknown", requireAdmin, (_req, res) => {
     res.json(getUnknownImeiLog());
+  });
+
+  // Return raw TCP connection attempts — shows devices that connected but didn't complete login
+  app.get("/api/device/raw-attempts", requireAdmin, (_req, res) => {
+    res.json(getRawAttemptLog());
   });
 
   // Public device data ingestion endpoint (no session auth — uses deviceId as identifier)

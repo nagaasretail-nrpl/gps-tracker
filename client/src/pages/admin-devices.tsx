@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Wifi, WifiOff, Cpu, AlertTriangle, Activity } from "lucide-react";
+import { Wifi, WifiOff, Cpu, AlertTriangle, Activity, Radio } from "lucide-react";
 import type { User } from "@shared/schema";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -27,6 +27,13 @@ interface UnknownImeiEntry {
   remoteAddr: string;
   seenAt: string;
   connectCount: number;
+}
+
+interface RawAttemptEntry {
+  remoteAddr: string;
+  seenAt: string;
+  rawHex: string;
+  loginCompleted: boolean;
 }
 
 function formatRelative(ts: string | Date | null | undefined): string {
@@ -64,6 +71,12 @@ export default function AdminDevices() {
     enabled: isAdmin,
   });
 
+  const { data: rawAttempts } = useQuery<RawAttemptEntry[]>({
+    queryKey: ["/api/device/raw-attempts"],
+    refetchInterval: 10000,
+    enabled: isAdmin,
+  });
+
   if (authFetched && !isAdmin) {
     navigate("/tracking");
     return null;
@@ -74,6 +87,7 @@ export default function AdminDevices() {
   const connectedCount = (connections ?? []).filter((d) => d.connected).length;
   const recentlyActiveCount = (connections ?? []).filter((d) => !d.connected && d.recentlyActive).length;
   const unknownCount = (unknownDevices ?? []).length;
+  const failedAttempts = (rawAttempts ?? []).filter((r) => !r.loginCompleted).length;
 
   const hasRejections = (connections ?? []).some((d) => d.lastRejection !== null);
 
@@ -85,7 +99,7 @@ export default function AdminDevices() {
       </div>
 
       {/* Summary row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground mb-1">Registered Devices</p>
@@ -126,6 +140,14 @@ export default function AdminDevices() {
                 {unknownCount}
               </p>
             )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">Failed TCP Logins</p>
+            <p className={`text-2xl font-bold ${failedAttempts > 0 ? "text-red-600" : ""}`}>
+              {failedAttempts}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -263,6 +285,49 @@ export default function AdminDevices() {
                       <td className="px-4 py-2.5 text-xs text-muted-foreground font-mono">
                         {dev.remoteAddr}
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Raw TCP connection attempts log */}
+      {(rawAttempts ?? []).length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-muted-foreground">
+              <Radio className="h-4 w-4" />
+              Raw TCP Connection Attempts
+              <Badge variant="secondary" className="ml-1">{(rawAttempts ?? []).length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40">
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Remote Addr</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Seen</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Status</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">First Bytes (hex)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(rawAttempts ?? []).map((attempt, i) => (
+                    <tr key={i} className="border-b last:border-0" data-testid={`row-raw-attempt-${i}`}>
+                      <td className="px-4 py-2.5 text-xs font-mono text-muted-foreground">{attempt.remoteAddr}</td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{formatRelative(attempt.seenAt)}</td>
+                      <td className="px-4 py-2.5 text-xs">
+                        {attempt.loginCompleted ? (
+                          <Badge variant="secondary" className="text-green-700 bg-green-100 dark:bg-green-900/30 dark:text-green-400">Login OK</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-400">No Login</Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs font-mono text-muted-foreground">{attempt.rawHex}</td>
                     </tr>
                   ))}
                 </tbody>

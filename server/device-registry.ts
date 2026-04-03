@@ -10,6 +10,7 @@
 
 const MAX_UNKNOWN_IMEIS = 500;
 const MAX_REJECTION_ENTRIES = 1000;
+const MAX_RAW_ATTEMPTS = 200;
 
 // ─── Active TCP Connections ───────────────────────────────────────────────
 export interface ActiveConnection {
@@ -100,4 +101,44 @@ export function getRejectionLog(): RejectionEntry[] {
 
 export function getRejectionForImei(imei: string): RejectionEntry | undefined {
   return rejectionLog.get(imei);
+}
+
+// ─── Raw TCP Connection Attempts ─────────────────────────────────────────
+// Records the first raw bytes from every new TCP connection.
+// loginCompleted is set to true when a valid 0x01 login packet is parsed.
+// This lets the admin see devices that connect at the TCP level but never
+// complete the GT06 handshake (e.g. wrong packet format, unsupported protocol).
+export interface RawAttemptEntry {
+  remoteAddr: string;  // full IP:port
+  seenAt: Date;
+  rawHex: string;      // first 16 bytes in hex
+  loginCompleted: boolean;
+}
+
+const rawAttemptLog: RawAttemptEntry[] = [];
+
+export function logRawAttempt(remoteAddr: string, rawHex: string): void {
+  if (rawAttemptLog.length >= MAX_RAW_ATTEMPTS) {
+    rawAttemptLog.shift(); // evict oldest
+  }
+  rawAttemptLog.push({
+    remoteAddr,
+    seenAt: new Date(),
+    rawHex,
+    loginCompleted: false,
+  });
+}
+
+export function markAttemptLoginComplete(remoteAddr: string): void {
+  // Walk backwards — most recent entry for this addr is most likely the right one
+  for (let i = rawAttemptLog.length - 1; i >= 0; i--) {
+    if (rawAttemptLog[i].remoteAddr === remoteAddr) {
+      rawAttemptLog[i].loginCompleted = true;
+      break;
+    }
+  }
+}
+
+export function getRawAttemptLog(): RawAttemptEntry[] {
+  return [...rawAttemptLog].sort((a, b) => b.seenAt.getTime() - a.seenAt.getTime());
 }

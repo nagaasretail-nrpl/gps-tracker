@@ -21,6 +21,8 @@ import {
   activeConnections,
   logUnknownImei,
   logRejection,
+  logRawAttempt,
+  markAttemptLoginComplete,
 } from "./device-registry";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
@@ -51,15 +53,29 @@ function calcCRC(buf: Buffer): number {
 }
 
 // ─── Build ACK Response ───────────────────────────────────────────────────
-//  78 78 [05] [proto] [serial hi] [serial lo] [crc hi] [crc lo] 0D 0A
-function buildAck(proto: number, serial: number): Buffer {
+// Standard (0x78 0x78): [78 78] [05] [proto] [s_hi] [s_lo] [crc_hi] [crc_lo] [0D 0A]  — 10 bytes
+// Extended (0x79 0x79): [79 79] [00] [05] [proto] [s_hi] [s_lo] [crc_hi] [crc_lo] [0D 0A] — 11 bytes
+function buildAck(proto: number, serial: number, extended: boolean = false): Buffer {
+  if (extended) {
+    const buf = Buffer.alloc(11);
+    buf[0] = 0x79; buf[1] = 0x79;
+    buf[2] = 0x00; buf[3] = 0x05; // 2-byte big-endian length = 5
+    buf[4] = proto;
+    buf[5] = (serial >> 8) & 0xff;
+    buf[6] = serial & 0xff;
+    const crc = calcCRC(buf.slice(2, 7)); // [00 05 proto s_hi s_lo]
+    buf[7] = (crc >> 8) & 0xff;
+    buf[8] = crc & 0xff;
+    buf[9] = 0x0d; buf[10] = 0x0a;
+    return buf;
+  }
   const buf = Buffer.alloc(10);
   buf[0] = 0x78; buf[1] = 0x78;
   buf[2] = 0x05;
   buf[3] = proto;
   buf[4] = (serial >> 8) & 0xff;
   buf[5] = serial & 0xff;
-  const crc = calcCRC(buf.slice(2, 6)); // length byte → serial
+  const crc = calcCRC(buf.slice(2, 6)); // [05 proto s_hi s_lo]
   buf[6] = (crc >> 8) & 0xff;
   buf[7] = crc & 0xff;
   buf[8] = 0x0d; buf[9] = 0x0a;
@@ -265,37 +281,53 @@ function parseLocationWithReason(data: Buffer): ParseLocationResult {
 }
 
 // ─── Parse a Complete Packet ──────────────────────────────────────────────
+// Supports both GT06 packet formats:
+//   Standard (0x78 0x78): [78 78] [len 1B] [proto] [data] [serial 2B] [crc 2B] [0D 0A]
+//   Extended (0x79 0x79): [79 79] [len_hi] [len_lo] [proto] [data] [serial 2B] [crc 2B] [0D 0A]
+// The pktLen field (1 or 2 bytes) counts bytes from proto through last CRC byte:
+//   pktLen = proto(1) + dataLen + serial(2) + crc(2) → dataLen = pktLen - 5
 interface Packet {
   length: number;
   proto: number;
   data: Buffer;
   serial: number;
   crc: number;
+  extended: boolean; // true = 0x79 0x79 extended; false = 0x78 0x78 standard
 }
 
 function parsePacket(buf: Buffer): Packet | null {
-  // Must start with 78 78 and end with 0D 0A
-  if (buf.length < 10) return null;
-  if (buf[0] !== 0x78 || buf[1] !== 0x78) return null;
+  const isStd = buf.length >= 2 && buf[0] === 0x78 && buf[1] === 0x78;
+  const isExt = buf.length >= 2 && buf[0] === 0x79 && buf[1] === 0x79;
+  if (!isStd && !isExt) return null;
+
   if (buf[buf.length - 2] !== 0x0d || buf[buf.length - 1] !== 0x0a) return null;
 
-  const pktLen = buf[2]; // number of bytes from proto to last CRC byte
-  if (buf.length < pktLen + 5) return null; // 2 start + 1 len + pktLen + 2 stop = pktLen+5
+  // headerLen = bytes before proto byte (start bytes + length field bytes)
+  // dataOffset = index of the proto byte in buf
+  const headerLen  = isStd ? 3 : 4;  // std: 2+1  ext: 2+2
+  const dataOffset = isStd ? 3 : 4;  // proto is at buf[3] or buf[4]
+  const minLen     = isStd ? 10 : 11; // smallest valid packet
 
-  const proto   = buf[3];
-  // pktLen = proto(1) + dataLen + serial(2) + crc(2), so dataLen = pktLen - 5
+  if (buf.length < minLen) return null;
+
+  const pktLen = isStd ? buf[2] : buf.readUInt16BE(2);
+  if (buf.length < headerLen + pktLen + 2) return null;
+
+  const proto   = buf[dataOffset];
   const dataLen = pktLen - 5;
-  const data    = buf.slice(4, 4 + dataLen);         // payload after proto byte
-  const serial  = buf.readUInt16BE(4 + dataLen);     // serial after data
-  const crcGot  = buf.readUInt16BE(4 + dataLen + 2); // CRC after serial
+  if (dataLen < 0) return null;
 
-  // CRC covers: [length byte] through [last serial byte] inclusive (Traccar convention)
-  const crcCalc = calcCRC(buf.slice(2, 4 + dataLen + 2));
+  const data    = buf.slice(dataOffset + 1, dataOffset + 1 + dataLen);
+  const serial  = buf.readUInt16BE(dataOffset + 1 + dataLen);
+  const crcGot  = buf.readUInt16BE(dataOffset + 1 + dataLen + 2);
+
+  // CRC covers from the first length byte through last serial byte
+  const crcCalc = calcCRC(buf.slice(2, dataOffset + 1 + dataLen + 2));
   if (crcGot !== crcCalc) {
     console.warn(`[GT06] CRC mismatch: got 0x${crcGot.toString(16)}, expected 0x${crcCalc.toString(16)} | raw=${buf.toString("hex")}`);
   }
 
-  return { length: pktLen, proto, data, serial, crc: crcGot };
+  return { length: pktLen, proto, data, serial, crc: crcGot, extended: isExt };
 }
 
 // ─── GT06 TCP Server ──────────────────────────────────────────────────────
@@ -309,29 +341,68 @@ export function startGT06Server() {
 
     console.log(`[GT06] New connection from ${remoteAddr}`);
 
+    let firstDataSeen = false;
+
     socket.on("data", async (chunk) => {
       // Buffer incoming data – TCP may deliver packets in fragments
       rxBuf = Buffer.concat([rxBuf, chunk]);
 
-      // Try to parse complete packets from the buffer
-      while (rxBuf.length >= 10) {
-        // Find start bytes
-        const startIdx = rxBuf.indexOf(Buffer.from([0x78, 0x78]));
-        if (startIdx < 0) { rxBuf = Buffer.alloc(0); break; }
-        if (startIdx > 0)  { rxBuf = rxBuf.slice(startIdx); }
+      // Record the very first raw bytes from this connection (for diagnostics).
+      // This lets admins see devices that connect but never complete GT06 login.
+      if (!firstDataSeen && rxBuf.length >= 2) {
+        firstDataSeen = true;
+        logRawAttempt(remoteAddr, rxBuf.slice(0, 16).toString("hex"));
+      }
 
-        // Need at least 5 bytes to read the length
-        if (rxBuf.length < 5) break;
+      // Try to parse complete packets from the buffer.
+      // Handles both standard (0x78 0x78) and extended (0x79 0x79) GT06 formats.
+      while (rxBuf.length >= 2) {
+        const isStd = rxBuf[0] === 0x78 && rxBuf[1] === 0x78;
+        const isExt = rxBuf[0] === 0x79 && rxBuf[1] === 0x79;
 
-        const pktLen = rxBuf[2];
-        const totalLen = pktLen + 5; // 2 start + 1 len + pktLen + 2 stop
+        if (!isStd && !isExt) {
+          // Neither valid start — scan forward for the next valid start bytes
+          let nextStart = -1;
+          for (let i = 1; i < rxBuf.length - 1; i++) {
+            if ((rxBuf[i] === 0x78 && rxBuf[i + 1] === 0x78) ||
+                (rxBuf[i] === 0x79 && rxBuf[i + 1] === 0x79)) {
+              nextStart = i;
+              break;
+            }
+          }
+          if (nextStart < 0) {
+            // No valid start found anywhere — log the unrecognized data and clear
+            const hex = rxBuf.slice(0, 32).toString("hex");
+            console.warn(`[GT06] Unrecognized protocol data from ${remoteAddr}: ${hex} — clearing buffer`);
+            rxBuf = Buffer.alloc(0);
+            break;
+          }
+          rxBuf = rxBuf.slice(nextStart);
+          continue;
+        }
+
+        // Determine total expected packet length based on format
+        let totalLen: number;
+        if (isStd) {
+          if (rxBuf.length < 5) break; // need at least 5 to read 1-byte length
+          const pktLen = rxBuf[2];
+          totalLen = pktLen + 5; // 2 start + 1 len + pktLen + 2 stop
+        } else {
+          if (rxBuf.length < 6) break; // need at least 6 to read 2-byte length
+          const pktLen = rxBuf.readUInt16BE(2);
+          totalLen = pktLen + 6; // 2 start + 2 len + pktLen + 2 stop
+        }
+
         if (rxBuf.length < totalLen) break; // wait for more data
 
         const rawPacket = rxBuf.slice(0, totalLen);
         rxBuf = rxBuf.slice(totalLen);
 
         const pkt = parsePacket(rawPacket);
-        if (!pkt) continue;
+        if (!pkt) {
+          console.warn(`[GT06] Failed to parse ${isExt ? "extended" : "standard"} packet from ${remoteAddr}: ${rawPacket.toString("hex")}`);
+          continue;
+        }
 
         try {
           await handlePacket(socket, pkt, remoteAddr,
@@ -381,7 +452,8 @@ async function handlePacket(
       if (pkt.data.length < 8) break;
       const deviceImei = decodeBCDimei(pkt.data, 0);
       setImei(deviceImei);
-      console.log(`[GT06] Login from IMEI: ${deviceImei} (${remoteAddr})`);
+      console.log(`[GT06] Login from IMEI: ${deviceImei} (${remoteAddr}, ${pkt.extended ? "extended 0x79" : "standard 0x78"})`);
+      markAttemptLoginComplete(remoteAddr);
 
       // Register in active connections map
       activeConnections.set(remoteAddr, {
@@ -407,7 +479,7 @@ async function handlePacket(
       }
 
       // Always ACK so device continues sending location data
-      socket.write(buildAck(0x01, pkt.serial));
+      socket.write(buildAck(0x01, pkt.serial, pkt.extended));
       break;
     }
 
@@ -430,7 +502,7 @@ async function handlePacket(
       if (!loc.parsed) {
         // Always ACK location packets even if discarded (prevents device retransmits).
         logRejection(deviceImei, loc.reason);
-        socket.write(buildAck(0x12, pkt.serial));
+        socket.write(buildAck(0x12, pkt.serial, pkt.extended));
         break;
       }
       const locData = loc.parsed;
@@ -466,7 +538,7 @@ async function handlePacket(
         const filterReason = `${filterResult.reason}${filterResult.details ? ` — ${filterResult.details}` : ""}`;
         console.log(`[GT06][FILTER] ${deviceImei} rejected: ${filterReason}`);
         logRejection(deviceImei, filterReason);
-        socket.write(buildAck(0x12, pkt.serial));
+        socket.write(buildAck(0x12, pkt.serial, pkt.extended));
         break;
       }
 
@@ -528,7 +600,7 @@ async function handlePacket(
         ).catch((e) => console.error("[GT06] Push alert error:", e));
       }
 
-      socket.write(buildAck(0x12, pkt.serial));
+      socket.write(buildAck(0x12, pkt.serial, pkt.extended));
       break;
     }
 
@@ -536,7 +608,7 @@ async function handlePacket(
     case 0x13: {
       const deviceImei = getImei();
       if (deviceImei) console.log(`[GT06] Heartbeat from ${deviceImei}`);
-      socket.write(buildAck(0x13, pkt.serial));
+      socket.write(buildAck(0x13, pkt.serial, pkt.extended));
       break;
     }
 
@@ -544,13 +616,13 @@ async function handlePacket(
     case 0x16: {
       const deviceImei = getImei();
       console.log(`[GT06] Alarm packet from ${deviceImei ?? remoteAddr}`);
-      socket.write(buildAck(0x16, pkt.serial));
+      socket.write(buildAck(0x16, pkt.serial, pkt.extended));
       break;
     }
 
     default: {
       console.log(`[GT06] Unknown protocol 0x${pkt.proto.toString(16)} from ${remoteAddr}`);
-      socket.write(buildAck(pkt.proto, pkt.serial));
+      socket.write(buildAck(pkt.proto, pkt.serial, pkt.extended));
       break;
     }
   }
