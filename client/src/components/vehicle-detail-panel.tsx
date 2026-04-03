@@ -204,6 +204,11 @@ export function VehicleDetailPanel({ vehicleId, vehicles, locations, onClose }: 
                       : satellites >= 4 ? "Moderate" : "Poor"
                   }
                 />
+                <InfoRow label="Accuracy" value={
+                  location?.accuracy != null
+                    ? `±${Math.round(parseFloat(String(location.accuracy)))} m`
+                    : "—"
+                } />
                 <InfoRow label="Ignition" value={
                   vehicle.ignitionOn == null
                     ? "—"
@@ -215,7 +220,6 @@ export function VehicleDetailPanel({ vehicleId, vehicles, locations, onClose }: 
                       </span>
                     )
                 } />
-                <InfoRow label="Today's trips" value={tripCount > 0 ? `${tripCount} trips` : "No trips today"} />
               </div>
             </div>
           </ScrollArea>

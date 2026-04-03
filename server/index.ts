@@ -3,11 +3,26 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import pg from "pg";
+import { neon } from "@neondatabase/serverless";
 import { registerRoutes } from "./routes";
 import { setupAuth, hashPassword } from "./auth";
 import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
 import { startGT06Server } from "./gt06-server";
+
+// ── Incremental DB Migrations ────────────────────────────────────────────────
+// Safe, idempotent ALTER TABLE statements for columns added after initial
+// schema creation. Using IF NOT EXISTS means these are no-ops on environments
+// that already have the column (VPS, production, etc.).
+async function runMigrations() {
+  try {
+    const sql = neon(process.env.DATABASE_URL!);
+    await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS ignition_on boolean`;
+    log("DB migrations: OK");
+  } catch (err) {
+    log("DB migrations warning: " + (err instanceof Error ? err.message : String(err)));
+  }
+}
 
 const app = express();
 app.set("trust proxy", 1);
@@ -86,6 +101,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Run idempotent DB migrations before starting the server
+  await runMigrations();
+
   const server = await registerRoutes(app);
 
   // Start GT06 binary TCP server (GT06N GPS tracker protocol)

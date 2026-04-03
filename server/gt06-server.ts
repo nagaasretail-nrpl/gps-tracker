@@ -261,9 +261,9 @@ function parseLocationWithReason(data: Buffer): ParseLocationResult {
   // Reuse existing parseLocation for the full decode (it handles its own console.warn)
   const result = parseLocation(data);
   if (!result) {
-    // Determine specific reason
-    if (satellites < 4) {
-      return { parsed: null, reason: `Too few satellites: ${satellites} (need ≥4)` };
+    // Determine specific reason — note: we now only hard-reject sats=0 when 0x10 is not set
+    if (satellites === 0 && !Boolean(lowByte & 0x10)) {
+      return { parsed: null, reason: `0 satellites and GPS data-valid bit (0x10) not set (status=0x${lowByte.toString(16)})` };
     }
     // Coord decode failure
     const formats: Array<(r: number) => number> = [
@@ -736,6 +736,16 @@ async function handlePacket(
         checkSpeedViolation(location19).catch((e) => console.error("[GT06] Speed check error:", e));
         broadcastLocationUpdate({ ...location19, vehicleId: vehicleId19 });
         if (updatedVehicle19) broadcastVehicleUpdate(updatedVehicle19);
+        // Log appended LBS fields for diagnostics / future cell-tower positioning
+        if (pkt.data.length >= 27) {
+          // LBS block starts at byte 18: MCC(2) MNC(1) LAC(2) CellID(3) Signal(1) = 9 bytes
+          const mcc    = pkt.data.readUInt16BE(18);
+          const mnc    = pkt.data[20];
+          const lac    = pkt.data.readUInt16BE(21);
+          const cellId = (pkt.data[23] << 16) | (pkt.data[24] << 8) | pkt.data[25];
+          const signal = pkt.data[26];
+          console.log(`[GT06] 0x19 LBS: MCC=${mcc} MNC=${mnc} LAC=0x${lac.toString(16)} CellID=0x${cellId.toString(16)} Signal=${signal}`);
+        }
       } else {
         console.warn(`[GT06] 0x19 GPS+LBS: data too short (${pkt.data?.length ?? 0} bytes) from ${deviceImei19}`);
       }
