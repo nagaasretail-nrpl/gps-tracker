@@ -1035,14 +1035,17 @@ async function handlePacket(
         console.error(`[GT06] Failed to update lastSeenAt for ${vehicleId8a}:`, e.message);
       });
 
+      // Count every 0x8a from a known vehicle in packet stats, including short/malformed ones.
+      logPacketReceived(deviceImei8a);
+
       if (!pkt.data || pkt.data.length < 18) {
         console.warn(`[GT06] 0x8a: payload too short (${pkt.data?.length ?? 0}B) from ${deviceImei8a} — no GPS data`);
+        logLocationRejected(deviceImei8a, `0x8a payload too short (${pkt.data?.length ?? 0}B)`);
         break;
       }
 
       // GPS data occupies the first 18 bytes — same layout as 0x12.
       const gpsBlock8a = pkt.data.slice(0, 18);
-      logPacketReceived(deviceImei8a);
 
       const loc8a = parseLocationWithReason(gpsBlock8a);
       if (!loc8a.parsed) {
