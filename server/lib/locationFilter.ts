@@ -207,7 +207,8 @@ function computeAccuracyScore(params: {
 
 export function filterIncomingLocation(
   input: RawLocationInput,
-  lastKnown?: LastKnownLocation | null
+  lastKnown?: LastKnownLocation | null,
+  options?: { allowStale?: boolean }
 ): FilterDecision {
   const timestamp = toDate(input.timestamp);
 
@@ -226,13 +227,17 @@ export function filterIncomingLocation(
   const state = getDeviceState(input.imei);
   const previous = lastKnown ?? state.lastAccepted;
 
-  const ageSeconds = (Date.now() - timestamp.getTime()) / 1000;
-  if (ageSeconds > STALE_PACKET_SECONDS) {
-    return {
-      accepted: false,
-      reason: "stale_packet",
-      details: `Packet is ${Math.round(ageSeconds)} seconds old`,
-    };
+  // Stale-packet check — skipped for offline-upload packets (0x15) which are
+  // intentionally old (buffered while the device had no connectivity).
+  if (!options?.allowStale) {
+    const ageSeconds = (Date.now() - timestamp.getTime()) / 1000;
+    if (ageSeconds > STALE_PACKET_SECONDS) {
+      return {
+        accepted: false,
+        reason: "stale_packet",
+        details: `Packet is ${Math.round(ageSeconds)} seconds old`,
+      };
+    }
   }
 
   if (previous) {

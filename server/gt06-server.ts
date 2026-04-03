@@ -798,11 +798,192 @@ async function handlePacket(
       break;
     }
 
+    // ── Offline Stored GPS Upload (0x15) ──
+    // GT06N buffers GPS points when offline (tunnel / no-signal). When connectivity
+    // returns, it sends all buffered records in a 0x15 packet:
+    //   [Count 1B] [GPS Record 1: 18 bytes] [GPS Record 2: 18 bytes] ...
+    // Each GPS record has the same 18-byte layout as a 0x12 location packet.
+    // We process every record through the full filter pipeline except the stale-age
+    // check (offline packets are intentionally old — that's the point of buffering).
+    case 0x15: {
+      const vehicleId15 = getVehicleId();
+      const deviceImei15 = getImei();
+      socket.write(buildAck(0x15, pkt.serial, pkt.extended));
+
+      const conn15 = activeConnections.get(remoteAddr);
+      if (conn15) { conn15.lastPacketAt = new Date(); conn15.packetCount += 1; }
+
+      if (!vehicleId15 || !deviceImei15) {
+        console.warn(`[GT06] 0x15 offline upload before login from ${remoteAddr}`);
+        break;
+      }
+
+      if (!pkt.data || pkt.data.length < 1) {
+        console.log(`[GT06] 0x15 offline upload: empty payload from ${deviceImei15}`);
+        break;
+      }
+
+      const recordCount = pkt.data[0];
+      console.log(`[GT06] 0x15 offline upload from ${deviceImei15}: ${recordCount} stored record(s)`);
+
+      if (recordCount === 0) break;
+
+      // Each record is 18 bytes in the same format as a 0x12 GPS packet.
+      let stored15 = 0;
+      let rejected15 = 0;
+      const lastLoc15 = await storage.getLatestLocationForVehicle(vehicleId15);
+      let lastKnown15: LastKnownLocation | null = lastLoc15 ? {
+        lat: parseFloat(String(lastLoc15.latitude)),
+        lng: parseFloat(String(lastLoc15.longitude)),
+        timestamp: lastLoc15.timestamp,
+        speedKph: lastLoc15.speed ? parseFloat(String(lastLoc15.speed)) : null,
+      } : null;
+
+      for (let i = 0; i < recordCount; i++) {
+        const offset = 1 + i * 18;
+        if (offset + 18 > pkt.data.length) {
+          console.warn(`[GT06] 0x15: record ${i + 1}/${recordCount} truncated — stopping early`);
+          break;
+        }
+        const record = pkt.data.slice(offset, offset + 18);
+        const locResult = parseLocationWithReason(record);
+        if (!locResult.parsed) {
+          console.log(`[GT06] 0x15 record ${i + 1}: rejected parse — ${locResult.reason}`);
+          rejected15++;
+          continue;
+        }
+        const locData15 = locResult.parsed;
+
+        // Use GPS device time for offline records (they were recorded at a specific time,
+        // not "now"). Re-parse timestamp from the raw bytes since parseLocation() uses new Date().
+        const year15  = 2000 + record[0];
+        const month15 = record[1];
+        const day15   = record[2];
+        const hour15  = record[3];
+        const min15   = record[4];
+        const sec15   = record[5];
+        const offlineTs = new Date(Date.UTC(year15, month15 - 1, day15, hour15, min15, sec15));
+        locData15.timestamp = offlineTs;
+
+        // allowStale=true: skip the age check — these records are intentionally old.
+        const filterResult15 = filterIncomingLocation({
+          imei: deviceImei15,
+          lat: locData15.lat,
+          lng: locData15.lng,
+          speedKph: locData15.speed,
+          heading: locData15.course ?? null,
+          satellites: locData15.satellites,
+          timestamp: offlineTs,
+        }, lastKnown15, { allowStale: true });
+
+        if (!filterResult15.accepted) {
+          const r = `${filterResult15.reason}${filterResult15.details ? ` — ${filterResult15.details}` : ""}`;
+          console.log(`[GT06] 0x15 record ${i + 1}: filter rejected — ${r}`);
+          logRejection(deviceImei15, `0x15[${i}]: ${r}`);
+          rejected15++;
+          continue;
+        }
+
+        const filtered15 = filterResult15.location;
+        const location15 = await storage.createDeviceLocation(
+          vehicleId15,
+          filtered15.lat,
+          filtered15.lng,
+          filtered15.speedKph ?? locData15.speed,
+          null,
+          null,
+          offlineTs,
+          locData15.satellites,
+          filtered15.heading,
+          filtered15.isStationary,
+          filtered15.accuracyScore,
+        );
+
+        // Update lastKnown15 so next offline record uses this one as reference
+        // (jump guard and duplicate check need a running reference per record).
+        lastKnown15 = {
+          lat: filtered15.lat,
+          lng: filtered15.lng,
+          timestamp: offlineTs,
+          speedKph: filtered15.speedKph,
+        };
+
+        broadcastLocationUpdate({ ...location15, vehicleId: vehicleId15 });
+        stored15++;
+      }
+
+      console.log(`[GT06] 0x15 offline upload done — ${stored15} stored, ${rejected15} rejected`);
+
+      // Update lastSeenAt and vehicle status for the most recent offline record stored.
+      if (stored15 > 0 && lastKnown15) {
+        storage.updateVehicleLastSeen(vehicleId15, new Date()).catch((e: Error) => {
+          console.error(`[GT06] Failed to update lastSeenAt for ${vehicleId15}:`, e.message);
+        });
+      }
+      break;
+    }
+
     // ── Alarm (0x16) ──
     case 0x16: {
       const deviceImei = getImei();
       console.log(`[GT06] Alarm packet from ${deviceImei ?? remoteAddr}`);
       socket.write(buildAck(0x16, pkt.serial, pkt.extended));
+      break;
+    }
+
+    // ── GT06N Auxiliary Packets (ACK + log only) ──
+    // These packets carry no GPS data — the device expects an ACK to stay connected.
+    // Explicit handlers keep the log clean and document what each packet type means.
+
+    // 0x1A: String / Info response (device replies to a text command with a text string)
+    case 0x1A: {
+      const imei1A = getImei();
+      const text1A = pkt.data ? pkt.data.toString("ascii").replace(/\0/g, "").trim() : "";
+      console.log(`[GT06] 0x1A string info from ${imei1A ?? remoteAddr}${text1A ? `: "${text1A}"` : ""}`);
+      socket.write(buildAck(0x1A, pkt.serial, pkt.extended));
+      const conn1A = activeConnections.get(remoteAddr);
+      if (conn1A) { conn1A.lastPacketAt = new Date(); conn1A.packetCount += 1; }
+      break;
+    }
+
+    // 0x25: GPRS Command / Query response (device ACKs a server command or responds to query)
+    case 0x25: {
+      const imei25 = getImei();
+      console.log(`[GT06] 0x25 GPRS command response from ${imei25 ?? remoteAddr}`);
+      socket.write(buildAck(0x25, pkt.serial, pkt.extended));
+      const conn25 = activeConnections.get(remoteAddr);
+      if (conn25) { conn25.lastPacketAt = new Date(); conn25.packetCount += 1; }
+      break;
+    }
+
+    // 0x26: Network / Signal strength info
+    case 0x26: {
+      const imei26 = getImei();
+      const signal26 = pkt.data && pkt.data.length >= 1 ? pkt.data[0] : null;
+      console.log(`[GT06] 0x26 signal strength from ${imei26 ?? remoteAddr}${signal26 !== null ? `: ${signal26}` : ""}`);
+      socket.write(buildAck(0x26, pkt.serial, pkt.extended));
+      const conn26 = activeConnections.get(remoteAddr);
+      if (conn26) { conn26.lastPacketAt = new Date(); conn26.packetCount += 1; }
+      break;
+    }
+
+    // 0x2B: Record query / time sync response
+    case 0x2B: {
+      const imei2B = getImei();
+      console.log(`[GT06] 0x2B record/time info from ${imei2B ?? remoteAddr}`);
+      socket.write(buildAck(0x2B, pkt.serial, pkt.extended));
+      const conn2B = activeConnections.get(remoteAddr);
+      if (conn2B) { conn2B.lastPacketAt = new Date(); conn2B.packetCount += 1; }
+      break;
+    }
+
+    // 0x30: WiFi location info (some GT06N variants with WiFi chipset)
+    case 0x30: {
+      const imei30 = getImei();
+      console.log(`[GT06] 0x30 WiFi info from ${imei30 ?? remoteAddr}`);
+      socket.write(buildAck(0x30, pkt.serial, pkt.extended));
+      const conn30 = activeConnections.get(remoteAddr);
+      if (conn30) { conn30.lastPacketAt = new Date(); conn30.packetCount += 1; }
       break;
     }
 
