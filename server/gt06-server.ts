@@ -1005,6 +1005,133 @@ async function handlePacket(
       break;
     }
 
+    // ── Combined GPS + LBS + Status (0x8a) ──
+    // GT06N firmware variant that sends a combined packet instead of 0x12.
+    // Packet layout: [GPS 18 bytes (identical to 0x12)] [LBS ~9 bytes] [Status/extras ...]
+    // The GPS portion at bytes 0-17 uses the same encoding as 0x12 and is parsed
+    // with parseLocationWithReason(). Extra LBS/status bytes are logged but not
+    // stored — only the GPS fix is used for location tracking.
+    case 0x8a: {
+      const vehicleId8a = getVehicleId();
+      const deviceImei8a = getImei();
+
+      // ACK immediately so device stays connected regardless of parse outcome.
+      socket.write(buildAck(0x8a, pkt.serial, pkt.extended));
+
+      const conn8a = activeConnections.get(remoteAddr);
+      if (conn8a) { conn8a.lastPacketAt = new Date(); conn8a.packetCount += 1; }
+
+      // Log raw bytes for format verification — helps diagnose if offset is wrong.
+      const rawHex8a = pkt.data ? pkt.data.toString("hex").toUpperCase() : "(empty)";
+      console.log(`[GT06] 0x8a packet from ${deviceImei8a ?? remoteAddr} (${pkt.data?.length ?? 0}B): ${rawHex8a}`);
+
+      if (!vehicleId8a || !deviceImei8a) {
+        console.warn(`[GT06] 0x8a packet before login from ${remoteAddr}`);
+        break;
+      }
+
+      // Update lastSeenAt for every 0x8a from a known vehicle, even if GPS parse fails.
+      storage.updateVehicleLastSeen(vehicleId8a, new Date()).catch((e: Error) => {
+        console.error(`[GT06] Failed to update lastSeenAt for ${vehicleId8a}:`, e.message);
+      });
+
+      if (!pkt.data || pkt.data.length < 18) {
+        console.warn(`[GT06] 0x8a: payload too short (${pkt.data?.length ?? 0}B) from ${deviceImei8a} — no GPS data`);
+        break;
+      }
+
+      // GPS data occupies the first 18 bytes — same layout as 0x12.
+      const gpsBlock8a = pkt.data.slice(0, 18);
+      logPacketReceived(deviceImei8a);
+
+      const loc8a = parseLocationWithReason(gpsBlock8a);
+      if (!loc8a.parsed) {
+        logRejection(deviceImei8a, `0x8a: ${loc8a.reason}`);
+        logLocationRejected(deviceImei8a, `0x8a: ${loc8a.reason}`);
+        console.log(`[GT06] 0x8a parse failed for ${deviceImei8a}: ${loc8a.reason}`);
+        break;
+      }
+      const locData8a = loc8a.parsed;
+
+      const lastLoc8a = await storage.getLatestLocationForVehicle(vehicleId8a);
+      const lastKnown8a: LastKnownLocation | null = lastLoc8a ? {
+        lat: parseFloat(String(lastLoc8a.latitude)),
+        lng: parseFloat(String(lastLoc8a.longitude)),
+        timestamp: lastLoc8a.timestamp,
+        speedKph: lastLoc8a.speed ? parseFloat(String(lastLoc8a.speed)) : null,
+      } : null;
+
+      const filterResult8a = filterIncomingLocation({
+        imei: deviceImei8a,
+        lat: locData8a.lat,
+        lng: locData8a.lng,
+        speedKph: locData8a.speed,
+        heading: locData8a.course ?? null,
+        satellites: locData8a.satellites,
+        timestamp: locData8a.timestamp,
+      }, lastKnown8a);
+
+      if (!filterResult8a.accepted) {
+        const r8a = `${filterResult8a.reason}${filterResult8a.details ? ` — ${filterResult8a.details}` : ""}`;
+        console.log(`[GT06][FILTER] 0x8a ${deviceImei8a} rejected: ${r8a}`);
+        logRejection(deviceImei8a, r8a);
+        logLocationRejected(deviceImei8a, r8a);
+        break;
+      }
+
+      const filtered8a = filterResult8a.location;
+      console.log(`[GT06] 0x8a location ${deviceImei8a}: lat=${filtered8a.lat.toFixed(6)}, lng=${filtered8a.lng.toFixed(6)}, speed=${filtered8a.speedKph ?? locData8a.speed} km/h, sats=${locData8a.satellites}`);
+
+      // Log extra LBS/status bytes for future diagnostics (bytes 18+)
+      if (pkt.data.length > 18) {
+        const extra8a = pkt.data.slice(18).toString("hex").toUpperCase();
+        console.log(`[GT06] 0x8a extra bytes (LBS/status) from ${deviceImei8a}: ${extra8a}`);
+      }
+
+      const location8a = await storage.createDeviceLocation(
+        vehicleId8a,
+        filtered8a.lat,
+        filtered8a.lng,
+        filtered8a.speedKph ?? locData8a.speed,
+        null,
+        null,
+        filtered8a.timestamp,
+        locData8a.satellites,
+        filtered8a.heading,
+        filtered8a.isStationary,
+        filtered8a.accuracyScore,
+      );
+
+      const newStatus8a = (filtered8a.speedKph ?? locData8a.speed) > 5 ? "active" : "stopped";
+      const existingVehicle8a = await storage.getVehicle(vehicleId8a);
+      let parkedSince8a: Date | null | undefined = undefined;
+      if (newStatus8a === "stopped" && existingVehicle8a?.status !== "stopped") {
+        parkedSince8a = new Date();
+      } else if (newStatus8a === "active" && existingVehicle8a?.status === "stopped") {
+        parkedSince8a = null;
+      }
+      const vehicleUpdate8a: { status: string; parkedSince?: Date | null } = { status: newStatus8a };
+      if (parkedSince8a !== undefined) vehicleUpdate8a.parkedSince = parkedSince8a;
+      const updatedVehicle8a = await storage.updateVehicle(vehicleId8a, vehicleUpdate8a);
+
+      logLocationAccepted(deviceImei8a);
+      checkGeofences(location8a).catch((e) => console.error("[GT06] Geofence error:", e));
+      checkSpeedViolation(location8a).catch((e) => console.error("[GT06] Speed check error:", e));
+      broadcastLocationUpdate({ ...location8a, vehicleId: vehicleId8a });
+      if (updatedVehicle8a) broadcastVehicleUpdate(updatedVehicle8a);
+
+      if (updatedVehicle8a) {
+        const gpsSpeed8a = filtered8a.speedKph ?? locData8a.speed;
+        const updatedParkedSince8a =
+          parkedSince8a !== undefined ? parkedSince8a : updatedVehicle8a.parkedSince ?? null;
+        sendPushAlertsForLocation(
+          { id: vehicleId8a, name: updatedVehicle8a.name, status: newStatus8a, parkedSince: updatedParkedSince8a },
+          gpsSpeed8a
+        ).catch((e) => console.error("[GT06] Push alert error:", e));
+      }
+      break;
+    }
+
     default: {
       console.log(`[GT06] Unknown protocol 0x${pkt.proto.toString(16)} from ${remoteAddr}`);
       socket.write(buildAck(pkt.proto, pkt.serial, pkt.extended));
