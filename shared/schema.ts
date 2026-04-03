@@ -141,6 +141,7 @@ export const vehicles = pgTable("vehicles", {
   devicePhone: text("device_phone"), // SIM card phone number on the GPS tracker
   parkedSince: timestamp("parked_since"), // set when vehicle transitions from moving → stopped
   lastSeenAt: timestamp("last_seen_at"), // set whenever any GT06 TCP packet arrives from this IMEI
+  ignitionOn: boolean("ignition_on"), // ACC/ignition status from 0x13 heartbeat (null = not yet received)
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

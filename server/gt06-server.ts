@@ -134,9 +134,11 @@ function parseLocation(data: Buffer): ParsedLocation | null {
   const lowByte    = statusWord & 0xff;
 
   // GPS validity flags from low byte:
-  //   bit 4 (0x10) = GPS data valid
-  //   bit 0 (0x01) = GPS tracking active / real-time
-  const gpsValid = Boolean(lowByte & 0x10);
+  //   bit 4 (0x10) = GPS data valid (original GT06 spec)
+  //   bit 0 (0x01) = GPS real-time tracking active (used by GT06S and many clones)
+  // Many GT06 clone firmwares set ONLY bit 0x01 and leave 0x10 clear even with a
+  // valid fix — accept either bit so those devices are not silently dropped.
+  const gpsValid = Boolean(lowByte & 0x10) || Boolean(lowByte & 0x01);
 
   // Reject packets with no valid GPS fix
   if (!gpsValid) {
@@ -212,10 +214,16 @@ function parseLocation(data: Buffer): ParsedLocation | null {
     return null;
   }
 
-  // Reject if not enough satellites for a reliable fix
-  if (satellites < 4) {
-    console.warn(`[GT06] Discarding location: only ${satellites} satellites (need ≥4)`);
+  // Satellite count check — relax to ≥1 since many GT06 clone firmwares (including GT06S)
+  // report 0 satellites in firmware even when the GPS fix is valid. Accept any non-zero
+  // satellite count when gpsValid is true; only hard-reject when sats=0 AND gpsValid was
+  // based solely on 0x01 (tracking active) with no 0x10 (data valid) confirmation.
+  if (satellites === 0 && !Boolean(lowByte & 0x10)) {
+    console.warn(`[GT06] Discarding location: 0 satellites and GPS data-valid bit not set`);
     return null;
+  }
+  if (satellites < 4) {
+    console.warn(`[GT06] Low satellite count: ${satellites} (fix accepted because gpsValid=true)`);
   }
 
   // Use server receive time — GPS device time can have timezone/BCD issues
@@ -238,7 +246,9 @@ function parseLocationWithReason(data: Buffer): ParseLocationResult {
   const statusWord = data.readUInt16BE(16);
   const lowByte    = statusWord & 0xff;
   const highByte   = (statusWord >> 8) & 0xff;
-  const gpsValid   = Boolean(lowByte & 0x10);
+  // Accept bit 0x10 (GPS data valid) OR bit 0x01 (GPS tracking active) — GT06S and many
+  // clones only set 0x01; requiring 0x10 silently drops all their packets.
+  const gpsValid   = Boolean(lowByte & 0x10) || Boolean(lowByte & 0x01);
   const latRaw     = data.readUInt32BE(7);
   const lngRaw     = data.readUInt32BE(11);
 
@@ -611,10 +621,149 @@ async function handlePacket(
     }
 
     // ── Heartbeat / Status (0x13) ──
+    // Byte 0 of data encodes device status bits:
+    //   bit 3 (0x08) = ACC / ignition on
+    //   bit 1 (0x02) = GPS real-time tracking active
+    //   bit 0 (0x01) = device power state
     case 0x13: {
       const deviceImei = getImei();
-      if (deviceImei) console.log(`[GT06] Heartbeat from ${deviceImei}`);
       socket.write(buildAck(0x13, pkt.serial, pkt.extended));
+
+      if (deviceImei && pkt.data && pkt.data.length >= 1) {
+        const statusByte = pkt.data[0];
+        const ignitionOn = Boolean(statusByte & 0x08);
+        console.log(`[GT06] Heartbeat from ${deviceImei} — ACC/ignition: ${ignitionOn ? "ON" : "OFF"} (status=0x${statusByte.toString(16)})`);
+
+        // Update lastSeenAt and ignition state
+        const vehicle = await storage.getVehicleByDeviceId(deviceImei);
+        if (vehicle) {
+          await storage.updateVehicleLastSeen(vehicle.id, new Date());
+          await storage.updateVehicleIgnition(vehicle.id, ignitionOn);
+        }
+      } else if (deviceImei) {
+        console.log(`[GT06] Heartbeat from ${deviceImei}`);
+        // Still update lastSeenAt even if status byte absent
+        const vehicle = await storage.getVehicleByDeviceId(deviceImei);
+        if (vehicle) {
+          await storage.updateVehicleLastSeen(vehicle.id, new Date());
+        }
+      }
+      break;
+    }
+
+    // ── GPS + LBS Combined (0x19) ──
+    // Format: [GPS data 18 bytes] [MCC 2B] [MNC 1B] [LAC 2B] [Cell ID 3B] [Signal 1B]
+    // The GPS portion is identical to 0x12 — parse it with parseLocation().
+    case 0x19: {
+      const vehicleId19 = getVehicleId();
+      const deviceImei19 = getImei();
+      socket.write(buildAck(0x19, pkt.serial, pkt.extended));
+
+      if (!vehicleId19 || !deviceImei19) {
+        console.warn(`[GT06] 0x19 packet before login from ${remoteAddr}`);
+        break;
+      }
+
+      storage.updateVehicleLastSeen(vehicleId19, new Date()).catch((e: Error) => {
+        console.error(`[GT06] Failed to update lastSeenAt for ${vehicleId19}:`, e.message);
+      });
+
+      // GPS portion is the first 18 bytes — same layout as 0x12
+      if (pkt.data && pkt.data.length >= 18) {
+        const gpsData = pkt.data.slice(0, 18);
+        const loc19 = parseLocationWithReason(gpsData);
+        if (!loc19.parsed) {
+          logRejection(deviceImei19, `0x19: ${loc19.reason}`);
+          break;
+        }
+        const locData19 = loc19.parsed;
+
+        const lastLoc19 = await storage.getLatestLocationForVehicle(vehicleId19);
+        const lastKnown19: LastKnownLocation | null = lastLoc19 ? {
+          lat: parseFloat(String(lastLoc19.latitude)),
+          lng: parseFloat(String(lastLoc19.longitude)),
+          timestamp: lastLoc19.timestamp,
+          speedKph: lastLoc19.speed ? parseFloat(String(lastLoc19.speed)) : null,
+        } : null;
+
+        const filterResult19 = filterIncomingLocation({
+          imei: deviceImei19,
+          lat: locData19.lat,
+          lng: locData19.lng,
+          speedKph: locData19.speed,
+          heading: locData19.course ?? null,
+          satellites: locData19.satellites,
+          timestamp: locData19.timestamp,
+        }, lastKnown19);
+
+        if (!filterResult19.accepted) {
+          const r = `${filterResult19.reason}${filterResult19.details ? ` — ${filterResult19.details}` : ""}`;
+          console.log(`[GT06][FILTER] 0x19 ${deviceImei19} rejected: ${r}`);
+          logRejection(deviceImei19, r);
+          break;
+        }
+
+        const filtered19 = filterResult19.location;
+        console.log(`[GT06] 0x19 GPS+LBS location ${deviceImei19}: lat=${filtered19.lat.toFixed(6)}, lng=${filtered19.lng.toFixed(6)}, sats=${locData19.satellites}`);
+
+        const location19 = await storage.createDeviceLocation(
+          vehicleId19,
+          filtered19.lat,
+          filtered19.lng,
+          filtered19.speedKph ?? locData19.speed,
+          null,
+          null,
+          filtered19.timestamp,
+          locData19.satellites,
+          filtered19.heading,
+          filtered19.isStationary,
+          filtered19.accuracyScore,
+        );
+
+        const newStatus19 = (filtered19.speedKph ?? locData19.speed) > 5 ? "active" : "stopped";
+        const existingVehicle19 = await storage.getVehicle(vehicleId19);
+        let parkedSince19: Date | null | undefined = undefined;
+        if (newStatus19 === "stopped" && existingVehicle19?.status !== "stopped") {
+          parkedSince19 = new Date();
+        } else if (newStatus19 === "active" && existingVehicle19?.status === "stopped") {
+          parkedSince19 = null;
+        }
+        const vehicleUpdate19: { status: string; parkedSince?: Date | null } = { status: newStatus19 };
+        if (parkedSince19 !== undefined) vehicleUpdate19.parkedSince = parkedSince19;
+        const updatedVehicle19 = await storage.updateVehicle(vehicleId19, vehicleUpdate19);
+
+        checkGeofences(location19).catch((e) => console.error("[GT06] Geofence error:", e));
+        checkSpeedViolation(location19).catch((e) => console.error("[GT06] Speed check error:", e));
+        broadcastLocationUpdate({ ...location19, vehicleId: vehicleId19 });
+        if (updatedVehicle19) broadcastVehicleUpdate(updatedVehicle19);
+      } else {
+        console.warn(`[GT06] 0x19 GPS+LBS: data too short (${pkt.data?.length ?? 0} bytes) from ${deviceImei19}`);
+      }
+      break;
+    }
+
+    // ── LBS-Only (0x22 / 0x23) ──
+    // No GPS coordinates — device only has cell-tower info. Update lastSeenAt so
+    // the vehicle doesn't show "Waiting for GPS" / offline when it's actually alive.
+    case 0x22:
+    case 0x23: {
+      const protoName = pkt.proto === 0x22 ? "LBS-Only" : "LBS-Status";
+      const deviceImei = getImei();
+      socket.write(buildAck(pkt.proto, pkt.serial, pkt.extended));
+
+      if (deviceImei) {
+        console.log(`[GT06] ${protoName} (0x${pkt.proto.toString(16)}) from ${deviceImei} — no GPS coords, updating lastSeenAt`);
+        const vehicle = await storage.getVehicleByDeviceId(deviceImei);
+        if (vehicle) {
+          await storage.updateVehicleLastSeen(vehicle.id, new Date());
+          // 0x23 also contains a status byte at position 0 (same as 0x13)
+          if (pkt.proto === 0x23 && pkt.data && pkt.data.length >= 1) {
+            const statusByte = pkt.data[0];
+            const ignitionOn = Boolean(statusByte & 0x08);
+            await storage.updateVehicleIgnition(vehicle.id, ignitionOn);
+          }
+        }
+      }
       break;
     }
 

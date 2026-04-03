@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { X, MapPin, Gauge, Compass, Mountain, Satellite, Clock, Calendar, TrendingUp, Activity, Bell } from "lucide-react";
+import { X, MapPin, Gauge, Compass, Mountain, Satellite, Clock, Calendar, TrendingUp, Activity, Bell, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -204,10 +204,16 @@ export function VehicleDetailPanel({ vehicleId, vehicles, locations, onClose }: 
                       : satellites >= 4 ? "Moderate" : "Poor"
                   }
                 />
-                <InfoRow label="Accuracy" value={
-                  location?.accuracy != null
-                    ? `±${Math.round(parseFloat(String(location.accuracy)))} m`
-                    : "—"
+                <InfoRow label="Ignition" value={
+                  vehicle.ignitionOn == null
+                    ? "—"
+                    : (
+                      <span className={`flex items-center gap-1 ${vehicle.ignitionOn ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}
+                        data-testid="text-ignition-status">
+                        <KeyRound className="h-3 w-3 shrink-0" />
+                        {vehicle.ignitionOn ? "On" : "Off"}
+                      </span>
+                    )
                 } />
                 <InfoRow label="Today's trips" value={tripCount > 0 ? `${tripCount} trips` : "No trips today"} />
               </div>

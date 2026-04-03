@@ -64,6 +64,7 @@ export interface IStorage {
   createVehicle(vehicle: InsertVehicle): Promise<Vehicle>;
   updateVehicle(id: string, vehicle: Partial<Vehicle>): Promise<Vehicle | undefined>;
   updateVehicleLastSeen(id: string, at: Date): Promise<void>;
+  updateVehicleIgnition(id: string, ignitionOn: boolean): Promise<void>;
   deleteVehicle(id: string): Promise<boolean>;
 
   // Locations
@@ -276,6 +277,10 @@ export class DbStorage implements IStorage {
 
   async updateVehicleLastSeen(id: string, at: Date): Promise<void> {
     await neonSql`UPDATE vehicles SET last_seen_at = ${at.toISOString()} WHERE id = ${id}`;
+  }
+
+  async updateVehicleIgnition(id: string, ignitionOn: boolean): Promise<void> {
+    await neonSql`UPDATE vehicles SET ignition_on = ${ignitionOn} WHERE id = ${id}`;
   }
 
   async deleteVehicle(id: string): Promise<boolean> {

@@ -4,7 +4,7 @@ import { MapComponent } from "@/components/map-component";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, List, X } from "lucide-react";
+import { Search, List, X, KeyRound } from "lucide-react";
 import type { Vehicle, Location, UserAlertSettings } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -482,6 +482,15 @@ export default function Tracking() {
                             style={{ background: "#f59e0b", color: "#fff", fontSize: "9px", fontWeight: 700, padding: "0 4px", borderRadius: "2px" }}
                           >P</span>
                           {formatParkingDuration(vehicle.parkedSince)}
+                        </span>
+                      )}
+                      {vehicle.ignitionOn != null && (
+                        <span
+                          className={`flex items-center gap-0.5 text-xs flex-shrink-0 ${vehicle.ignitionOn ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}
+                          data-testid={`text-ignition-${vehicle.id}`}
+                          title={`Ignition ${vehicle.ignitionOn ? "on" : "off"}`}
+                        >
+                          <KeyRound className="h-3 w-3" />
                         </span>
                       )}
                       {isSelected && selectedTrailCount > 1 && (
