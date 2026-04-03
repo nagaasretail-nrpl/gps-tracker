@@ -142,3 +142,60 @@ export function markAttemptLoginComplete(remoteAddr: string): void {
 export function getRawAttemptLog(): RawAttemptEntry[] {
   return [...rawAttemptLog].sort((a, b) => b.seenAt.getTime() - a.seenAt.getTime());
 }
+
+// ─── Per-IMEI Packet Statistics ───────────────────────────────────────────
+// Tracks GPS-location packet throughput since last server start.
+// "received"  = GPS location packet arrived from a known, registered device
+// "accepted"  = passed filter pipeline and was written to DB
+// "rejected"  = parse failure OR filter pipeline rejection
+// Note: heartbeat / alarm / auxiliary packets are NOT counted here — only
+//       packets that carry (or attempt to carry) a GPS location fix.
+export interface PacketStats {
+  imei: string;
+  packetsReceived: number;
+  locationsAccepted: number;
+  locationsRejected: number;
+  lastRejectionReason: string | null;
+  lastRejectionAt: Date | null;
+}
+
+const packetStatsMap = new Map<string, PacketStats>();
+
+function ensureStats(imei: string): PacketStats {
+  let s = packetStatsMap.get(imei);
+  if (!s) {
+    s = {
+      imei,
+      packetsReceived: 0,
+      locationsAccepted: 0,
+      locationsRejected: 0,
+      lastRejectionReason: null,
+      lastRejectionAt: null,
+    };
+    packetStatsMap.set(imei, s);
+  }
+  return s;
+}
+
+export function logPacketReceived(imei: string): void {
+  ensureStats(imei).packetsReceived += 1;
+}
+
+export function logLocationAccepted(imei: string): void {
+  ensureStats(imei).locationsAccepted += 1;
+}
+
+export function logLocationRejected(imei: string, reason: string): void {
+  const s = ensureStats(imei);
+  s.locationsRejected += 1;
+  s.lastRejectionReason = reason;
+  s.lastRejectionAt = new Date();
+}
+
+export function getPacketStats(imei: string): PacketStats | undefined {
+  return packetStatsMap.get(imei);
+}
+
+export function getAllPacketStats(): PacketStats[] {
+  return Array.from(packetStatsMap.values());
+}

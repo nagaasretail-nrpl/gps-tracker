@@ -72,6 +72,7 @@ export interface IStorage {
   getLatestLocations(): Promise<Location[]>;
   getLatestLocationForVehicle(vehicleId: string): Promise<Location | null>;
   getLatestLocationTimestampsForVehicles(vehicleIds: string[]): Promise<Map<string, Date>>;
+  getLocationCountsForVehicles(vehicleIds: string[], since: Date): Promise<Map<string, number>>;
   getLocationHistory(vehicleId: string, startDate: Date, endDate: Date): Promise<Location[]>;
   getLocationTrail(since: Date, perVehicleLimit: number): Promise<Location[]>;
   getActivityLocationHistory(activityId: string): Promise<Location[]>;
@@ -385,6 +386,23 @@ export class DbStorage implements IStorage {
     const map = new Map<string, Date>();
     for (const row of (result.rows ?? []) as { vehicleId: string; timestamp: string | Date }[]) {
       map.set(row.vehicleId, new Date(row.timestamp));
+    }
+    return map;
+  }
+
+  async getLocationCountsForVehicles(vehicleIds: string[], since: Date): Promise<Map<string, number>> {
+    if (vehicleIds.length === 0) return new Map();
+    const idList = sql.join(vehicleIds.map((id) => sql`${id}`), sql`, `);
+    const result = await db.execute(sql`
+      SELECT vehicle_id AS "vehicleId", COUNT(*)::int AS "count"
+      FROM locations
+      WHERE vehicle_id IN (${idList})
+        AND timestamp >= ${since.toISOString()}
+      GROUP BY vehicle_id
+    `);
+    const map = new Map<string, number>();
+    for (const row of (result.rows ?? []) as { vehicleId: string; count: number }[]) {
+      map.set(row.vehicleId, row.count);
     }
     return map;
   }

@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { checkGeofences, checkSpeedViolation, setEventBroadcaster } from "./geofence-monitor";
 import { setLocationBroadcaster, setVehicleBroadcaster } from "./broadcaster";
-import { getActiveConnections, getUnknownImeiLog, getRejectionForImei, getRawAttemptLog, logUnknownImei as registryLogUnknownImei } from "./device-registry";
+import { getActiveConnections, getUnknownImeiLog, getRejectionForImei, getRawAttemptLog, logUnknownImei as registryLogUnknownImei, getPacketStats } from "./device-registry";
 import { authRoutes } from "./auth-routes";
 import { requireAuth, requireAdmin } from "./auth";
 import { filterIncomingLocation, type LastKnownLocation } from "./lib/locationFilter";
@@ -913,13 +913,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
    *
    * Admin (full diagnostics):
    *   { imei, vehicleId, vehicleName, connected, recentlyActive, packetCount,
-   *     remoteAddr, connectedAt, lastPacketAt, lastLocationAt, lastRejection }
+   *     remoteAddr, connectedAt, lastPacketAt, lastLocationAt, lastRejection,
+   *     packetsReceived, locationsAccepted, locationsRejected, lastRejectionReason,
+   *     lastRejectionAt, storedToday }
    *
    * Regular user (connection status only, scoped to their allowed vehicles):
    *   { imei, vehicleId, vehicleName, connected, recentlyActive, packetCount }
    *
    * "connected"      — live TCP session in memory (resets on restart)
    * "recentlyActive" — DB location within last 3 min (survives restart)
+   * "storedToday"    — DB count of locations in last 24h (survives restart)
    */
   app.get("/api/device/connections", requireAuth, async (req, res) => {
     const RECENTLY_ACTIVE_MS = 3 * 60 * 1000; // 3 minutes
@@ -938,7 +941,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Single batch query for all latest location timestamps (avoids N+1)
     const vehicleIds = scoped.map((v) => v.id);
-    const latestTimestamps = await storage.getLatestLocationTimestampsForVehicles(vehicleIds);
+    const [latestTimestamps, storedTodayCounts] = await Promise.all([
+      storage.getLatestLocationTimestampsForVehicles(vehicleIds),
+      isAdmin
+        ? storage.getLocationCountsForVehicles(vehicleIds, new Date(now - 24 * 60 * 60 * 1000))
+        : Promise.resolve(new Map<string, number>()),
+    ]);
 
     const result = scoped.map((v) => {
       const imei = v.deviceId ?? "";
@@ -953,6 +961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isAdmin) {
         // Full diagnostic payload for admins
         const rejection = imei ? getRejectionForImei(imei) : undefined;
+        const pktStats = imei ? getPacketStats(imei) : undefined;
         return {
           imei,
           vehicleId: v.id,
@@ -967,6 +976,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastRejection: rejection
             ? { reason: rejection.reason, at: rejection.rejectedAt, count: rejection.count }
             : null,
+          // Per-IMEI packet stats (since last server start)
+          packetsReceived: pktStats?.packetsReceived ?? 0,
+          locationsAccepted: pktStats?.locationsAccepted ?? 0,
+          locationsRejected: pktStats?.locationsRejected ?? 0,
+          lastRejectionReason: pktStats?.lastRejectionReason ?? null,
+          lastRejectionAt: pktStats?.lastRejectionAt ?? null,
+          // DB-persistent count (survives restart)
+          storedToday: storedTodayCounts.get(v.id) ?? 0,
         };
       }
 

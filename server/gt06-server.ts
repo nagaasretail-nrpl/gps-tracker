@@ -23,6 +23,9 @@ import {
   logRejection,
   logRawAttempt,
   markAttemptLoginComplete,
+  logPacketReceived,
+  logLocationAccepted,
+  logLocationRejected,
 } from "./device-registry";
 
 const GT06_PORT = parseInt(process.env.GT06_PORT || "5023", 10);
@@ -510,10 +513,13 @@ async function handlePacket(
         console.error(`[GT06] Failed to update lastSeenAt for ${vehicleId}:`, e.message);
       });
 
+      logPacketReceived(deviceImei);
+
       const loc = parseLocationWithReason(pkt.data);
       if (!loc.parsed) {
         // Always ACK location packets even if discarded (prevents device retransmits).
         logRejection(deviceImei, loc.reason);
+        logLocationRejected(deviceImei, loc.reason);
         socket.write(buildAck(0x12, pkt.serial, pkt.extended));
         break;
       }
@@ -550,6 +556,7 @@ async function handlePacket(
         const filterReason = `${filterResult.reason}${filterResult.details ? ` — ${filterResult.details}` : ""}`;
         console.log(`[GT06][FILTER] ${deviceImei} rejected: ${filterReason}`);
         logRejection(deviceImei, filterReason);
+        logLocationRejected(deviceImei, filterReason);
         socket.write(buildAck(0x12, pkt.serial, pkt.extended));
         break;
       }
@@ -593,6 +600,9 @@ async function handlePacket(
       const vehicleUpdate: { status: string; parkedSince?: Date | null } = { status: newStatus };
       if (parkedSince !== undefined) vehicleUpdate.parkedSince = parkedSince;
       const updatedVehicle = await storage.updateVehicle(vehicleId, vehicleUpdate);
+
+      // Track accepted location in per-IMEI packet stats
+      logLocationAccepted(deviceImei);
 
       // Trigger geofence checks and broadcast to WebSocket clients
       checkGeofences(location).catch((e) => console.error("[GT06] Geofence error:", e));
@@ -673,9 +683,11 @@ async function handlePacket(
       // GPS portion is the first 18 bytes — same layout as 0x12
       if (pkt.data && pkt.data.length >= 18) {
         const gpsData = pkt.data.slice(0, 18);
+        logPacketReceived(deviceImei19);
         const loc19 = parseLocationWithReason(gpsData);
         if (!loc19.parsed) {
           logRejection(deviceImei19, `0x19: ${loc19.reason}`);
+          logLocationRejected(deviceImei19, `0x19: ${loc19.reason}`);
           break;
         }
         const locData19 = loc19.parsed;
@@ -702,10 +714,12 @@ async function handlePacket(
           const r = `${filterResult19.reason}${filterResult19.details ? ` — ${filterResult19.details}` : ""}`;
           console.log(`[GT06][FILTER] 0x19 ${deviceImei19} rejected: ${r}`);
           logRejection(deviceImei19, r);
+          logLocationRejected(deviceImei19, r);
           break;
         }
 
         const filtered19 = filterResult19.location;
+        logLocationAccepted(deviceImei19);
         console.log(`[GT06] 0x19 GPS+LBS location ${deviceImei19}: lat=${filtered19.lat.toFixed(6)}, lng=${filtered19.lng.toFixed(6)}, sats=${locData19.satellites}`);
 
         const location19 = await storage.createDeviceLocation(
@@ -846,9 +860,11 @@ async function handlePacket(
           break;
         }
         const record = pkt.data.slice(offset, offset + 18);
+        logPacketReceived(deviceImei15);
         const locResult = parseLocationWithReason(record);
         if (!locResult.parsed) {
           console.log(`[GT06] 0x15 record ${i + 1}: rejected parse — ${locResult.reason}`);
+          logLocationRejected(deviceImei15, `0x15[${i}]: ${locResult.reason}`);
           rejected15++;
           continue;
         }
@@ -880,11 +896,13 @@ async function handlePacket(
           const r = `${filterResult15.reason}${filterResult15.details ? ` — ${filterResult15.details}` : ""}`;
           console.log(`[GT06] 0x15 record ${i + 1}: filter rejected — ${r}`);
           logRejection(deviceImei15, `0x15[${i}]: ${r}`);
+          logLocationRejected(deviceImei15, `0x15[${i}]: ${r}`);
           rejected15++;
           continue;
         }
 
         const filtered15 = filterResult15.location;
+        logLocationAccepted(deviceImei15);
         const location15 = await storage.createDeviceLocation(
           vehicleId15,
           filtered15.lat,

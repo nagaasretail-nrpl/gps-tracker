@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Wifi, WifiOff, Cpu, AlertTriangle, Activity, Radio } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { User } from "@shared/schema";
 
 type UserWithoutPassword = Omit<User, "password">;
@@ -20,6 +21,14 @@ interface DeviceConnectionInfo {
   recentlyActive: boolean;
   lastLocationAt: string | null;
   lastRejection: { reason: string; at: string; count: number } | null;
+  // Per-IMEI packet stats (since last server start)
+  packetsReceived: number;
+  locationsAccepted: number;
+  locationsRejected: number;
+  lastRejectionReason: string | null;
+  lastRejectionAt: string | null;
+  // DB-persistent count (survives restart)
+  storedToday: number;
 }
 
 interface UnknownImeiEntry {
@@ -88,8 +97,6 @@ export default function AdminDevices() {
   const recentlyActiveCount = (connections ?? []).filter((d) => !d.connected && d.recentlyActive).length;
   const unknownCount = (unknownDevices ?? []).length;
   const failedAttempts = (rawAttempts ?? []).filter((r) => !r.loginCompleted).length;
-
-  const hasRejections = (connections ?? []).some((d) => d.lastRejection !== null);
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-6xl mx-auto">
@@ -176,10 +183,8 @@ export default function AdminDevices() {
                     <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">IMEI / Device ID</th>
                     <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Status</th>
                     <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Last Location</th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">TCP Packets</th>
-                    {hasRejections && (
-                      <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Last Rejection</th>
-                    )}
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Packets (this session)</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Stored Today</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -222,25 +227,44 @@ export default function AdminDevices() {
                           ? formatRelative(device.lastLocationAt)
                           : "—"}
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                        {device.packetCount > 0 ? device.packetCount.toLocaleString() : "—"}
-                      </td>
-                      {hasRejections && (
-                        <td className="px-4 py-2.5 text-xs">
-                          {device.lastRejection ? (
-                            <div>
-                              <p className="text-destructive font-medium truncate max-w-48" title={device.lastRejection.reason}>
-                                {device.lastRejection.reason}
-                              </p>
-                              <p className="text-muted-foreground">
-                                {device.lastRejection.count}× · {formatRelative(device.lastRejection.at)}
-                              </p>
+                      <td className="px-4 py-2.5 text-xs">
+                        {device.packetsReceived > 0 ? (
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <span className="text-muted-foreground">Recv</span>
+                              <span className="font-medium">{device.packetsReceived.toLocaleString()}</span>
+                              <span className="text-muted-foreground/50">·</span>
+                              <span className="text-green-600 dark:text-green-400">OK {device.locationsAccepted.toLocaleString()}</span>
+                              {device.locationsRejected > 0 && (
+                                <>
+                                  <span className="text-muted-foreground/50">·</span>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="text-destructive cursor-help underline decoration-dotted">
+                                        Rej {device.locationsRejected.toLocaleString()}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="left" className="max-w-72">
+                                      <p className="font-medium text-xs mb-0.5">Last rejection reason:</p>
+                                      <p className="text-xs">{device.lastRejectionReason}</p>
+                                      {device.lastRejectionAt && (
+                                        <p className="text-xs text-muted-foreground mt-0.5">{formatRelative(device.lastRejectionAt)}</p>
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </>
+                              )}
                             </div>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                      )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        {device.storedToday > 0
+                          ? device.storedToday.toLocaleString()
+                          : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
