@@ -625,6 +625,9 @@ async function handlePacket(
       const deviceImei = getImei();
       socket.write(buildAck(0x13, pkt.serial, pkt.extended));
 
+      const conn13 = activeConnections.get(remoteAddr);
+      if (conn13) { conn13.lastPacketAt = new Date(); conn13.packetCount += 1; }
+
       if (deviceImei && pkt.data && pkt.data.length >= 1) {
         const statusByte = pkt.data[0];
         const ignitionOn = Boolean(statusByte & 0x08);
@@ -659,6 +662,9 @@ async function handlePacket(
         console.warn(`[GT06] 0x19 packet before login from ${remoteAddr}`);
         break;
       }
+
+      const conn19 = activeConnections.get(remoteAddr);
+      if (conn19) { conn19.lastPacketAt = new Date(); conn19.packetCount += 1; }
 
       storage.updateVehicleLastSeen(vehicleId19, new Date()).catch((e: Error) => {
         console.error(`[GT06] Failed to update lastSeenAt for ${vehicleId19}:`, e.message);
@@ -754,19 +760,38 @@ async function handlePacket(
     case 0x22:
     case 0x23: {
       const protoName = pkt.proto === 0x22 ? "LBS-Only" : "LBS-Status";
-      const deviceImei = getImei();
+      const deviceImei2223 = getImei();
       socket.write(buildAck(pkt.proto, pkt.serial, pkt.extended));
 
-      if (deviceImei) {
-        console.log(`[GT06] ${protoName} (0x${pkt.proto.toString(16)}) from ${deviceImei} — no GPS coords, updating lastSeenAt`);
-        const vehicle = await storage.getVehicleByDeviceId(deviceImei);
-        if (vehicle) {
-          await storage.updateVehicleLastSeen(vehicle.id, new Date());
+      const conn2223 = activeConnections.get(remoteAddr);
+      if (conn2223) { conn2223.lastPacketAt = new Date(); conn2223.packetCount += 1; }
+
+      if (deviceImei2223) {
+        // Log raw LBS fields from the payload for diagnostics
+        // 0x22 layout: [MCC 2B] [MNC 1B] [LAC 2B] [CellID 3B] [Signal 1B] = 9 bytes
+        // 0x23 layout: [Status 1B] [MCC 2B] [MNC 1B] [LAC 2B] [CellID 3B] [Signal 1B] = 10 bytes
+        if (pkt.data && pkt.data.length >= 9) {
+          const offset = pkt.proto === 0x23 ? 1 : 0;
+          if (pkt.data.length >= offset + 9) {
+            const mcc2223    = pkt.data.readUInt16BE(offset);
+            const mnc2223    = pkt.data[offset + 2];
+            const lac2223    = pkt.data.readUInt16BE(offset + 3);
+            const cellId2223 = (pkt.data[offset + 5] << 16) | (pkt.data[offset + 6] << 8) | pkt.data[offset + 7];
+            const signal2223 = pkt.data[offset + 8];
+            console.log(`[GT06] ${protoName} (0x${pkt.proto.toString(16)}) from ${deviceImei2223} — MCC=${mcc2223} MNC=${mnc2223} LAC=0x${lac2223.toString(16)} CellID=0x${cellId2223.toString(16)} Signal=${signal2223}`);
+          }
+        } else {
+          console.log(`[GT06] ${protoName} (0x${pkt.proto.toString(16)}) from ${deviceImei2223} — no GPS coords, updating lastSeenAt`);
+        }
+
+        const vehicle2223 = await storage.getVehicleByDeviceId(deviceImei2223);
+        if (vehicle2223) {
+          await storage.updateVehicleLastSeen(vehicle2223.id, new Date());
           // 0x23 also contains a status byte at position 0 (same as 0x13)
           if (pkt.proto === 0x23 && pkt.data && pkt.data.length >= 1) {
             const statusByte = pkt.data[0];
             const ignitionOn = Boolean(statusByte & 0x08);
-            await storage.updateVehicleIgnition(vehicle.id, ignitionOn);
+            await storage.updateVehicleIgnition(vehicle2223.id, ignitionOn);
           }
         }
       }
