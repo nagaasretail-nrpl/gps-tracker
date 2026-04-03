@@ -139,6 +139,7 @@ export const vehicles = pgTable("vehicles", {
   fuelRatePerLiter: decimal("fuel_rate_per_liter", { precision: 10, scale: 2 }), // cost per liter/unit; null = not set
   fuelTankCapacity: decimal("fuel_tank_capacity", { precision: 10, scale: 2 }), // liters; null = not set
   devicePhone: text("device_phone"), // SIM card phone number on the GPS tracker
+  deviceModel: text("device_model"), // GPS tracker model: "GT06N", "GT06S", "WeTrack Lite", "Other"
   parkedSince: timestamp("parked_since"), // set when vehicle transitions from moving → stopped
   lastSeenAt: timestamp("last_seen_at"), // set whenever any GT06 TCP packet arrives from this IMEI
   ignitionOn: boolean("ignition_on"), // ACC/ignition status from 0x13 heartbeat (null = not yet received)
@@ -156,6 +157,7 @@ export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   fuelRatePerLiter: z.coerce.number().positive().nullable().optional(),
   fuelTankCapacity: z.coerce.number().positive().nullable().optional(),
   devicePhone: z.string().nullable().optional(),
+  deviceModel: z.string().nullable().optional(),
 });
 
 export const updateVehicleSchema = z.object({
@@ -171,6 +173,7 @@ export const updateVehicleSchema = z.object({
   fuelRatePerLiter: z.number().positive().nullable().optional(),
   fuelTankCapacity: z.number().positive().nullable().optional(),
   devicePhone: z.string().nullable().optional(),
+  deviceModel: z.string().nullable().optional(),
   parkedSince: z.date().nullable().optional(),
 });
 

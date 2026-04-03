@@ -254,8 +254,9 @@ export class DbStorage implements IStorage {
     const fr = insertVehicle.fuelRatePerLiter != null ? String(insertVehicle.fuelRatePerLiter) : null;
     const fc = insertVehicle.fuelTankCapacity != null ? String(insertVehicle.fuelTankCapacity) : null;
     const dp = insertVehicle.devicePhone ?? null;
-    await neonSql`INSERT INTO vehicles (id, name, device_id, type, status, icon_color, driver_name, license_plate, fuel_type, fuel_efficiency, fuel_rate_per_liter, fuel_tank_capacity, device_phone)
-      VALUES (gen_random_uuid(), ${insertVehicle.name}, ${insertVehicle.deviceId}, ${insertVehicle.type ?? "car"}, ${insertVehicle.status ?? "offline"}, ${insertVehicle.iconColor ?? "#2563eb"}, ${insertVehicle.driverName ?? null}, ${insertVehicle.licensePlate ?? null}, ${insertVehicle.fuelType ?? null}, ${fe}, ${fr}, ${fc}, ${dp})`;
+    const dm = insertVehicle.deviceModel ?? null;
+    await neonSql`INSERT INTO vehicles (id, name, device_id, type, status, icon_color, driver_name, license_plate, fuel_type, fuel_efficiency, fuel_rate_per_liter, fuel_tank_capacity, device_phone, device_model)
+      VALUES (gen_random_uuid(), ${insertVehicle.name}, ${insertVehicle.deviceId}, ${insertVehicle.type ?? "car"}, ${insertVehicle.status ?? "offline"}, ${insertVehicle.iconColor ?? "#2563eb"}, ${insertVehicle.driverName ?? null}, ${insertVehicle.licensePlate ?? null}, ${insertVehicle.fuelType ?? null}, ${fe}, ${fr}, ${fc}, ${dp}, ${dm})`;
     const rows = await db.select().from(vehicles).where(eq(vehicles.deviceId, insertVehicle.deviceId));
     return rows[0];
   }

@@ -61,6 +61,13 @@ const FUEL_TYPE_OPTIONS = [
   { value: "electric", label: "Electric" },
 ] as const;
 
+const DEVICE_MODEL_OPTIONS = [
+  { value: "GT06N", label: "GT06N" },
+  { value: "GT06S", label: "GT06S" },
+  { value: "WeTrack Lite", label: "WeTrack Lite (JIMI IoT)" },
+  { value: "Other", label: "Other" },
+] as const;
+
 type FuelTypeValue = typeof FUEL_TYPE_OPTIONS[number]["value"] | "" | "none";
 
 function fuelEfficiencyLabel(fuelType: FuelTypeValue): string {
@@ -195,8 +202,10 @@ export default function Vehicles() {
   const [editFuelRatePerLiter, setEditFuelRatePerLiter] = useState<string>("");
   const [editFuelTankCapacity, setEditFuelTankCapacity] = useState<string>("");
   const [editDevicePhone, setEditDevicePhone] = useState<string>("");
+  const [editDeviceModel, setEditDeviceModel] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedGt06Id, setCopiedGt06Id] = useState<string | null>(null);
+  const [copiedWeTrackId, setCopiedWeTrackId] = useState<string | null>(null);
   const [setupExpanded, setSetupExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -225,6 +234,14 @@ export default function Vehicles() {
     setCopiedGt06Id(cardId);
     toast({ description: "GT06N SMS command copied to clipboard" });
     setTimeout(() => setCopiedGt06Id(null), 2000);
+  };
+
+  const copyWeTrackCmd = (cardId: string) => {
+    const cmd = `SERVER,0,${serverHost},${gt06Port},0#`;
+    navigator.clipboard.writeText(cmd);
+    setCopiedWeTrackId(cardId);
+    toast({ description: "WeTrack Lite SMS command copied to clipboard" });
+    setTimeout(() => setCopiedWeTrackId(null), 2000);
   };
 
   const { data: vehicles, isLoading } = useQuery<Vehicle[]>({
@@ -262,6 +279,7 @@ export default function Vehicles() {
       fuelRatePerLiter: null,
       fuelTankCapacity: null,
       devicePhone: null,
+      deviceModel: null,
     },
   });
 
@@ -302,12 +320,12 @@ export default function Vehicles() {
   });
 
   const editMutation = useMutation({
-    mutationFn: async ({ id, name, deviceId, iconColor, type, fuelType, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity, devicePhone }: {
+    mutationFn: async ({ id, name, deviceId, iconColor, type, fuelType, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity, devicePhone, deviceModel }: {
       id: string; name: string; deviceId: string; iconColor: string; type: string;
       fuelType: string | null; fuelEfficiency: number | null; fuelRatePerLiter: number | null;
-      fuelTankCapacity: number | null; devicePhone: string | null;
+      fuelTankCapacity: number | null; devicePhone: string | null; deviceModel: string | null;
     }) => {
-      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId, iconColor, type, fuelType: fuelType || null, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity, devicePhone });
+      return await apiRequest("PATCH", `/api/vehicles/${id}`, { name, deviceId, iconColor, type, fuelType: fuelType || null, fuelEfficiency, fuelRatePerLiter, fuelTankCapacity, devicePhone, deviceModel: deviceModel || null });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
@@ -371,6 +389,7 @@ export default function Vehicles() {
     setEditFuelRatePerLiter(v.fuelRatePerLiter != null ? String(v.fuelRatePerLiter) : "");
     setEditFuelTankCapacity(v.fuelTankCapacity != null ? String(v.fuelTankCapacity) : "");
     setEditDevicePhone(v.devicePhone ?? "");
+    setEditDeviceModel(v.deviceModel ?? "");
     setSetupExpanded(false);
   };
 
@@ -379,6 +398,7 @@ export default function Vehicles() {
       ...data,
       fuelType: (data.fuelType === "none" ? null : data.fuelType) ?? null,
       devicePhone: data.devicePhone?.trim() || null,
+      deviceModel: (data.deviceModel === "none" ? null : data.deviceModel) ?? null,
     });
   };
 
@@ -689,6 +709,26 @@ export default function Vehicles() {
                       </FormItem>
                     )} />
 
+                    <FormField control={form.control} name="deviceModel" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Device Model <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <Select value={field.value ?? ""} onValueChange={(val) => field.onChange(val || null)}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-add-device-model">
+                              <SelectValue placeholder="Not set" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">Not set</SelectItem>
+                            {DEVICE_MODEL_OPTIONS.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)} data-testid="button-cancel">Cancel</Button>
                       <Button type="submit" disabled={addMutation.isPending} data-testid="button-submit">
@@ -888,6 +928,20 @@ export default function Vehicles() {
               <Input id="edit-device-phone" value={editDevicePhone} onChange={e => setEditDevicePhone(e.target.value)} placeholder="SIM phone number on tracker" data-testid="input-edit-device-phone" />
               <p className="text-xs text-muted-foreground">SIM card number installed in the GPS tracker.</p>
             </div>
+            <div className="space-y-1">
+              <Label>Device Model <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Select value={editDeviceModel} onValueChange={(val) => setEditDeviceModel(val === "none" ? "" : val)}>
+                <SelectTrigger data-testid="select-edit-device-model">
+                  <SelectValue placeholder="Not set" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not set</SelectItem>
+                  {DEVICE_MODEL_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label>Icon Type</Label>
               <div className="grid grid-cols-5 gap-1.5">
@@ -987,35 +1041,86 @@ export default function Vehicles() {
               </button>
               {setupExpanded && (
                 <div className="px-3 py-3 space-y-3 text-sm bg-background">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <Radio className="h-3.5 w-3.5 text-muted-foreground" />
-                      <p className="text-xs font-semibold">GT06N (Binary TCP)</p>
+                  {editDeviceModel === "WeTrack Lite" ? (
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <Radio className="h-3.5 w-3.5 text-muted-foreground" />
+                          <p className="text-xs font-semibold">WeTrack Lite — Step 1: Set Server</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          IMEI = <code className="text-xs font-mono">{editDeviceId || "your-device-id"}</code> must match Device ID above. Send this SMS to the tracker's SIM:
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs break-all flex-1 bg-muted rounded px-1.5 py-1 font-mono">SERVER,0,{serverHost},{gt06Port},0#</code>
+                          <Button size="icon" variant="ghost" onClick={() => copyWeTrackCmd("edit")} data-testid="button-copy-wetrack-edit" title="Copy WeTrack Lite SMS command">
+                            {copiedWeTrackId === "edit" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">TCP port <strong>{gt06Port}</strong> · Note the <code className="font-mono">0</code> prefix (not 1) for WeTrack Lite</p>
+                      </div>
+                      <div className="space-y-1.5 border-t pt-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <Radio className="h-3.5 w-3.5 text-muted-foreground" />
+                          <p className="text-xs font-semibold">WeTrack Lite — Step 2: Set APN</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Replace <code className="font-mono">your.apn</code> with your SIM provider's APN:</p>
+                        <code className="text-xs break-all block bg-muted rounded px-1.5 py-1 font-mono">APN,your.apn#</code>
+                      </div>
+                      <div className="space-y-1.5 border-t pt-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <Radio className="h-3.5 w-3.5 text-muted-foreground" />
+                          <p className="text-xs font-semibold">WeTrack Lite — Step 3: Set Heartbeat</p>
+                        </div>
+                        <code className="text-xs break-all block bg-muted rounded px-1.5 py-1 font-mono">HEARTBEAT,30#</code>
+                        <p className="text-xs text-muted-foreground">Sends a keepalive every 30 seconds to maintain connection</p>
+                      </div>
+                      <div className="space-y-1.5 border-t pt-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                          <p className="text-xs font-semibold">HTTP JSON (alternative)</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs break-all flex-1 bg-muted rounded px-1.5 py-1 font-mono">{serverUrl}/api/device/location</code>
+                          <Button size="icon" variant="ghost" onClick={() => copyUrl("edit")} data-testid="button-copy-url-edit" title="Copy HTTP endpoint URL">
+                            {copiedId === "edit" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Set IMEI = <code className="text-xs font-mono">{editDeviceId || "your-device-id"}</code> in fleet, then send this SMS:
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs break-all flex-1 bg-muted rounded px-1.5 py-1 font-mono">SERVER,1,{serverHost},{gt06Port}#</code>
-                      <Button size="icon" variant="ghost" onClick={() => copyGt06Cmd("edit")} data-testid="button-copy-gt06-edit" title="Copy GT06N SMS command">
-                        {copiedGt06Id === "edit" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">TCP port <strong>{gt06Port}</strong> · IMEI must match Device ID above</p>
-                  </div>
-                  <div className="space-y-1.5 border-t pt-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                      <p className="text-xs font-semibold">HTTP JSON (other trackers)</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs break-all flex-1 bg-muted rounded px-1.5 py-1 font-mono">{serverUrl}/api/device/location</code>
-                      <Button size="icon" variant="ghost" onClick={() => copyUrl("edit")} data-testid="button-copy-url-edit" title="Copy HTTP endpoint URL">
-                        {copiedId === "edit" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">POST · Body: <code className="text-xs font-mono">{"{ deviceId, latitude, longitude, speed }"}</code></p>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <Radio className="h-3.5 w-3.5 text-muted-foreground" />
+                          <p className="text-xs font-semibold">{editDeviceModel || "GT06N"} (Binary TCP)</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Set IMEI = <code className="text-xs font-mono">{editDeviceId || "your-device-id"}</code> in fleet, then send this SMS:
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs break-all flex-1 bg-muted rounded px-1.5 py-1 font-mono">SERVER,1,{serverHost},{gt06Port}#</code>
+                          <Button size="icon" variant="ghost" onClick={() => copyGt06Cmd("edit")} data-testid="button-copy-gt06-edit" title="Copy GT06N SMS command">
+                            {copiedGt06Id === "edit" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">TCP port <strong>{gt06Port}</strong> · IMEI must match Device ID above</p>
+                      </div>
+                      <div className="space-y-1.5 border-t pt-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                          <p className="text-xs font-semibold">HTTP JSON (other trackers)</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs break-all flex-1 bg-muted rounded px-1.5 py-1 font-mono">{serverUrl}/api/device/location</code>
+                          <Button size="icon" variant="ghost" onClick={() => copyUrl("edit")} data-testid="button-copy-url-edit" title="Copy HTTP endpoint URL">
+                            {copiedId === "edit" ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">POST · Body: <code className="text-xs font-mono">{"{ deviceId, latitude, longitude, speed }"}</code></p>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1035,6 +1140,7 @@ export default function Vehicles() {
                   fuelRatePerLiter: editFuelRatePerLiter !== "" ? parseFloat(editFuelRatePerLiter) : null,
                   fuelTankCapacity: editFuelTankCapacity !== "" ? parseFloat(editFuelTankCapacity) : null,
                   devicePhone: editDevicePhone.trim() !== "" ? editDevicePhone.trim() : null,
+                  deviceModel: editDeviceModel.trim() !== "" ? editDeviceModel.trim() : null,
                 })}
                 data-testid="button-save-edit-vehicle"
               >
@@ -1120,6 +1226,11 @@ export default function Vehicles() {
                   {vehicle.devicePhone && (
                     <span className="text-xs text-muted-foreground/70 truncate" title={vehicle.devicePhone} data-testid={`text-vehicle-devicephone-${vehicle.id}`}>
                       {vehicle.devicePhone}
+                    </span>
+                  )}
+                  {vehicle.deviceModel && (
+                    <span className="text-xs text-muted-foreground/60 truncate" data-testid={`text-vehicle-devicemodel-${vehicle.id}`}>
+                      {vehicle.deviceModel}
                     </span>
                   )}
                 </div>

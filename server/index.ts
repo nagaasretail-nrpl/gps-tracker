@@ -18,6 +18,7 @@ async function runMigrations() {
   try {
     const sql = neon(process.env.DATABASE_URL!);
     await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS ignition_on boolean`;
+    await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS device_model text`;
     log("DB migrations: OK");
   } catch (err) {
     log("DB migrations warning: " + (err instanceof Error ? err.message : String(err)));
