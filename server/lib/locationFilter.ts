@@ -245,7 +245,10 @@ export function filterIncomingLocation(
       ? previous.timestamp
       : new Date(previous.timestamp);
     const deltaMs = timestamp.getTime() - prevTimestamp.getTime();
-    if (deltaMs < 0) {
+    // Skip monotonic-timestamp check for offline-upload packets (0x15): those records
+    // are buffered while offline and may arrive after a newer live fix has already
+    // been stored. We still want to persist the historical GPS path.
+    if (deltaMs < 0 && !options?.allowStale) {
       return {
         accepted: false,
         reason: "stale_packet",
