@@ -214,16 +214,14 @@ function parseLocation(data: Buffer): ParsedLocation | null {
     return null;
   }
 
-  // Satellite count check — relax to ≥1 since many GT06 clone firmwares (including GT06S)
-  // report 0 satellites in firmware even when the GPS fix is valid. Accept any non-zero
-  // satellite count when gpsValid is true; only hard-reject when sats=0 AND gpsValid was
-  // based solely on 0x01 (tracking active) with no 0x10 (data valid) confirmation.
-  if (satellites === 0 && !Boolean(lowByte & 0x10)) {
-    console.warn(`[GT06] Discarding location: 0 satellites and GPS data-valid bit not set`);
-    return null;
-  }
-  if (satellites < 4) {
-    console.warn(`[GT06] Low satellite count: ${satellites} (fix accepted because gpsValid=true)`);
+  // Satellite count — once gpsValid is true (either 0x10 or 0x01 is set) we accept the
+  // fix regardless of satellite count. Many GT06S / GT06 clone firmwares report 0 satellites
+  // in the packet even when the GPS fix is genuinely valid, so hard-rejecting on sat count
+  // would drop most of their packets. Warn only so admin diagnostics stay informative.
+  if (satellites === 0) {
+    console.warn(`[GT06] Low satellite count: 0 (accepted because gpsValid=true, status=0x${lowByte.toString(16)})`);
+  } else if (satellites < 4) {
+    console.warn(`[GT06] Low satellite count: ${satellites} (accepted because gpsValid=true)`);
   }
 
   // Use server receive time — GPS device time can have timezone/BCD issues
@@ -258,14 +256,12 @@ function parseLocationWithReason(data: Buffer): ParseLocationResult {
     return { parsed: null, reason };
   }
 
-  // Reuse existing parseLocation for the full decode (it handles its own console.warn)
+  // Reuse existing parseLocation for the full decode (it handles its own console.warn).
+  // Note: once gpsValid is true, satellite count alone does NOT cause rejection here —
+  // parseLocation warns but continues. If null is returned, it must be a coord decode failure.
   const result = parseLocation(data);
   if (!result) {
-    // Determine specific reason — note: we now only hard-reject sats=0 when 0x10 is not set
-    if (satellites === 0 && !Boolean(lowByte & 0x10)) {
-      return { parsed: null, reason: `0 satellites and GPS data-valid bit (0x10) not set (status=0x${lowByte.toString(16)})` };
-    }
-    // Coord decode failure
+    // Coord decode failure (satellite count is no longer a hard-reject reason)
     const formats: Array<(r: number) => number> = [
       r => r / 1800000.0,
       r => Math.floor(r / 1000000) + (r % 1000000) / 10000.0 / 60.0,
