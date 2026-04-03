@@ -183,8 +183,7 @@ export default function AdminDevices() {
                     <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">IMEI / Device ID</th>
                     <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Status</th>
                     <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Last Location</th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Packets (this session)</th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Stored Today</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Packets (session / today)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,40 +229,45 @@ export default function AdminDevices() {
                       <td className="px-4 py-2.5 text-xs">
                         {device.packetsReceived > 0 ? (
                           <div className="space-y-0.5">
-                            <div className="flex items-center gap-1.5 font-mono">
+                            <div className="flex items-center gap-1.5 font-mono flex-wrap">
                               <span className="text-muted-foreground">Recv</span>
                               <span className="font-medium">{device.packetsReceived.toLocaleString()}</span>
                               <span className="text-muted-foreground/50">·</span>
                               <span className="text-green-600 dark:text-green-400">OK {device.locationsAccepted.toLocaleString()}</span>
-                              {device.locationsRejected > 0 && (
-                                <>
-                                  <span className="text-muted-foreground/50">·</span>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="text-destructive cursor-help underline decoration-dotted">
-                                        Rej {device.locationsRejected.toLocaleString()}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="left" className="max-w-72">
-                                      <p className="font-medium text-xs mb-0.5">Last rejection reason:</p>
-                                      <p className="text-xs">{device.lastRejectionReason}</p>
-                                      {device.lastRejectionAt && (
-                                        <p className="text-xs text-muted-foreground mt-0.5">{formatRelative(device.lastRejectionAt)}</p>
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </>
+                              <span className="text-muted-foreground/50">·</span>
+                              {device.locationsRejected > 0 ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-destructive cursor-help underline decoration-dotted">
+                                      Rej {device.locationsRejected.toLocaleString()}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left" className="max-w-72">
+                                    <p className="font-medium text-xs mb-0.5">Last rejection reason:</p>
+                                    <p className="text-xs">{device.lastRejectionReason}</p>
+                                    {device.lastRejectionAt && (
+                                      <p className="text-xs text-muted-foreground mt-0.5">{formatRelative(device.lastRejectionAt)}</p>
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <span className="text-muted-foreground">Rej 0</span>
                               )}
                             </div>
+                            <p className="text-muted-foreground">
+                              Today: {device.storedToday > 0 ? device.storedToday.toLocaleString() : "0"}
+                            </p>
+                          </div>
+                        ) : device.storedToday > 0 ? (
+                          <div>
+                            <span className="text-muted-foreground">—</span>
+                            <p className="text-muted-foreground">
+                              Today: {device.storedToday.toLocaleString()}
+                            </p>
                           </div>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                        {device.storedToday > 0
-                          ? device.storedToday.toLocaleString()
-                          : "—"}
                       </td>
                     </tr>
                   ))}

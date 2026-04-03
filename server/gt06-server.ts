@@ -719,7 +719,6 @@ async function handlePacket(
         }
 
         const filtered19 = filterResult19.location;
-        logLocationAccepted(deviceImei19);
         console.log(`[GT06] 0x19 GPS+LBS location ${deviceImei19}: lat=${filtered19.lat.toFixed(6)}, lng=${filtered19.lng.toFixed(6)}, sats=${locData19.satellites}`);
 
         const location19 = await storage.createDeviceLocation(
@@ -748,6 +747,7 @@ async function handlePacket(
         if (parkedSince19 !== undefined) vehicleUpdate19.parkedSince = parkedSince19;
         const updatedVehicle19 = await storage.updateVehicle(vehicleId19, vehicleUpdate19);
 
+        logLocationAccepted(deviceImei19);
         checkGeofences(location19).catch((e) => console.error("[GT06] Geofence error:", e));
         checkSpeedViolation(location19).catch((e) => console.error("[GT06] Speed check error:", e));
         broadcastLocationUpdate({ ...location19, vehicleId: vehicleId19 });
@@ -902,7 +902,6 @@ async function handlePacket(
         }
 
         const filtered15 = filterResult15.location;
-        logLocationAccepted(deviceImei15);
         const location15 = await storage.createDeviceLocation(
           vehicleId15,
           filtered15.lat,
@@ -926,6 +925,7 @@ async function handlePacket(
           speedKph: filtered15.speedKph,
         };
 
+        logLocationAccepted(deviceImei15);
         broadcastLocationUpdate({ ...location15, vehicleId: vehicleId15 });
         stored15++;
       }
