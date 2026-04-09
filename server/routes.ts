@@ -1882,6 +1882,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             message: `Your ${planDef.name} plan allows up to ${planDef.maxVehicles} vehicles. Please upgrade to add more.`,
             currentCount: currentVehicles.length,
             maxVehicles: planDef.maxVehicles,
+            upgradeRequired: true,
           });
         }
       }

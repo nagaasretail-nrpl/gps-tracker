@@ -55,6 +55,14 @@ import { randomUUID } from "crypto";
 import { db, neonSql } from "./db";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 
+// The Neon HTTP driver occasionally returns `null` instead of `[]` for empty
+// result sets, causing Drizzle to throw a TypeError when it tries to iterate
+// the rows. This helper wraps any SELECT query and coalesces null → [].
+async function safeSelect<T>(queryFn: () => Promise<T[]>): Promise<T[]> {
+  const rows = await queryFn();
+  return rows ?? [];
+}
+
 export interface IStorage {
   // Users
   getUsers(): Promise<User[]>;
@@ -686,14 +694,7 @@ export class DbStorage implements IStorage {
       query = query.where(and(...conditions)) as typeof query;
     }
     
-    try {
-      return await query.orderBy(desc(events.timestamp));
-    } catch (err) {
-      if (err instanceof TypeError && String(err.message).includes("map")) {
-        return [];
-      }
-      throw err;
-    }
+    return safeSelect(() => query.orderBy(desc(events.timestamp)));
   }
 
   async createEvent(insertEvent: InsertEvent): Promise<Event> {
@@ -703,15 +704,10 @@ export class DbStorage implements IStorage {
 
   // Drivers
   async getDrivers(allowedVehicleIds?: string[] | null): Promise<Driver[]> {
-    try {
-      const all = await db.select().from(drivers).orderBy(drivers.name);
-      if (allowedVehicleIds === null) return all; // admin
-      if (!allowedVehicleIds || allowedVehicleIds.length === 0) return [];
-      return all.filter(d => !d.assignedVehicleId || allowedVehicleIds.includes(d.assignedVehicleId));
-    } catch (err) {
-      if (err instanceof TypeError && String(err.message).includes("map")) return [];
-      throw err;
-    }
+    const all = await safeSelect(() => db.select().from(drivers).orderBy(drivers.name));
+    if (allowedVehicleIds === null) return all; // admin
+    if (!allowedVehicleIds || allowedVehicleIds.length === 0) return [];
+    return all.filter(d => !d.assignedVehicleId || allowedVehicleIds.includes(d.assignedVehicleId));
   }
 
   async getDriver(id: string): Promise<Driver | undefined> {
@@ -741,19 +737,14 @@ export class DbStorage implements IStorage {
 
   // Maintenance Records
   async getMaintenanceRecords(vehicleId?: string, allowedVehicleIds?: string[] | null): Promise<MaintenanceRecord[]> {
-    try {
-      const query = vehicleId
-        ? db.select().from(maintenanceRecords).where(eq(maintenanceRecords.vehicleId, vehicleId)).orderBy(desc(maintenanceRecords.serviceDate))
-        : db.select().from(maintenanceRecords).orderBy(desc(maintenanceRecords.serviceDate));
-      const all = await query;
-      if (allowedVehicleIds === null) return all;
-      if (vehicleId) return all; // already filtered
-      if (!allowedVehicleIds || allowedVehicleIds.length === 0) return [];
-      return all.filter(r => allowedVehicleIds.includes(r.vehicleId));
-    } catch (err) {
-      if (err instanceof TypeError && String(err.message).includes("map")) return [];
-      throw err;
-    }
+    const query = vehicleId
+      ? db.select().from(maintenanceRecords).where(eq(maintenanceRecords.vehicleId, vehicleId)).orderBy(desc(maintenanceRecords.serviceDate))
+      : db.select().from(maintenanceRecords).orderBy(desc(maintenanceRecords.serviceDate));
+    const all = await safeSelect(() => query);
+    if (allowedVehicleIds === null) return all;
+    if (vehicleId) return all; // already filtered by query
+    if (!allowedVehicleIds || allowedVehicleIds.length === 0) return [];
+    return all.filter(r => allowedVehicleIds.includes(r.vehicleId));
   }
 
   async getMaintenanceRecord(id: string): Promise<MaintenanceRecord | undefined> {
@@ -803,16 +794,11 @@ export class DbStorage implements IStorage {
     if (endDate) conditions.push(lte(expenses.date, endDate));
     let query = db.select().from(expenses);
     if (conditions.length > 0) query = query.where(and(...conditions)) as typeof query;
-    try {
-      const all = await query.orderBy(desc(expenses.date));
-      if (allowedVehicleIds === null) return all;
-      if (vehicleId) return all;
-      if (!allowedVehicleIds || allowedVehicleIds.length === 0) return [];
-      return all.filter(e => allowedVehicleIds.includes(e.vehicleId));
-    } catch (err) {
-      if (err instanceof TypeError && String(err.message).includes("map")) return [];
-      throw err;
-    }
+    const all = await safeSelect(() => query.orderBy(desc(expenses.date)));
+    if (allowedVehicleIds === null) return all;
+    if (vehicleId) return all;
+    if (!allowedVehicleIds || allowedVehicleIds.length === 0) return [];
+    return all.filter(e => allowedVehicleIds.includes(e.vehicleId));
   }
 
   async getExpense(id: string): Promise<Expense | undefined> {
@@ -854,12 +840,7 @@ export class DbStorage implements IStorage {
 
   // Device Models
   async getDeviceModels(): Promise<DeviceModel[]> {
-    try {
-      return await db.select().from(deviceModels).orderBy(deviceModels.manufacturer, deviceModels.modelName);
-    } catch (err) {
-      if (err instanceof TypeError && String(err.message).includes("map")) return [];
-      throw err;
-    }
+    return safeSelect(() => db.select().from(deviceModels).orderBy(deviceModels.manufacturer, deviceModels.modelName));
   }
 
   async getDeviceModel(id: string): Promise<DeviceModel | undefined> {
@@ -897,15 +878,10 @@ export class DbStorage implements IStorage {
 
   // Vehicle Subscriptions
   async getVehicleSubscriptions(vehicleId?: string): Promise<VehicleSubscription[]> {
-    try {
-      const query = vehicleId
-        ? db.select().from(vehicleSubscriptions).where(eq(vehicleSubscriptions.vehicleId, vehicleId)).orderBy(desc(vehicleSubscriptions.createdAt))
-        : db.select().from(vehicleSubscriptions).orderBy(desc(vehicleSubscriptions.createdAt));
-      return await query;
-    } catch (err) {
-      if (err instanceof TypeError && String(err.message).includes("map")) return [];
-      throw err;
-    }
+    const query = vehicleId
+      ? db.select().from(vehicleSubscriptions).where(eq(vehicleSubscriptions.vehicleId, vehicleId)).orderBy(desc(vehicleSubscriptions.createdAt))
+      : db.select().from(vehicleSubscriptions).orderBy(desc(vehicleSubscriptions.createdAt));
+    return safeSelect(() => query);
   }
 
   async createVehicleSubscription(sub: InsertVehicleSubscription): Promise<VehicleSubscription> {
@@ -924,12 +900,7 @@ export class DbStorage implements IStorage {
 
   // Audit Logs
   async getAuditLogs(limit = 200): Promise<AuditLog[]> {
-    try {
-      return await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(limit);
-    } catch (err) {
-      if (err instanceof TypeError && String(err.message).includes("map")) return [];
-      throw err;
-    }
+    return safeSelect(() => db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(limit));
   }
 
   async addAuditLog(userId: string | null, action: string, detail?: string): Promise<void> {
@@ -961,14 +932,7 @@ export class DbStorage implements IStorage {
       query = query.where(and(...conditions)) as typeof query;
     }
     
-    try {
-      return await query.orderBy(desc(trips.startTime));
-    } catch (err) {
-      if (err instanceof TypeError && String(err.message).includes("map")) {
-        return [];
-      }
-      throw err;
-    }
+    return safeSelect(() => query.orderBy(desc(trips.startTime)));
   }
 
   async createTrip(insertTrip: InsertTrip): Promise<Trip> {
@@ -982,31 +946,12 @@ export class DbStorage implements IStorage {
   }
 
   async getSettings(): Promise<AppSetting[]> {
-    try {
-      const result = await db.select().from(appSettings);
-      return result ?? [];
-    } catch (err) {
-      // The neon-http driver returns null instead of [] for empty tables,
-      // causing a TypeError when drizzle calls .map() on the result.
-      // Treat this specific case as an empty result; re-throw real DB errors.
-      if (err instanceof TypeError && String(err.message).includes("map")) {
-        return [];
-      }
-      throw err;
-    }
+    return safeSelect(() => db.select().from(appSettings));
   }
 
   async getSetting(key: string): Promise<AppSetting | undefined> {
-    try {
-      const result = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
-      return result?.[0];
-    } catch (err) {
-      // Same neon-http null bug as getSettings — empty table returns null.
-      if (err instanceof TypeError && String(err.message).includes("map")) {
-        return undefined;
-      }
-      throw err;
-    }
+    const rows = await safeSelect(() => db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1));
+    return rows[0];
   }
 
   async setSetting(key: string, value: string): Promise<AppSetting> {

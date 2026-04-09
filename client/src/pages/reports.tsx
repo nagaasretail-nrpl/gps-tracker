@@ -996,6 +996,154 @@ function EmptyState() {
   );
 }
 
+// ── Speeding Report ──────────────────────────────────────────────────────────
+interface SpeedEvent {
+  id: string;
+  vehicleId: string;
+  type: string;
+  description: string;
+  severity: string | null;
+  data: Record<string, unknown> | null;
+  timestamp: string | null;
+}
+
+function SpeedingView({ vehicles, selectedVehicle, startDate, endDate }: { vehicles: Vehicle[]; selectedVehicle: string; startDate: Date; endDate: Date }) {
+  const params = new URLSearchParams({ type: "speed_violation", startDate: startDate.toISOString(), endDate: endDate.toISOString(), limit: "200", page: "1" });
+  if (selectedVehicle !== "all") params.set("vehicleId", selectedVehicle);
+  const { data, isLoading } = useQuery<{ events: SpeedEvent[]; total: number }>({ queryKey: ["/api/events/speed", selectedVehicle, startDate.toISOString(), endDate.toISOString()], queryFn: async () => { const res = await fetch(`/api/events?${params}`); return res.json(); } });
+  const vehicleMap = new Map(vehicles.map(v => [v.id, v.name]));
+  const events = data?.events ?? [];
+
+  const exportCSV = () => {
+    const headers = ["Time", "Vehicle", "Speed (km/h)", "Limit (km/h)", "Severity"];
+    const rows = events.map(e => [
+      e.timestamp ? format(new Date(e.timestamp), "dd MMM HH:mm:ss") : "",
+      vehicleMap.get(e.vehicleId) ?? e.vehicleId,
+      (e.data as { speed?: number })?.speed ?? "",
+      (e.data as { limit?: number })?.limit ?? "",
+      e.severity ?? "warning",
+    ]);
+    downloadCSV(headers, rows as (string | number)[][], `speeding-report-${format(new Date(), "yyyy-MM-dd")}.csv`);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap py-3">
+        <CardTitle className="text-sm font-medium">{isLoading ? "Loading…" : `${data?.total ?? 0} speed violation${(data?.total ?? 0) !== 1 ? "s" : ""}`}</CardTitle>
+        <Button size="default" variant="outline" onClick={exportCSV} disabled={events.length === 0} data-testid="button-export-csv-speeding">
+          <Download className="h-4 w-4 mr-2" />CSV
+        </Button>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Time</TableHead>
+              <TableHead>Vehicle</TableHead>
+              <TableHead>Speed (km/h)</TableHead>
+              <TableHead>Limit (km/h)</TableHead>
+              <TableHead>Severity</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  {Array.from({ length: 5 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
+                </TableRow>
+              ))
+            ) : events.length === 0 ? (
+              <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground">No speed violations in this period</TableCell></TableRow>
+            ) : (
+              events.map(e => (
+                <TableRow key={e.id} data-testid={`row-speed-${e.id}`}>
+                  <TableCell className="text-xs text-muted-foreground">{e.timestamp ? format(new Date(e.timestamp), "dd MMM HH:mm:ss") : "—"}</TableCell>
+                  <TableCell className="font-medium text-sm">{vehicleMap.get(e.vehicleId) ?? e.vehicleId.slice(0, 8)}</TableCell>
+                  <TableCell className="font-bold text-sm text-destructive">{(e.data as { speed?: number })?.speed ?? "—"}</TableCell>
+                  <TableCell className="text-sm">{(e.data as { limit?: number })?.limit ?? "—"}</TableCell>
+                  <TableCell className="capitalize text-sm text-muted-foreground">{e.severity ?? "warning"}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Zone Visits Report ───────────────────────────────────────────────────────
+function ZoneVisitsView({ vehicles, selectedVehicle, startDate, endDate }: { vehicles: Vehicle[]; selectedVehicle: string; startDate: Date; endDate: Date }) {
+  const params = new URLSearchParams({ types: "geofence_entry,geofence_exit", startDate: startDate.toISOString(), endDate: endDate.toISOString(), limit: "500", page: "1" });
+  if (selectedVehicle !== "all") params.set("vehicleId", selectedVehicle);
+  const { data, isLoading } = useQuery<{ events: SpeedEvent[]; total: number }>({ queryKey: ["/api/events/zone", selectedVehicle, startDate.toISOString(), endDate.toISOString()], queryFn: async () => { const res = await fetch(`/api/events?${params}`); return res.json(); } });
+  const vehicleMap = new Map(vehicles.map(v => [v.id, v.name]));
+  const events = data?.events ?? [];
+
+  // Summarize zone visits by geofence name
+  const zoneSummary = useMemo(() => {
+    const map = new Map<string, { entries: number; exits: number; vehicles: Set<string> }>();
+    for (const e of events) {
+      const zoneName = (e.data as { geofenceName?: string })?.geofenceName ?? "Unknown Zone";
+      if (!map.has(zoneName)) map.set(zoneName, { entries: 0, exits: 0, vehicles: new Set() });
+      const z = map.get(zoneName)!;
+      if (e.type === "geofence_entry") z.entries++;
+      if (e.type === "geofence_exit") z.exits++;
+      z.vehicles.add(e.vehicleId);
+    }
+    return Array.from(map.entries()).map(([name, v]) => ({ name, ...v, vehicleCount: v.vehicles.size }));
+  }, [events]);
+
+  const exportCSV = () => {
+    const headers = ["Zone", "Entries", "Exits", "Unique Vehicles"];
+    const rows = zoneSummary.map(z => [z.name, z.entries, z.exits, z.vehicleCount]);
+    downloadCSV(headers, rows as (string | number)[][], `zone-visits-${format(new Date(), "yyyy-MM-dd")}.csv`);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap py-3">
+        <CardTitle className="text-sm font-medium">{isLoading ? "Loading…" : `${zoneSummary.length} zone${zoneSummary.length !== 1 ? "s" : ""} visited`}</CardTitle>
+        <Button size="default" variant="outline" onClick={exportCSV} disabled={zoneSummary.length === 0} data-testid="button-export-csv-zones">
+          <Download className="h-4 w-4 mr-2" />CSV
+        </Button>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Zone Name</TableHead>
+              <TableHead>Entries</TableHead>
+              <TableHead>Exits</TableHead>
+              <TableHead>Unique Vehicles</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <TableRow key={i}>
+                  {Array.from({ length: 4 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
+                </TableRow>
+              ))
+            ) : zoneSummary.length === 0 ? (
+              <TableRow><TableCell colSpan={4} className="py-10 text-center text-muted-foreground">No geofence events in this period</TableCell></TableRow>
+            ) : (
+              zoneSummary.map((z, i) => (
+                <TableRow key={z.name} data-testid={`row-zone-${i}`}>
+                  <TableCell className="font-medium text-sm">{z.name}</TableCell>
+                  <TableCell className="text-sm">{z.entries}</TableCell>
+                  <TableCell className="text-sm">{z.exits}</TableCell>
+                  <TableCell className="text-sm">{z.vehicleCount}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 
 export default function Reports() {
   const [selectedVehicle, setSelectedVehicle] = useState<string>("all");
@@ -1048,6 +1196,8 @@ export default function Reports() {
                   <SelectItem value="trips">Trip Reports</SelectItem>
                   <SelectItem value="mileage">Mileage Reports</SelectItem>
                   <SelectItem value="activity">Activity Reports</SelectItem>
+                  <SelectItem value="speeding">Speeding Report</SelectItem>
+                  <SelectItem value="zone">Zone Visits</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1115,6 +1265,10 @@ export default function Reports() {
         <MileageView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
       ) : reportType === "activity" ? (
         <ActivityView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
+      ) : reportType === "speeding" ? (
+        <SpeedingView vehicles={safeVehicles} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
+      ) : reportType === "zone" ? (
+        <ZoneVisitsView vehicles={safeVehicles} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
       ) : (
         <TripView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
       )}

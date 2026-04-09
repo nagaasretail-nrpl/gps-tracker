@@ -24,6 +24,13 @@ interface ActivateResult {
   message: string;
 }
 
+interface SlotLimitError {
+  upgradeRequired: true;
+  message: string;
+  currentCount: number;
+  maxVehicles: number;
+}
+
 interface BillingPageProps {
   defaultTab?: "plans" | "activate" | "status";
 }
@@ -33,6 +40,7 @@ export default function BillingPage({ defaultTab = "plans" }: BillingPageProps) 
   const [imei, setImei] = useState("");
   const [vehicleName, setVehicleName] = useState("");
   const [activateResult, setActivateResult] = useState<ActivateResult | null>(null);
+  const [slotLimitError, setSlotLimitError] = useState<SlotLimitError | null>(null);
 
   const { data: plansData, isLoading: plansLoading } = useQuery<{ plans: Plan[] }>({
     queryKey: ["/api/billing/plans"],
@@ -50,10 +58,16 @@ export default function BillingPage({ defaultTab = "plans" }: BillingPageProps) 
   const activateMutation = useMutation({
     mutationFn: async (data: { imei: string; name?: string }) => {
       const res = await apiRequest("POST", "/api/billing/activate", data);
-      return res.json();
+      const json = await res.json();
+      if (res.status === 422 && json.upgradeRequired) {
+        throw { isSlotLimit: true, data: json as SlotLimitError };
+      }
+      if (!res.ok) throw new Error(json.message ?? json.error ?? "Activation failed");
+      return json as ActivateResult;
     },
     onSuccess: (result: ActivateResult) => {
       setActivateResult(result);
+      setSlotLimitError(null);
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
       if (result.status === "created") {
         toast({ title: "Device activated", description: result.message });
@@ -61,8 +75,14 @@ export default function BillingPage({ defaultTab = "plans" }: BillingPageProps) 
         toast({ title: "Device already exists", description: result.message });
       }
     },
-    onError: () => {
-      toast({ title: "Activation failed", description: "Failed to activate device", variant: "destructive" });
+    onError: (err: unknown) => {
+      const e = err as { isSlotLimit?: boolean; data?: SlotLimitError; message?: string };
+      if (e?.isSlotLimit && e.data) {
+        setSlotLimitError(e.data);
+        setActivateResult(null);
+      } else {
+        toast({ title: "Activation failed", description: e?.message ?? "Failed to activate device", variant: "destructive" });
+      }
     },
   });
 
@@ -72,6 +92,7 @@ export default function BillingPage({ defaultTab = "plans" }: BillingPageProps) 
       return;
     }
     setActivateResult(null);
+    setSlotLimitError(null);
     activateMutation.mutate({ imei: imei.trim(), name: vehicleName.trim() || undefined });
   };
 
@@ -182,6 +203,34 @@ export default function BillingPage({ defaultTab = "plans" }: BillingPageProps) 
                     data-testid="input-vehicle-name"
                   />
                 </div>
+
+                {slotLimitError && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 space-y-3" data-testid="slot-limit-error">
+                    <div className="flex items-start gap-2 text-sm">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-destructive" />
+                      <div>
+                        <div className="font-semibold text-destructive">Plan limit reached</div>
+                        <div className="text-muted-foreground mt-0.5">{slotLimitError.message}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Using {slotLimitError.currentCount} / {slotLimitError.maxVehicles} vehicle slots
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-sm font-medium">To add more vehicles, upgrade your plan:</div>
+                    <div className="flex flex-wrap gap-2">
+                      {plans.filter(p => p.maxVehicles > slotLimitError.maxVehicles).map(p => (
+                        <Button key={p.id} size="default" variant="outline" className="flex-1 min-w-0" data-testid={`button-upgrade-${p.id}`}
+                          onClick={() => toast({ title: "Contact support", description: `To upgrade to ${p.name} (up to ${p.maxVehicles} vehicles), contact your Nistagps administrator or call support.` })}>
+                          <CreditCard className="h-4 w-4 mr-2 shrink-0" />
+                          <span className="truncate">Upgrade to {p.name} — ₹{p.pricePerYear.toLocaleString("en-IN")}/vehicle/yr</span>
+                        </Button>
+                      ))}
+                      {plans.filter(p => p.maxVehicles > slotLimitError.maxVehicles).length === 0 && (
+                        <p className="text-xs text-muted-foreground">Contact support for enterprise options.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {activateResult && (
                   <div className={`rounded-md border p-3 flex items-start gap-2 text-sm ${
