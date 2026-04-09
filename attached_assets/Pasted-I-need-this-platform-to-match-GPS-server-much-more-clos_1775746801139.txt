@@ -1,0 +1,105 @@
+I need this platform to match GPS-server much more closely across all layers, not only the tracking dashboard.
+
+Build the system in 3 connected layers:
+
+1. Public marketing/product website
+2. Documentation/help website
+3. Authenticated tracking application
+
+A. Public website must include separate pages equivalent in scope and structure to:
+
+* Home / white-label GPS tracking software
+* Features
+* Personal account
+* Hosted software
+* GPS Server Mobile
+* GPS Tracker
+* SMS Gateway
+* Android
+* iOS
+* Supported devices
+* Troubleshooting
+* Getting started
+
+B. Documentation site must be a separate docs-style UI with left dark navigation, nested expandable sections, search, previous/next navigation, and article pages for:
+
+* Create account
+* Workspace
+* Top panel
+* Side panel
+* Map
+* Bottom panel
+* User account panel
+* Control panel
+* Mobile applications
+* HOW TO
+* FAQ
+
+Within docs, include article structure for:
+
+* Objects, groups, drivers, passengers, trailers
+* Events
+* Templates
+* KML
+* SMS
+* Dashboard
+* Show point
+* Address search
+* Reports
+* Tasks
+* RFID and iButton
+* DTC
+* Maintenance
+* Expenses
+* Object control
+* Image gallery
+* Video gallery
+* Chat
+* Places: markers, routes, zones
+* History: graph, location messages
+* Map controls and route controls
+* Billing, purchase plan, activate objects
+* Control panel: user list, object list, unused object list, billing plan list, mobile applications, manage server
+* Manage server: server, branding/UI, languages, maps, user, billing, templates, email, SMS, tools, firewall, API, logs
+* Mobile applications: GPS Server Mobile, GPS Tracker, SMS Gateway
+* HOW TO and FAQ knowledge articles
+
+C. Authenticated app must be upgraded to reflect the documented structure:
+
+* Workspace with top panel, side panel, map, bottom panel, user account panel
+* Full fleet modules, not only basic tracking
+* Proper reports, events, places, history, maintenance, expenses, object control, media, billing, activation, and admin control panel
+
+D. Supported devices must become a real module:
+
+* manufacturer list
+* model list
+* searchable by model or port
+* protocol registry
+* per-model port mapping
+* server host/IP mapping
+* activation/onboarding instructions by device model
+* GCP VM listener integration for TCP/UDP protocols
+
+E. Billing/activation must be added:
+
+* activate objects flow
+* object limits by plan
+* hosted plans
+* purchase/billing screens
+* user account panel billing controls
+
+F. Do not disturb the existing working system.
+Keep current auth, map, objects, devices, zones, alerts, and listener integration, but expand around them to match this architecture.
+
+First provide:
+
+1. exact gap analysis between current app and GPS-server structure
+2. page-by-page build plan
+3. docs site sitemap
+4. public website sitemap
+5. authenticated app sitemap
+6. supported-devices architecture
+7. billing/activation architecture
+
+Then implement in phases without breaking existing working modules.
