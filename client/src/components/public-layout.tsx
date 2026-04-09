@@ -8,7 +8,6 @@ const NAV_LINKS = [
   { label: "Hosted", href: "/hosted" },
   { label: "Personal", href: "/personal" },
   { label: "Devices", href: "/devices" },
-  { label: "Docs", href: "/docs" },
   { label: "Getting Started", href: "/getting-started" },
 ];
 
@@ -32,7 +31,7 @@ const FOOTER_MOBILE = [
 const FOOTER_LEGAL = [
   { label: "Terms of Service", href: "/terms" },
   { label: "Privacy Policy", href: "/privacy" },
-  { label: "Docs", href: "/docs" },
+  { label: "Troubleshooting", href: "/troubleshooting" },
 ];
 
 export function PublicLayout({ children }: { children: React.ReactNode }) {

@@ -331,13 +331,17 @@ function PublicSiteSwitch() {
 }
 
 // PublicOrAuthApp handles routing for all users.
-// - Legal/utility pages (/terms, /privacy, /install) — always public, no auth check.
-// - Login page (/login) — always public, no auth check.
-// - Public marketing pages (/home, /features, etc.) — only for unauthenticated users;
-//   authenticated users visiting these are redirected to /tracking.
-// - All other routes — require auth; unauthenticated users are redirected to /home.
+//
+// Strategy:
+// - /terms, /privacy, /install → always public, no auth check
+// - All other routes → single auth check on mount (not on every nav)
+//   - Authenticated + marketing/login route → redirect to /tracking
+//   - Authenticated + app route → AuthenticatedApp (no re-check on navigation)
+//   - Unauthenticated + /login → Login form
+//   - Unauthenticated + marketing route → public marketing page
+//   - Unauthenticated + app route → redirect to /home
 function PublicOrAuthApp() {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [isTermsMatch] = useRoute("/terms");
   const [isPrivacyMatch] = useRoute("/privacy");
   const [isInstallMatch] = useRoute("/install");
@@ -349,13 +353,13 @@ function PublicOrAuthApp() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Always-public pages skip auth check entirely
-    if (isTermsMatch || isPrivacyMatch || isInstallMatch || isLoginMatch) {
+    // Legal/utility pages don't need auth at all
+    if (isTermsMatch || isPrivacyMatch || isInstallMatch) {
       setIsLoading(false);
       return;
     }
-    // Marketing routes still need to know auth state so authenticated users
-    // can be redirected to /tracking instead of seeing the marketing page.
+    // All other routes — run auth check ONCE (no `location` in deps so in-app
+    // navigation never re-triggers this, preventing loading flashes).
     setIsLoading(true);
     const checkAuth = async () => {
       try {
@@ -368,26 +372,15 @@ function PublicOrAuthApp() {
       }
     };
     checkAuth();
-  }, [isTermsMatch, isPrivacyMatch, isInstallMatch, isLoginMatch, location]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTermsMatch, isPrivacyMatch, isInstallMatch]);
 
-  // Always-public legal/utility pages — no auth check needed
+  // Legal/utility pages — always public, no spinner
   if (isTermsMatch) return <Terms />;
   if (isPrivacyMatch) return <Privacy />;
   if (isInstallMatch) return <InstallPage />;
 
-  // Login page — always public
-  if (isLoginMatch) {
-    return (
-      <Login
-        onLoginSuccess={() => {
-          queryClient.invalidateQueries();
-          setIsAuthenticated(true);
-        }}
-      />
-    );
-  }
-
-  // Auth check is always needed from here on
+  // Loading state — single spinner shown only on initial app load
   if (isLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
@@ -399,12 +392,12 @@ function PublicOrAuthApp() {
     );
   }
 
-  // Authenticated users visiting marketing pages → redirect to the app
-  if (isAuthenticated && isMarketingRoute) {
-    return <Redirect to="/tracking" />;
-  }
-
+  // ─── Authenticated users ───────────────────────────────────────────────────
   if (isAuthenticated) {
+    // Redirect away from login and marketing pages — app belongs in the app
+    if (isLoginMatch || isMarketingRoute) {
+      return <Redirect to="/tracking" />;
+    }
     return (
       <AuthenticatedApp
         onLogout={() => {
@@ -415,13 +408,24 @@ function PublicOrAuthApp() {
     );
   }
 
-  // Unauthenticated users: show marketing site or redirect to home
+  // ─── Unauthenticated users ────────────────────────────────────────────────
+  if (isLoginMatch) {
+    return (
+      <Login
+        onLoginSuccess={() => {
+          queryClient.invalidateQueries();
+          setIsAuthenticated(true);
+          navigate("/"); // navigate into the app; AuthenticatedApp handles the route
+        }}
+      />
+    );
+  }
+
   if (isMarketingRoute) {
     return <PublicSiteSwitch />;
   }
 
-  // Any other route for unauthenticated users → redirect to /home
-  // (/ treated the same as any app route — redirect to home landing)
+  // Any unrecognised route for unauthenticated users → send to marketing home
   return <Redirect to="/home" />;
 }
 
