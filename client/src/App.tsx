@@ -358,8 +358,8 @@ function PublicOrAuthApp() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Legal/utility pages don't need auth at all
-    if (isTermsMatch || isPrivacyMatch || isInstallMatch) {
+    // Legal/utility pages and docs don't need auth at all
+    if (isTermsMatch || isPrivacyMatch || isInstallMatch || isDocsRoute) {
       setIsLoading(false);
       return;
     }
@@ -378,7 +378,7 @@ function PublicOrAuthApp() {
     };
     checkAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTermsMatch, isPrivacyMatch, isInstallMatch]);
+  }, [isTermsMatch, isPrivacyMatch, isInstallMatch, isDocsRoute]);
 
   // Legal/utility pages — always public, no spinner
   if (isTermsMatch) return <Terms />;

@@ -340,9 +340,18 @@ export default function DocsPage() {
   const currentArticle =
     currentSectionId && currentSlug ? getArticle(currentSectionId, currentSlug) : null;
 
+  // Force dark sidebar regardless of global light/dark theme
   const sidebarStyle = {
     "--sidebar-width": "17rem",
     "--sidebar-width-icon": "3rem",
+    "--sidebar": "0 0% 10%",
+    "--sidebar-foreground": "0 0% 95%",
+    "--sidebar-border": "0 0% 16%",
+    "--sidebar-accent": "0 0% 16%",
+    "--sidebar-accent-foreground": "0 0% 95%",
+    "--sidebar-primary": "331 100% 62%",
+    "--sidebar-primary-foreground": "0 0% 100%",
+    "--sidebar-ring": "331 100% 62%",
   } as React.CSSProperties;
 
   return (
