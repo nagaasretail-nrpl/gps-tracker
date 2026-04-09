@@ -48,6 +48,9 @@ import VehicleAppearance from "@/pages/vehicle-appearance";
 import AdminDevices from "@/pages/admin-devices";
 import NotFound from "@/pages/not-found";
 
+// Pages — docs site
+import DocsPage from "@/pages/docs";
+
 // Pages — public marketing site
 import HomePage from "@/pages/public/home";
 import FeaturesPage from "@/pages/public/features";
@@ -348,6 +351,8 @@ function PublicOrAuthApp() {
   const [isLoginMatch] = useRoute("/login");
 
   const isMarketingRoute = isPublicMarketingRoute(location);
+  // Docs site is always public — accessible to both authenticated and unauthenticated users
+  const isDocsRoute = location === "/docs" || location.startsWith("/docs/");
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -379,6 +384,9 @@ function PublicOrAuthApp() {
   if (isTermsMatch) return <Terms />;
   if (isPrivacyMatch) return <Privacy />;
   if (isInstallMatch) return <InstallPage />;
+
+  // Docs site — always public, no auth check, no redirect
+  if (isDocsRoute) return <DocsPage />;
 
   // Loading state — single spinner shown only on initial app load
   if (isLoading) {

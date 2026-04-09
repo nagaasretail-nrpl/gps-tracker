@@ -29,6 +29,7 @@ const FOOTER_MOBILE = [
 ];
 
 const FOOTER_LEGAL = [
+  { label: "Documentation", href: "/docs" },
   { label: "Terms of Service", href: "/terms" },
   { label: "Privacy Policy", href: "/privacy" },
   { label: "Troubleshooting", href: "/troubleshooting" },
