@@ -103,6 +103,16 @@ const PROTECTED_ROUTES: Record<string, string[]> = {
   "/reports": ["/reports"],
   "/parking-report": ["/parking-report"],
   "/profile": ["/profile"],
+  // Fleet module routes
+  "/events": ["/events"],
+  "/drivers": ["/drivers"],
+  "/maintenance": ["/maintenance"],
+  "/expenses": ["/expenses"],
+  "/billing": ["/billing"],
+  "/billing/history": ["/billing"],
+  // Admin-only routes (role check in RouteGuard handles admin; these prevent non-admin deep links)
+  "/admin/device-models": ["/admin/device-models"],
+  "/admin/control-panel": ["/admin/control-panel"],
 };
 
 function RouteGuard({ user, userLoaded, path, component: Component }: {
