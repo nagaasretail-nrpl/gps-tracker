@@ -467,10 +467,12 @@ export default function Tracking() {
                         {connected
                           ? "Connected"
                           : hasLocation
-                          ? `Last connected ${formatTimestamp(location!.timestamp)}`
+                          ? `Last GPS ${formatTimestamp(location!.timestamp)}`
                           : lastSeenAt
-                          ? `No GPS fix (last contact ${formatTimestamp(lastSeenAt)})`
-                          : "Waiting for GPS"}
+                          ? `No GPS fix · last contact ${formatTimestamp(lastSeenAt)}`
+                          : vehicle.deviceId
+                          ? `Device ${vehicle.deviceId} not connected`
+                          : "No GPS device assigned"}
                       </span>
                       {vehicle.status === "stopped" && vehicle.parkedSince && (
                         <span

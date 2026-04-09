@@ -188,7 +188,9 @@ export function VehicleDetailPanel({ vehicleId, vehicles, locations, onClose }: 
                   label="Address"
                   value={
                     <span title={location?.address ?? ""} className="truncate block max-w-[180px]">
-                      {location?.address ?? "Waiting for GPS"}
+                      {location
+                        ? (location.address ?? "Address pending")
+                        : "No GPS data"}
                     </span>
                   }
                 />
@@ -202,12 +204,14 @@ export function VehicleDetailPanel({ vehicleId, vehicles, locations, onClose }: 
                 <InfoRow
                   label="GPS quality"
                   value={
-                    satellites == null
-                      ? vehicle.lastSeenAt
-                        ? `No fix (contact ${formatDate(vehicle.lastSeenAt)})`
-                        : "No fix"
-                      : satellites >= 8 ? "Good"
-                      : satellites >= 4 ? "Moderate" : "Poor"
+                    location
+                      ? satellites == null
+                        ? "Fix acquired"
+                        : satellites >= 8 ? "Good"
+                        : satellites >= 4 ? "Moderate" : "Poor"
+                      : vehicle.lastSeenAt
+                        ? `No fix · last contact ${formatDate(vehicle.lastSeenAt)}`
+                        : "No signal"
                   }
                 />
                 <InfoRow label="Accuracy" value={
