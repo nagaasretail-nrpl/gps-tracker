@@ -8,7 +8,7 @@ A **three-layer GPS fleet management platform** built for nistagps.com (Nagaas R
 2. **Documentation site** — (Task #71, upcoming) Docs portal at `/docs`
 3. **Authenticated tracking app** — Live fleet tracking dashboard at `/` for logged-in users
 
-Unauthenticated users see the marketing home page. `/login` always shows the login form. Authenticated users see the full fleet dashboard.
+Unauthenticated users see the marketing home page. `/login` shows the login form for unauthenticated users; authenticated users visiting `/login` are redirected to `/tracking`. Authenticated users see the full fleet dashboard.
 
 ## Architecture
 
