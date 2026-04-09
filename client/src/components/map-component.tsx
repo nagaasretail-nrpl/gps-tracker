@@ -11,6 +11,7 @@ interface RoutePolyline {
   vehicleId: string;
   coords: [number, number][];
   color?: string;
+  isDashed?: boolean;
 }
 
 export interface ParkingEvent {
@@ -41,6 +42,7 @@ interface MapComponentProps {
   connectedImeis?: Set<string>; // set of device IMEIs with live TCP connections
   parkingEvents?: ParkingEvent[];
   showParkingPopups?: boolean; // auto-open parking InfoWindows when rendered
+  markerAnimDuration?: number; // ms for smooth marker animation (0 = instant, default 800)
 }
 
 // Augment Window to include the optional google namespace and dynamic callbacks.
@@ -402,6 +404,7 @@ export function MapComponent({
   connectedImeis,
   parkingEvents = [],
   showParkingPopups = false,
+  markerAnimDuration = 800,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -412,6 +415,7 @@ export function MapComponent({
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const hasFittedRef = useRef(false);
   const markerAnimationsRef = useRef<Map<string, number>>(new Map());
+  const vehicleLastHeadingRef = useRef<Map<string, number>>(new Map());
   const [status, setStatus] = useState<MapStatus>("loading");
   const [mapType, setMapType] = useState<"streets" | "satellite">("streets");
   // Triggers marker rebuild after PNG base64 images finish pre-loading
@@ -571,6 +575,14 @@ export function MapComponent({
         }
       }
 
+      // Heading lock: when vehicle is stationary/slow, keep last known heading to avoid
+      // the marker arrow snapping to north or drifting wildly when GPS has no direction
+      if (speed < 3) {
+        heading = vehicleLastHeadingRef.current.get(vehicle.id) ?? heading;
+      } else {
+        vehicleLastHeadingRef.current.set(vehicle.id, heading);
+      }
+
       const iconType = vehicle.type ?? "car";
       const [anchorX, anchorY] = getIconAnchor(iconType);
       const pngUrl = getVehicleImg(iconType);
@@ -622,7 +634,7 @@ export function MapComponent({
 
       const existingMarker = vehicleMarkersRef.current.get(vehicle.id);
       if (existingMarker) {
-        animateMarkerTo(existingMarker, lat, lng, 800, markerAnimationsRef, vehicle.id);
+        animateMarkerTo(existingMarker, lat, lng, markerAnimDuration, markerAnimationsRef, vehicle.id);
         existingMarker.setIcon(markerIcon);
         existingMarker.setTitle(vehicle.name);
         const existingIW = vehicleInfoWindowsRef.current.get(vehicle.id);
@@ -685,7 +697,7 @@ export function MapComponent({
       }
       hasFittedRef.current = true;
     }
-  }, [status, vehicles, locations, bearingData, routePolylines, onVehicleClick, imagesLoaded]);
+  }, [status, vehicles, locations, bearingData, routePolylines, onVehicleClick, imagesLoaded, markerAnimDuration]);
 
   // ── 3b. Render non-vehicle overlays (polylines, geofences, routes, POIs) ──
 
@@ -700,18 +712,34 @@ export function MapComponent({
     overlaysRef.current = [];
 
     // ── Route polylines (vehicle history trails) ──────────────────────────
-    routePolylines.forEach(({ vehicleId: trailVehicleId, coords, color }) => {
+    routePolylines.forEach(({ vehicleId: trailVehicleId, coords, color, isDashed }) => {
       if (coords.length < 2) return;
-      const isSelected = focusVehicleId === trailVehicleId;
+      const isSelected = focusVehicleId === trailVehicleId || focusVehicleId === trailVehicleId.split("-gap-")[0];
       const lineColor = color ?? "#3b82f6";
       const path = coords.map(([lat, lng]) => ({ lat, lng }));
-      const poly = new google.maps.Polyline({
-        path, map,
-        strokeColor: lineColor,
-        strokeWeight: isSelected ? 4 : 2,
-        strokeOpacity: isSelected ? 0.85 : 0.35,
-      });
-      overlaysRef.current.push(poly);
+      if (isDashed) {
+        // Dashed segment for GPS gaps — styled as a subtle dotted line
+        const poly = new google.maps.Polyline({
+          path, map,
+          strokeColor: lineColor,
+          strokeWeight: 2,
+          strokeOpacity: 0,
+          icons: [{
+            icon: { path: "M 0,-1 0,1", strokeOpacity: 0.45, scale: 3 },
+            offset: "0",
+            repeat: "14px",
+          }],
+        });
+        overlaysRef.current.push(poly);
+      } else {
+        const poly = new google.maps.Polyline({
+          path, map,
+          strokeColor: lineColor,
+          strokeWeight: isSelected ? 4 : 2,
+          strokeOpacity: isSelected ? 0.85 : 0.6,
+        });
+        overlaysRef.current.push(poly);
+      }
     });
 
     // ── Geofence polygons ─────────────────────────────────────────────────

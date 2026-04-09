@@ -1,0 +1,166 @@
+Fix live movement and playback quality WITHOUT disturbing the existing system.
+
+The current issue is:
+
+* vehicle movement is not visually live
+* map marker jumps between points
+* playback jumps and does not run smoothly
+* raw/noisy GPS points are being shown too directly
+
+Implement the following in order.
+
+## 1. Add a location quality pipeline on backend
+
+Before saving/displaying a point, validate and clean it.
+
+Rules:
+
+* reject points with invalid lat/lng
+* reject points whose timestamp is older than the object's latest saved point by more than a small tolerance
+* reject impossible jumps based on distance/time
+* if speed is 0 or very low and distance moved is tiny, ignore stationary drift
+* deduplicate points that are extremely close and within short time interval
+* keep raw packet storage untouched, but create/use cleaned location points for map + playback
+
+Suggested thresholds:
+
+* max jump speed: 180 km/h unless object type allows more
+* stationary drift ignore radius: 10–20 meters
+* duplicate point threshold: 5 meters within 10 seconds
+* reject null/zero coordinates unless explicitly intended
+
+## 2. Save both raw and cleaned points separately
+
+Keep:
+
+* raw_packets / raw_points for audit
+* cleaned_points / display_points for live map and playback
+
+Playback and live map must use cleaned points, not raw packets directly.
+
+## 3. Ensure history points are always sorted
+
+When fetching playback data:
+
+* sort by device timestamp ascending
+* if equal timestamps exist, sort by created_at ascending
+* remove duplicates before returning to frontend
+
+## 4. Add live marker animation on frontend
+
+Do not snap marker instantly to new point.
+
+Instead:
+
+* keep previous displayed point
+* animate marker from previous point to next point over 1 to 3 seconds
+* if a new point arrives while animation is running, update target smoothly
+* if jump distance is too large, do not animate linearly; instead snap only after validation
+
+Implementation expectation:
+
+* use requestAnimationFrame
+* interpolate latitude and longitude over duration
+* update existing marker only
+* do not recreate marker on every update
+
+## 5. Add heading rotation
+
+If heading/course is available:
+
+* rotate marker gradually toward new heading
+* do not rotate wildly when speed is near zero
+
+## 6. Add stationary handling
+
+If:
+
+* speed <= low threshold
+* and moved distance <= small radius
+
+Then:
+
+* keep marker stable
+* do not show drift movement
+* status should be IDLE, not MOVING
+
+## 7. Improve playback engine
+
+Playback must:
+
+* use cleaned ordered points
+* have play, pause, resume, speed control
+* interpolate movement between route points
+* show current timestamp during playback
+* update marker smoothly between points instead of jumping point-to-point
+* optionally draw traveled polyline progressively
+
+## 8. Add playback interpolation
+
+For playback:
+
+* compute segment duration from timestamp difference
+* animate along segment according to chosen playback speed
+* if timestamps are too far apart, still move smoothly but cap animation time reasonably
+* if gap is too large, show a gap marker or jump indicator
+
+## 9. Add route gap detection
+
+If time difference between consecutive points is too large:
+
+* mark it as a gap
+* do not pretend continuous movement occurred
+* optionally show dashed segment or gap indicator
+
+## 10. Add debug diagnostics for one object
+
+Create a small admin debug panel showing:
+
+* last raw packet time
+* last cleaned point time
+* last displayed point time
+* rejected point count
+* duplicate point count
+* jump-rejected count
+* current live status
+* current speed
+* current heading
+
+## 11. Add backend fields if needed
+
+Per object store:
+
+* last_raw_packet_at
+* last_clean_point_at
+* last_valid_lat
+* last_valid_lng
+* last_valid_speed
+* last_valid_heading
+* last_status
+
+## 12. Do not disturb existing architecture
+
+Do NOT remove:
+
+* existing ingest endpoint
+* existing listener service
+* existing map
+* existing history module
+
+Only add:
+
+* cleaning/filtering layer
+* animated live marker updates
+* interpolated playback engine
+* debug diagnostics
+
+## 13. Success criteria
+
+After fix:
+
+* live marker should move smoothly, not jump
+* stationary vehicles should not drift visibly
+* playback should animate continuously, not hop sharply
+* impossible jumps should be rejected
+* route line should look cleaner
+* status should correctly show MOVING / IDLE / OFFLINE

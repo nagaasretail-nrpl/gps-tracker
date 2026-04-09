@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -54,6 +54,8 @@ export default function History() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 2 | 3>(1);
+  const [interpFraction, setInterpFraction] = useState(0);
+  const playbackRafRef = useRef<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
   const [autoPlayPending, setAutoPlayPending] = useState(false);
@@ -222,27 +224,111 @@ export default function History() {
     };
   }, [selectedVehicle, validActiveDateLocations, currentIndex]);
 
+  // Interpolated marker position between consecutive GPS points during playback.
+  // This drives smooth continuous marker movement instead of jumping point-to-point.
+  const interpolatedPlaybackLocation = useMemo(() => {
+    const pts = validActiveDateLocations;
+    if (!pts.length) return undefined;
+    if (currentIndex >= pts.length - 1 || interpFraction <= 0) return pts[currentIndex];
+    const curr = pts[currentIndex];
+    const next = pts[currentIndex + 1];
+    const f = interpFraction;
+    const lat = parseFloat(String(curr.latitude)) + f * (parseFloat(String(next.latitude)) - parseFloat(String(curr.latitude)));
+    const lng = parseFloat(String(curr.longitude)) + f * (parseFloat(String(next.longitude)) - parseFloat(String(curr.longitude)));
+    return { ...curr, latitude: String(lat), longitude: String(lng) };
+  }, [validActiveDateLocations, currentIndex, interpFraction]);
+
+  // Progressive trail: during playback only show the route up to the current point.
+  // Gap-aware: segments with > 5 min between points render as dotted lines.
+  const GAP_THRESHOLD_MS = 5 * 60 * 1000;
   const dayRoutePolylines = useMemo(() => {
     if (!selectedVehicle || validActiveDateLocations.length < 2) return [];
-    const coords = validActiveDateLocations.map(
-      (l) => [parseFloat(String(l.latitude)), parseFloat(String(l.longitude))] as [number, number]
-    );
-    return [{ vehicleId: selectedVehicle, coords, color: "#3b82f6" }];
-  }, [selectedVehicle, validActiveDateLocations]);
+    // Show full route when not playing/scrubbing; progressive trail otherwise
+    const displayPts = isPlaying || currentIndex > 0
+      ? validActiveDateLocations.slice(0, currentIndex + 2)
+      : validActiveDateLocations;
+    if (displayPts.length < 2) return [];
 
+    type Seg = { vehicleId: string; coords: [number, number][]; color: string; isDashed?: boolean };
+    const segments: Seg[] = [];
+    let seg: [number, number][] = [
+      [parseFloat(String(displayPts[0].latitude)), parseFloat(String(displayPts[0].longitude))],
+    ];
+
+    for (let i = 1; i < displayPts.length; i++) {
+      const pt: [number, number] = [
+        parseFloat(String(displayPts[i].latitude)),
+        parseFloat(String(displayPts[i].longitude)),
+      ];
+      const gap = new Date(displayPts[i].timestamp).getTime() - new Date(displayPts[i - 1].timestamp).getTime();
+      if (gap > GAP_THRESHOLD_MS) {
+        if (seg.length > 1) segments.push({ vehicleId: selectedVehicle, coords: seg, color: "#3b82f6" });
+        const lastPt = seg[seg.length - 1] ?? pt;
+        segments.push({ vehicleId: `${selectedVehicle}-gap-${i}`, coords: [lastPt, pt], color: "#94a3b8", isDashed: true });
+        seg = [pt];
+      } else {
+        seg.push(pt);
+      }
+    }
+    if (seg.length > 1) segments.push({ vehicleId: selectedVehicle, coords: seg, color: "#3b82f6" });
+    return segments;
+  }, [selectedVehicle, validActiveDateLocations, isPlaying, currentIndex]);
+
+  // Time-proportional playback using requestAnimationFrame.
+  // Advances through GPS points based on actual timestamp differences so the
+  // marker moves at real-world speed (scaled by playbackSpeed).
   useEffect(() => {
-    if (!isPlaying) return;
-    const interval = setInterval(() => {
-      setCurrentIndex((prev) => {
-        if (prev >= validActiveDateLocations.length - 1) {
-          setIsPlaying(false);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, Math.round(500 / playbackSpeed));
-    return () => clearInterval(interval);
-  }, [isPlaying, validActiveDateLocations.length, playbackSpeed]);
+    if (!isPlaying || validActiveDateLocations.length < 2) {
+      setInterpFraction(0);
+      return;
+    }
+    const pts = validActiveDateLocations;
+    const startWall = performance.now();
+    // Capture GPS start time from the current slider position
+    const startGpsMs = new Date(pts[currentIndex].timestamp).getTime();
+    let searchIdx = currentIndex;
+    let running = true;
+
+    function tick() {
+      if (!running) return;
+      const wallElapsed = (performance.now() - startWall) * playbackSpeed;
+      const targetGpsMs = startGpsMs + wallElapsed;
+
+      // Advance searchIdx to the correct segment
+      while (
+        searchIdx < pts.length - 1 &&
+        new Date(pts[searchIdx + 1].timestamp).getTime() <= targetGpsMs
+      ) {
+        searchIdx++;
+      }
+
+      if (searchIdx >= pts.length - 1) {
+        setCurrentIndex(pts.length - 1);
+        setInterpFraction(0);
+        setIsPlaying(false);
+        return;
+      }
+
+      const segStartMs = new Date(pts[searchIdx].timestamp).getTime();
+      const segEndMs = new Date(pts[searchIdx + 1].timestamp).getTime();
+      const segLen = Math.max(1, segEndMs - segStartMs);
+      const fraction = Math.min((targetGpsMs - segStartMs) / segLen, 1);
+
+      setCurrentIndex(searchIdx);
+      setInterpFraction(fraction);
+      playbackRafRef.current = requestAnimationFrame(tick);
+    }
+
+    playbackRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      running = false;
+      if (playbackRafRef.current !== null) {
+        cancelAnimationFrame(playbackRafRef.current);
+        playbackRafRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, playbackSpeed, validActiveDateLocations]);
 
   const formatDateKey = (key: string) => {
     try {
@@ -558,12 +644,13 @@ export default function History() {
             <MapComponent
               key={`${selectedDate}-${selectedVehicle}`}
               vehicles={[selectedVehicleData]}
-              locations={[currentLocation]}
+              locations={interpolatedPlaybackLocation ? [interpolatedPlaybackLocation] : [currentLocation]}
               routePolylines={dayRoutePolylines}
               bearingData={historyBearingData}
               focusVehicleId={selectedVehicle}
               parkingEvents={selectedDateParkingEvents}
               showParkingPopups={true}
+              markerAnimDuration={0}
               className="h-full"
             />
           ) : (
