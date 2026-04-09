@@ -1,8 +1,14 @@
-# GPS Fleet Tracker - Web Application
+# NistaGPS Platform — GPS Fleet Tracker
 
 ## Overview
 
-A **GPS fleet management web application** for real-time vehicle tracking, geofencing, route history, and fleet management.
+A **three-layer GPS fleet management platform** built for nistagps.com (Nagaas Retail Private Limited):
+
+1. **Public marketing website** — Full product/marketing site at `/home`, `/features`, `/hosted`, `/devices`, `/mobile/:app`, `/getting-started`, `/troubleshooting`, `/personal`
+2. **Documentation site** — (Task #71, upcoming) Docs portal at `/docs`
+3. **Authenticated tracking app** — Live fleet tracking dashboard at `/` for logged-in users
+
+Unauthenticated users see the marketing home page. `/login` always shows the login form. Authenticated users see the full fleet dashboard.
 
 ## Architecture
 

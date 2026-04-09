@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation, useRoute } from "wouter";
+import { Switch, Route, useLocation, useRoute, Redirect } from "wouter";
 import { useState, useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/dialog";
 import { LogOut, AlertTriangle } from "lucide-react";
 import type { User } from "@shared/schema";
+
+// Pages — authenticated app
 import Login from "@/pages/login";
 import Tracking from "@/pages/tracking";
 import Dashboard from "@/pages/dashboard";
@@ -46,7 +48,29 @@ import VehicleAppearance from "@/pages/vehicle-appearance";
 import AdminDevices from "@/pages/admin-devices";
 import NotFound from "@/pages/not-found";
 
+// Pages — public marketing site
+import HomePage from "@/pages/public/home";
+import FeaturesPage from "@/pages/public/features";
+import PersonalPage from "@/pages/public/personal";
+import HostedPage from "@/pages/public/hosted";
+import MobileAppsPage from "@/pages/public/mobile-apps";
+import DevicesPage from "@/pages/public/devices";
+import TroubleshootingPage from "@/pages/public/troubleshooting";
+import GettingStartedPage from "@/pages/public/getting-started";
+
 type UserWithoutPassword = Omit<User, "password">;
+
+// Public marketing route prefix check
+const PUBLIC_MARKETING_PATHS = new Set([
+  "/home", "/features", "/personal", "/hosted",
+  "/devices", "/troubleshooting", "/getting-started",
+]);
+
+function isPublicMarketingRoute(loc: string) {
+  if (PUBLIC_MARKETING_PATHS.has(loc)) return true;
+  if (loc.startsWith("/mobile/")) return true;
+  return false;
+}
 
 // Routes that bypass allowedMenus restrictions — always visible for all authenticated users.
 const ALWAYS_ACCESSIBLE_ROUTES = new Set(["/geofences", "/pois", "/parking-report", "/alert-settings", "/vehicle-appearance"]);
@@ -78,29 +102,17 @@ function RouteGuard({ user, userLoaded, path, component: Component }: {
 }) {
   const [, navigate] = useLocation();
 
-  // Wait until user data is resolved before making access decisions
-  if (!userLoaded) {
-    return null;
-  }
+  if (!userLoaded) return null;
 
-  if (!user || user.role === "admin") {
-    return <Component />;
-  }
+  if (!user || user.role === "admin") return <Component />;
 
-  // Always accessible routes bypass per-user menu restrictions entirely
-  if (ALWAYS_ACCESSIBLE_ROUTES.has(path)) {
-    return <Component />;
-  }
+  if (ALWAYS_ACCESSIBLE_ROUTES.has(path)) return <Component />;
 
   const allowedMenus = user.allowedMenus;
-  // null or empty array both mean unrestricted (no specific menus configured)
-  if (allowedMenus == null || allowedMenus.length === 0) {
-    return <Component />;
-  }
+  if (allowedMenus == null || allowedMenus.length === 0) return <Component />;
 
   const requiredMenu = PROTECTED_ROUTES[path];
   if (requiredMenu && !requiredMenu.some((r) => allowedMenus.includes(r))) {
-    // "/tracking" is never in PROTECTED_ROUTES so it is always reachable
     navigate("/tracking");
     return null;
   }
@@ -145,6 +157,15 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
           />
         ) : null
       } />
+      {/* Public marketing pages are also accessible from within the authenticated app */}
+      <Route path="/home" component={HomePage} />
+      <Route path="/features" component={FeaturesPage} />
+      <Route path="/personal" component={PersonalPage} />
+      <Route path="/hosted" component={HostedPage} />
+      <Route path="/mobile/:app" component={MobileAppsPage} />
+      <Route path="/devices" component={DevicesPage} />
+      <Route path="/troubleshooting" component={TroubleshootingPage} />
+      <Route path="/getting-started" component={GettingStartedPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -301,30 +322,48 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-// PublicOrAuthApp handles public legal routes (/terms, /privacy) before any auth check,
-// so unauthenticated users can read legal pages without being redirected to login.
-// Auth state is managed here rather than inside a nested Router to keep a single entry point.
+// PublicSiteSwitch — renders all public marketing pages (no auth required).
+function PublicSiteSwitch() {
+  return (
+    <Switch>
+      <Route path="/home" component={HomePage} />
+      <Route path="/features" component={FeaturesPage} />
+      <Route path="/personal" component={PersonalPage} />
+      <Route path="/hosted" component={HostedPage} />
+      <Route path="/mobile/:app" component={MobileAppsPage} />
+      <Route path="/devices" component={DevicesPage} />
+      <Route path="/troubleshooting" component={TroubleshootingPage} />
+      <Route path="/getting-started" component={GettingStartedPage} />
+      <Route component={() => <Redirect to="/home" />} />
+    </Switch>
+  );
+}
+
+// PublicOrAuthApp handles routing for all users.
+// Public pages (marketing, legal) are served without auth check.
+// App routes require auth; unauthenticated users are redirected to /home.
 function PublicOrAuthApp() {
+  const [location] = useLocation();
   const [isTermsMatch] = useRoute("/terms");
   const [isPrivacyMatch] = useRoute("/privacy");
   const [isInstallMatch] = useRoute("/install");
+  const [isLoginMatch] = useRoute("/login");
+
+  const isMarketingRoute = isPublicMarketingRoute(location);
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Skip auth check for public pages — show them immediately
-    if (isTermsMatch || isPrivacyMatch || isInstallMatch) {
+    // Skip auth check for always-public pages
+    if (isTermsMatch || isPrivacyMatch || isInstallMatch || isLoginMatch || isMarketingRoute) {
       setIsLoading(false);
       return;
     }
-    // Reset loading before re-checking auth (e.g. when navigating away from legal pages)
     setIsLoading(true);
     const checkAuth = async () => {
       try {
-        const response = await fetch("/api/auth/me", {
-          credentials: "include",
-        });
+        const response = await fetch("/api/auth/me", { credentials: "include" });
         setIsAuthenticated(response.ok);
       } catch {
         setIsAuthenticated(false);
@@ -333,35 +372,58 @@ function PublicOrAuthApp() {
       }
     };
     checkAuth();
-  }, [isTermsMatch, isPrivacyMatch, isInstallMatch]);
+  }, [isTermsMatch, isPrivacyMatch, isInstallMatch, isLoginMatch, isMarketingRoute]);
 
-  // Always serve public pages regardless of auth state
+  // Always-public legal/utility pages
   if (isTermsMatch) return <Terms />;
   if (isPrivacyMatch) return <Privacy />;
   if (isInstallMatch) return <InstallPage />;
+
+  // Login page — always public, skip auth check overhead
+  if (isLoginMatch) {
+    return (
+      <Login
+        onLoginSuccess={() => {
+          queryClient.invalidateQueries();
+          setIsAuthenticated(true);
+        }}
+      />
+    );
+  }
+
+  // Public marketing pages — serve immediately, no auth required
+  if (isMarketingRoute) {
+    return <PublicSiteSwitch />;
+  }
 
   if (isLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
           <p className="mt-4 text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
   }
 
-  return isAuthenticated ? (
-    <AuthenticatedApp onLogout={() => {
-      queryClient.invalidateQueries();
-      setIsAuthenticated(false);
-    }} />
-  ) : (
-    <Login onLoginSuccess={() => {
-      queryClient.invalidateQueries();
-      setIsAuthenticated(true);
-    }} />
-  );
+  if (isAuthenticated) {
+    return (
+      <AuthenticatedApp
+        onLogout={() => {
+          queryClient.invalidateQueries();
+          setIsAuthenticated(false);
+        }}
+      />
+    );
+  }
+
+  // Unauthenticated users visiting app routes → send to home page
+  // (They can reach /login directly via the Get Started CTA in the marketing site)
+  if (location === "/") {
+    return <HomePage />;
+  }
+  return <Redirect to="/home" />;
 }
 
 function App() {
