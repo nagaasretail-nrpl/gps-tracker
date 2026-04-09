@@ -871,6 +871,237 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── Consolidated /api/reports endpoint ───────────────────────────────────
+  // type: trips | mileage | activity | idle | fuel | stops | speeding | zone
+  app.get("/api/reports", requireAuth, async (req, res) => {
+    try {
+      const { type = "trips", vehicleId, startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+      }
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      let vehicleIds: string[];
+      if (vehicleId && vehicleId !== "all") {
+        if (allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+          return res.json([]);
+        }
+        vehicleIds = [vehicleId as string];
+      } else {
+        const allVehicles = await storage.getVehicles();
+        const allIds = allVehicles.map(v => v.id);
+        vehicleIds = allowedIds === null ? allIds : allIds.filter(id => allowedIds.includes(id));
+      }
+
+      type LocRow = Awaited<ReturnType<typeof storage.getLocationHistory>>[number];
+
+      const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
+
+      const isValidGps = (loc: LocRow): boolean => {
+        if (!loc.timestamp) return false;
+        const lat = parseFloat(String(loc.latitude));
+        const lng = parseFloat(String(loc.longitude));
+        if (!isFinite(lat) || !isFinite(lng)) return false;
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+        if (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001) return false;
+        const spd = parseFloat(String(loc.speed || "0")) || 0;
+        if (spd > 300) return false;
+        return true;
+      };
+
+      const computeVehicleSummary = async (vid: string) => {
+        const locs = await storage.getLocationHistory(vid, start, end);
+        const sorted = [...locs].filter(isValidGps)
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        let distanceKm = 0;
+        let movingMs = 0;
+        let idleMs = 0;
+        let stopCount = 0;
+        let prevLoc: LocRow | null = null;
+        let prevWasMoving = false;
+
+        for (const loc of sorted) {
+          const spd = parseFloat(String(loc.speed || "0")) || 0;
+          if (prevLoc) {
+            const dtMs = new Date(loc.timestamp).getTime() - new Date(prevLoc.timestamp).getTime();
+            const prevSpd = parseFloat(String(prevLoc.speed || "0")) || 0;
+            const avgSpd = (spd + prevSpd) / 2;
+            if (avgSpd > 3) {
+              distanceKm += haversineKm(
+                parseFloat(String(prevLoc.latitude)),
+                parseFloat(String(prevLoc.longitude)),
+                parseFloat(String(loc.latitude)),
+                parseFloat(String(loc.longitude))
+              );
+              movingMs += dtMs;
+              if (!prevWasMoving) stopCount++;
+              prevWasMoving = true;
+            } else {
+              idleMs += dtMs;
+              prevWasMoving = false;
+            }
+          }
+          prevLoc = loc;
+        }
+
+        return {
+          vehicleId: vid,
+          distanceKm: Math.round(distanceKm * 10) / 10,
+          movingHr: Math.round(movingMs / 36000) / 100,
+          idleHr: Math.round(idleMs / 36000) / 100,
+          stopCount,
+          fuelLiters: Math.round(distanceKm * 0.10 * 10) / 10,   // assumed 10L/100km
+          pointCount: sorted.length,
+        };
+      };
+
+      if (type === "mileage") {
+        const rows = await Promise.all(vehicleIds.map(computeVehicleSummary));
+        return res.json(rows.map(r => ({
+          vehicleId: r.vehicleId,
+          distanceKm: r.distanceKm,
+          movingHr: r.movingHr,
+        })));
+      }
+
+      if (type === "activity") {
+        const rows = await Promise.all(vehicleIds.map(computeVehicleSummary));
+        return res.json(rows.map(r => ({
+          vehicleId: r.vehicleId,
+          movingHr: r.movingHr,
+          idleHr: r.idleHr,
+          stopCount: r.stopCount,
+        })));
+      }
+
+      if (type === "idle") {
+        const rows = await Promise.all(vehicleIds.map(computeVehicleSummary));
+        return res.json(rows.map(r => ({
+          vehicleId: r.vehicleId,
+          idleHr: r.idleHr,
+          movingHr: r.movingHr,
+          idleRatio: r.movingHr + r.idleHr > 0
+            ? Math.round(r.idleHr / (r.movingHr + r.idleHr) * 100) : 0,
+        })));
+      }
+
+      if (type === "fuel") {
+        const rows = await Promise.all(vehicleIds.map(computeVehicleSummary));
+        return res.json(rows.map(r => ({
+          vehicleId: r.vehicleId,
+          distanceKm: r.distanceKm,
+          fuelLiters: r.fuelLiters,
+          efficiency: r.fuelLiters > 0
+            ? Math.round(r.distanceKm / r.fuelLiters * 10) / 10 : 0,
+        })));
+      }
+
+      if (type === "stops") {
+        const rows = await Promise.all(vehicleIds.map(computeVehicleSummary));
+        return res.json(rows.map(r => ({
+          vehicleId: r.vehicleId,
+          stopCount: r.stopCount,
+          idleHr: r.idleHr,
+        })));
+      }
+
+      if (type === "speeding") {
+        const allEvents: object[] = [];
+        await Promise.all(vehicleIds.map(async (vid) => {
+          const events = await storage.getEvents(vid, start, end, "speed_violation");
+          allEvents.push(...events.map(e => ({
+            vehicleId: vid,
+            timestamp: e.timestamp,
+            speed: e.metadata && typeof e.metadata === "object" ? (e.metadata as Record<string, unknown>).speed ?? null : null,
+            limit: e.metadata && typeof e.metadata === "object" ? (e.metadata as Record<string, unknown>).limit ?? null : null,
+            lat: e.latitude, lng: e.longitude,
+          })));
+        }));
+        return res.json(allEvents);
+      }
+
+      if (type === "zone") {
+        const allEvents: object[] = [];
+        await Promise.all(vehicleIds.map(async (vid) => {
+          const eventsGeoEntry = await storage.getEvents(vid, start, end, "geofence_entry");
+          const eventsGeoExit = await storage.getEvents(vid, start, end, "geofence_exit");
+          const combined = [...eventsGeoEntry, ...eventsGeoExit];
+          allEvents.push(...combined.map(e => ({
+            vehicleId: vid,
+            type: e.type,
+            timestamp: e.timestamp,
+            zoneName: e.metadata && typeof e.metadata === "object"
+              ? (e.metadata as Record<string, unknown>).zoneName ?? "Unknown"
+              : "Unknown",
+          })));
+        }));
+        return res.json(allEvents);
+      }
+
+      // Default: trips summary — reuse location trip segments
+      const allTrips: object[] = [];
+      await Promise.all(vehicleIds.map(async (vid) => {
+        const locs = await storage.getLocationHistory(vid, start, end);
+        const sorted = [...locs].filter(isValidGps)
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        let tripStart: LocRow | null = null;
+        let tripDist = 0;
+        let prevLoc: LocRow | null = null;
+        const emitTrip = (tripEnd: LocRow) => {
+          if (tripStart && tripDist > 0.1) {
+            allTrips.push({
+              vehicleId: vid,
+              startTime: new Date(tripStart.timestamp).toISOString(),
+              endTime: new Date(tripEnd.timestamp).toISOString(),
+              durationMin: Math.round(
+                (new Date(tripEnd.timestamp).getTime() - new Date(tripStart.timestamp).getTime()) / 60000
+              ),
+              distanceKm: Math.round(tripDist * 10) / 10,
+              startLat: parseFloat(String(tripStart.latitude)),
+              startLng: parseFloat(String(tripStart.longitude)),
+              endLat: parseFloat(String(tripEnd.latitude)),
+              endLng: parseFloat(String(tripEnd.longitude)),
+            });
+          }
+          tripStart = null;
+          tripDist = 0;
+        };
+        for (const loc of sorted) {
+          const spd = parseFloat(String(loc.speed || "0")) || 0;
+          if (spd > 3) {
+            if (!tripStart) tripStart = loc;
+            if (prevLoc) {
+              tripDist += haversineKm(
+                parseFloat(String(prevLoc.latitude)),
+                parseFloat(String(prevLoc.longitude)),
+                parseFloat(String(loc.latitude)),
+                parseFloat(String(loc.longitude))
+              );
+            }
+          } else if (tripStart) {
+            emitTrip(loc);
+          }
+          prevLoc = loc;
+        }
+        if (tripStart && prevLoc) emitTrip(prevLoc);
+      }));
+      return res.json(allTrips);
+    } catch (error) {
+      console.error("Report computation error:", error);
+      res.status(500).json({ error: "Failed to generate report" });
+    }
+  });
+
   app.post("/api/locations", requireAuth, async (req, res) => {
     try {
       const validatedData = insertLocationSchema.parse(req.body);
@@ -1625,7 +1856,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Access denied" });
       }
       const records = await storage.getMaintenanceRecords(vehicleId as string | undefined, allowedIds);
-      res.json(records);
+
+      // Enrich each record with computed dueStatus (overdue | due_soon | ok)
+      // that factors in BOTH date-based and odometer-based reminders.
+      const now = Date.now();
+      const SOON_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+      const ODOMETER_SOON_KM = 500;             // warn when within 500 km
+
+      // Fetch current odometer readings for all vehicles in one pass
+      const vehicleOdoMap: Record<string, number> = {};
+      const uniqueVids = [...new Set(records.map(r => r.vehicleId))];
+      await Promise.all(uniqueVids.map(async (vid) => {
+        const locs = await storage.getLocationHistory(vid, new Date(now - 30 * 24 * 3600_000), new Date(now));
+        if (locs.length > 0) {
+          // Use the most recent odometer reading if available, else 0
+          const sorted = [...locs].sort((a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          const odomStr = (sorted[0] as unknown as Record<string, unknown>).odometer;
+          vehicleOdoMap[vid] = odomStr ? parseFloat(String(odomStr)) : 0;
+        }
+      }));
+
+      const enriched = records.map(r => {
+        let dueStatus: "overdue" | "due_soon" | "ok" = "ok";
+
+        // Date-based check
+        if (r.nextDueDate) {
+          const dueMs = new Date(r.nextDueDate).getTime();
+          if (dueMs < now) dueStatus = "overdue";
+          else if (dueMs - now < SOON_MS) dueStatus = "due_soon";
+        }
+
+        // Odometer-based check (only elevate, never downgrade)
+        if (r.nextDueOdometer != null && dueStatus !== "overdue") {
+          const currentOdo = vehicleOdoMap[r.vehicleId] ?? 0;
+          if (currentOdo >= r.nextDueOdometer) dueStatus = "overdue";
+          else if (r.nextDueOdometer - currentOdo <= ODOMETER_SOON_KM) dueStatus = "due_soon";
+        }
+
+        return { ...r, dueStatus };
+      });
+
+      res.json(enriched);
     } catch { res.status(500).json({ error: "Failed to fetch maintenance records" }); }
   });
 

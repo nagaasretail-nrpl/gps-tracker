@@ -27,6 +27,8 @@ interface MaintenanceRecord {
   nextDueOdometer: number | null;
   nextDueDate: string | null;
   createdAt: string;
+  /** Computed by the backend; factors in BOTH date and odometer */
+  dueStatus?: "overdue" | "due_soon" | "ok";
 }
 
 const SERVICE_TYPES = [
@@ -132,8 +134,13 @@ export default function MaintenancePage() {
     else createMutation.mutate(payload);
   };
 
-  const isDue = (r: MaintenanceRecord) =>
-    (r.nextDueDate && new Date(r.nextDueDate) <= new Date()) || false;
+  // Use the backend-computed dueStatus that factors in both date and odometer.
+  // Fall back to date-only check if field is absent (e.g. cached responses).
+  const getDueStatus = (r: MaintenanceRecord): "overdue" | "due_soon" | "ok" => {
+    if (r.dueStatus) return r.dueStatus;
+    if (r.nextDueDate && new Date(r.nextDueDate) <= new Date()) return "overdue";
+    return "ok";
+  };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -202,14 +209,34 @@ export default function MaintenancePage() {
                       <TableCell className="text-sm">{r.odometer != null ? `${r.odometer.toLocaleString()} km` : "—"}</TableCell>
                       <TableCell className="text-sm">{r.cost != null ? `₹${parseFloat(r.cost).toLocaleString()}` : "—"}</TableCell>
                       <TableCell>
-                        {r.nextDueDate ? (
-                          <span className={`text-xs flex items-center gap-1 ${isDue(r) ? "text-destructive" : "text-muted-foreground"}`}>
-                            {isDue(r) && <AlertTriangle className="h-3 w-3" />}
-                            {format(new Date(r.nextDueDate), "dd MMM yyyy")}
-                          </span>
-                        ) : r.nextDueOdometer ? (
-                          <span className="text-xs text-muted-foreground">{r.nextDueOdometer.toLocaleString()} km</span>
-                        ) : <span className="text-muted-foreground text-sm">—</span>}
+                        {(() => {
+                          const status = getDueStatus(r);
+                          const isAlert = status === "overdue" || status === "due_soon";
+                          const colorClass = status === "overdue"
+                            ? "text-destructive"
+                            : status === "due_soon"
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "text-muted-foreground";
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              {r.nextDueDate && (
+                                <span className={`text-xs flex items-center gap-1 ${colorClass}`}>
+                                  {isAlert && <AlertTriangle className="h-3 w-3 flex-shrink-0" />}
+                                  {format(new Date(r.nextDueDate), "dd MMM yyyy")}
+                                </span>
+                              )}
+                              {r.nextDueOdometer != null && (
+                                <span className={`text-xs flex items-center gap-1 ${colorClass}`}>
+                                  {!r.nextDueDate && isAlert && <AlertTriangle className="h-3 w-3 flex-shrink-0" />}
+                                  {r.nextDueOdometer.toLocaleString()} km
+                                </span>
+                              )}
+                              {!r.nextDueDate && r.nextDueOdometer == null && (
+                                <span className="text-muted-foreground text-sm">—</span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
