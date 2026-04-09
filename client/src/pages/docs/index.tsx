@@ -1,17 +1,35 @@
 import { useState, useMemo, useEffect } from "react";
 import { useLocation, useRoute, Link } from "wouter";
-import { Search, ChevronDown, ChevronRight, Menu, X, ArrowLeft, ArrowRight, MapPin } from "lucide-react";
+import {
+  Search,
+  ChevronDown,
+  ChevronRight,
+  Menu,
+  X,
+  ArrowLeft,
+  ArrowRight,
+  MapPin,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   getSections,
   getArticle,
-  getAdjacentArticles,
   ALL_ARTICLES,
   type DocSection,
   type DocArticle,
 } from "@/lib/docs-content";
 
+function articleUrl(a: DocArticle): string {
+  return `/docs/${a.sectionId}/${a.slug}`;
+}
+
+function sectionUrl(s: DocSection): string {
+  const first = s.articles[0];
+  return first ? articleUrl(first) : "/docs";
+}
+
+// ─── Docs home ───────────────────────────────────────────────────────────────
 function DocsHome() {
   const sections = getSections();
   return (
@@ -22,8 +40,11 @@ function DocsHome() {
       </p>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {sections.map((section) => (
-          <Link key={section.id} href={`/docs/${section.articles[0]?.slug ?? ""}`}>
-            <div className="border border-border rounded-md p-5 hover-elevate cursor-pointer h-full">
+          <Link key={section.id} href={sectionUrl(section)}>
+            <div
+              className="border border-border rounded-md p-5 hover-elevate cursor-pointer h-full"
+              data-testid={`card-section-${section.id}`}
+            >
               <h2 className="font-semibold text-foreground mb-1">{section.title}</h2>
               <p className="text-sm text-muted-foreground">
                 {section.articles.length} article{section.articles.length !== 1 ? "s" : ""}
@@ -36,7 +57,7 @@ function DocsHome() {
                 ))}
                 {section.articles.length > 3 && (
                   <li className="text-sm text-muted-foreground">
-                    +{section.articles.length - 3} more…
+                    +{section.articles.length - 3} more&hellip;
                   </li>
                 )}
               </ul>
@@ -48,20 +69,22 @@ function DocsHome() {
   );
 }
 
-function ArticleView({ slug }: { slug: string }) {
-  const article = getArticle(slug);
-  const { prev, next } = getAdjacentArticles(slug);
+// ─── Article view ─────────────────────────────────────────────────────────────
+function ArticleView({ sectionId, slug }: { sectionId: string; slug: string }) {
+  const article = getArticle(sectionId, slug);
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
-  }, [slug]);
+  }, [sectionId, slug]);
 
   if (!article) {
     return (
       <div className="text-center py-16">
         <p className="text-muted-foreground text-lg">Article not found.</p>
         <Link href="/docs">
-          <Button variant="outline" className="mt-4">Back to Docs Home</Button>
+          <Button variant="outline" className="mt-4">
+            Back to Docs Home
+          </Button>
         </Link>
       </div>
     );
@@ -74,20 +97,28 @@ function ArticleView({ slug }: { slug: string }) {
 
       {/* Prev / Next navigation */}
       <div className="mt-12 pt-6 border-t border-border flex flex-wrap gap-3 justify-between">
-        {prev ? (
-          <Link href={`/docs/${prev.slug}`}>
-            <Button variant="outline" className="flex items-center gap-2" data-testid={`btn-prev-article`}>
+        {article.prev ? (
+          <Link href={articleUrl(article.prev as DocArticle)}>
+            <Button
+              variant="outline"
+              className="flex items-center gap-2"
+              data-testid="btn-prev-article"
+            >
               <ArrowLeft className="h-4 w-4" />
-              <span className="max-w-xs truncate">{prev.title}</span>
+              <span className="max-w-xs truncate">{article.prev.title}</span>
             </Button>
           </Link>
         ) : (
           <div />
         )}
-        {next ? (
-          <Link href={`/docs/${next.slug}`}>
-            <Button variant="outline" className="flex items-center gap-2" data-testid={`btn-next-article`}>
-              <span className="max-w-xs truncate">{next.title}</span>
+        {article.next ? (
+          <Link href={articleUrl(article.next as DocArticle)}>
+            <Button
+              variant="outline"
+              className="flex items-center gap-2"
+              data-testid="btn-next-article"
+            >
+              <span className="max-w-xs truncate">{article.next.title}</span>
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
@@ -99,18 +130,26 @@ function ArticleView({ slug }: { slug: string }) {
   );
 }
 
+// ─── Section nav item (self-managing collapse) ────────────────────────────────
 function SectionNav({
   section,
+  currentSectionId,
   currentSlug,
   onNav,
-  defaultOpen,
 }: {
   section: DocSection;
+  currentSectionId: string | null;
   currentSlug: string | null;
   onNav?: () => void;
-  defaultOpen: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const isActive = section.id === currentSectionId;
+  const [open, setOpen] = useState(isActive);
+
+  // Auto-expand when navigating to this section
+  useEffect(() => {
+    if (isActive) setOpen(true);
+  }, [isActive]);
+
   return (
     <div className="mb-1">
       <button
@@ -124,34 +163,41 @@ function SectionNav({
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
       </button>
       <div className={open ? "mt-0.5 mb-1" : "hidden"}>
-        {section.articles.map((article) => (
-          <Link key={article.slug} href={`/docs/${article.slug}`}>
-            <div
-              className={`px-3 py-1 rounded-md text-sm cursor-pointer leading-snug ${
-                article.slug === currentSlug
-                  ? "bg-primary text-primary-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover-elevate"
-              }`}
-              onClick={onNav}
-              data-testid={`link-article-${article.slug}`}
-            >
-              {article.title}
-            </div>
-          </Link>
-        ))}
+        {section.articles.map((article) => {
+          const isCurrentArticle =
+            article.sectionId === currentSectionId && article.slug === currentSlug;
+          return (
+            <Link key={`${article.sectionId}/${article.slug}`} href={articleUrl(article)}>
+              <div
+                className={`px-3 py-1 rounded-md text-sm cursor-pointer leading-snug ${
+                  isCurrentArticle
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground hover-elevate"
+                }`}
+                onClick={onNav}
+                data-testid={`link-article-${article.slug}`}
+              >
+                {article.title}
+              </div>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
 }
 
+// ─── Sidebar content ─────────────────────────────────────────────────────────
 function SidebarContent({
   query,
   onQueryChange,
+  currentSectionId,
   currentSlug,
   onNav,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
+  currentSectionId: string | null;
   currentSlug: string | null;
   onNav?: () => void;
 }) {
@@ -194,7 +240,9 @@ function SidebarContent({
         <Link href="/docs">
           <div
             className={`px-3 py-1.5 rounded-md text-sm cursor-pointer mb-1 ${
-              !currentSlug ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:text-foreground hover-elevate"
+              !currentSectionId
+                ? "bg-primary text-primary-foreground font-medium"
+                : "text-muted-foreground hover:text-foreground hover-elevate"
             }`}
             onClick={onNav}
             data-testid="link-docs-home"
@@ -213,10 +261,10 @@ function SidebarContent({
               <p className="text-sm text-muted-foreground px-3 py-2">No articles match.</p>
             ) : (
               filtered.map((a) => (
-                <Link key={a.slug} href={`/docs/${a.slug}`}>
+                <Link key={`${a.sectionId}/${a.slug}`} href={articleUrl(a)}>
                   <div
                     className={`px-3 py-1.5 rounded-md text-sm cursor-pointer ${
-                      a.slug === currentSlug
+                      a.sectionId === currentSectionId && a.slug === currentSlug
                         ? "bg-primary text-primary-foreground font-medium"
                         : "text-foreground hover-elevate"
                     }`}
@@ -234,7 +282,7 @@ function SidebarContent({
             <SectionNav
               key={section.id}
               section={section}
-              defaultOpen
+              currentSectionId={currentSectionId}
               currentSlug={currentSlug}
               onNav={onNav}
             />
@@ -245,16 +293,27 @@ function SidebarContent({
   );
 }
 
+// ─── Main DocsPage ────────────────────────────────────────────────────────────
 export default function DocsPage() {
   const [location] = useLocation();
   const [isDocsRoot] = useRoute("/docs");
-  const [, params] = useRoute<{ slug: string }>("/docs/:slug");
-  const slug = params?.slug ?? null;
+  const [, sectionParams] = useRoute<{ section: string }>("/docs/:section");
+  const [, articleParams] = useRoute<{ section: string; article: string }>(
+    "/docs/:section/:article",
+  );
+
+  // Determine current section and article from URL
+  const currentSectionId = articleParams?.section ?? sectionParams?.section ?? null;
+  const currentSlug = articleParams?.article ?? null;
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const closeMobile = () => setMobileOpen(false);
+
+  // Resolve article title for breadcrumb
+  const currentArticle =
+    currentSectionId && currentSlug ? getArticle(currentSectionId, currentSlug) : null;
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -263,7 +322,8 @@ export default function DocsPage() {
         <SidebarContent
           query={searchQuery}
           onQueryChange={setSearchQuery}
-          currentSlug={slug}
+          currentSectionId={currentSectionId}
+          currentSlug={currentSlug}
         />
       </aside>
 
@@ -289,7 +349,8 @@ export default function DocsPage() {
             <SidebarContent
               query={searchQuery}
               onQueryChange={setSearchQuery}
-              currentSlug={slug}
+              currentSectionId={currentSectionId}
+              currentSlug={currentSlug}
               onNav={closeMobile}
             />
           </aside>
@@ -298,7 +359,7 @@ export default function DocsPage() {
 
       {/* Main content */}
       <div className="flex flex-col flex-1 overflow-hidden">
-        {/* Docs top bar */}
+        {/* Top bar */}
         <header className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
           <Button
             size="icon"
@@ -311,14 +372,14 @@ export default function DocsPage() {
           </Button>
           <Link href="/home">
             <span className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-              ← Back to NistaGPS
+              &larr; Back to NistaGPS
             </span>
           </Link>
-          {slug && (
+          {currentArticle && (
             <>
               <span className="text-muted-foreground hidden sm:block">/</span>
               <span className="text-sm text-foreground font-medium truncate">
-                {getArticle(slug)?.title ?? slug}
+                {currentArticle.title}
               </span>
             </>
           )}
@@ -327,10 +388,22 @@ export default function DocsPage() {
         {/* Article area */}
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto px-6 py-10">
-            {isDocsRoot && !slug ? (
+            {isDocsRoot && !currentSectionId ? (
               <DocsHome />
-            ) : slug ? (
-              <ArticleView slug={slug} />
+            ) : currentSectionId && currentSlug ? (
+              <ArticleView sectionId={currentSectionId} slug={currentSlug} />
+            ) : currentSectionId ? (
+              // Section landing — redirect to first article in section
+              (() => {
+                const sections = getSections();
+                const section = sections.find((s) => s.id === currentSectionId);
+                const first = section?.articles[0];
+                if (first) {
+                  // Redirect to first article
+                  window.location.replace(articleUrl(first));
+                }
+                return <DocsHome />;
+              })()
             ) : (
               <DocsHome />
             )}
