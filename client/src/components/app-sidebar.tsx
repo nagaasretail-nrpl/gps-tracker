@@ -82,7 +82,6 @@ const fleetMenuItems: MenuItem[] = [
   { title: "Maintenance", url: "/maintenance", icon: Wrench },
   { title: "Expenses", url: "/expenses", icon: Banknote },
   { title: "Billing", url: "/billing", icon: CreditCard },
-  { title: "Billing History", url: "/billing/history", icon: Receipt },
   { title: "Alert Settings", url: "/alert-settings", icon: Bell },
 ];
 
@@ -91,6 +90,7 @@ const adminMenuItems: MenuItem[] = [
   { title: "Settings", url: "/admin-settings", icon: Settings },
   { title: "Devices", url: "/admin-devices", icon: Cpu },
   { title: "Device Models", url: "/admin/device-models", icon: LayoutDashboard },
+  { title: "Billing History", url: "/billing/history", icon: Receipt },
   { title: "Control Panel", url: "/admin/control-panel", icon: Shield },
 ];
 

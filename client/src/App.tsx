@@ -160,6 +160,7 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
       <Route path="/maintenance" component={guard("/maintenance", MaintenancePage)} />
       <Route path="/expenses" component={guard("/expenses", ExpensesPage)} />
       <Route path="/billing" component={guard("/billing", BillingPage)} />
+      <Route path="/billing/activate" component={guard("/billing/activate", () => <BillingPage defaultTab="activate" />)} />
       <Route path="/billing/history" component={guard("/billing/history", BillingHistoryPage)} />
       <Route path="/admin-users" component={AdminUsers} />
       <Route path="/admin-settings" component={AdminSettings} />

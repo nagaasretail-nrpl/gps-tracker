@@ -780,7 +780,7 @@ export class DbStorage implements IStorage {
     if (Object.keys(updates).length === 0) return this.getMaintenanceRecord(id);
     const set: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(updates)) {
-      if (key === "cost" || key === "liters") {
+      if (key === "cost") {
         set[key] = val != null ? String(val) : sql`NULL`;
       } else {
         set[key] = val === null || val === undefined ? sql`NULL` : val;
@@ -935,8 +935,10 @@ export class DbStorage implements IStorage {
   async addAuditLog(userId: string | null, action: string, detail?: string): Promise<void> {
     try {
       await db.insert(auditLogs).values({ userId: userId ?? null, action, detail: detail ?? null });
-    } catch {
-      // non-critical — silently ignore
+    } catch (err) {
+      // Non-critical: audit log failures should not break user-facing operations.
+      // Log to stderr so errors are visible in server logs without impacting callers.
+      console.error("[audit-log] Failed to write audit entry:", action, err instanceof Error ? err.message : String(err));
     }
   }
 

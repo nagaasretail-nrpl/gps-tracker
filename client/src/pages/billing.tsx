@@ -24,7 +24,11 @@ interface ActivateResult {
   message: string;
 }
 
-export default function BillingPage() {
+interface BillingPageProps {
+  defaultTab?: "plans" | "activate" | "status";
+}
+
+export default function BillingPage({ defaultTab = "plans" }: BillingPageProps) {
   const { toast } = useToast();
   const [imei, setImei] = useState("");
   const [vehicleName, setVehicleName] = useState("");
@@ -85,7 +89,7 @@ export default function BillingPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-4">
-        <Tabs defaultValue="plans">
+        <Tabs defaultValue={defaultTab}>
           <TabsList data-testid="tabs-billing">
             <TabsTrigger value="plans" data-testid="tab-plans">Plans</TabsTrigger>
             <TabsTrigger value="activate" data-testid="tab-activate">Activate Device</TabsTrigger>

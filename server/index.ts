@@ -153,6 +153,49 @@ app.use((req, res, next) => {
     log("Error in user seeding: " + (error instanceof Error ? error.message : "Unknown error"));
   }
 
+  // Seed 25 common GPS tracker device models (idempotent — only adds missing ones)
+  try {
+    const existingModels = await storage.getDeviceModels();
+    if (existingModels.length === 0) {
+      log("Seeding device models...");
+      const SEED_MODELS = [
+        { manufacturer: "Concox", modelName: "GT06N", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Most common GT06-compatible tracker" },
+        { manufacturer: "Concox", modelName: "AT4", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "4G LTE version of GT06" },
+        { manufacturer: "Teltonika", modelName: "FMB140", protocol: "teltonika", port: 5027, connectionType: "tcp", activationNotes: "Advanced tracker with GNSS" },
+        { manufacturer: "Teltonika", modelName: "FMB920", protocol: "teltonika", port: 5027, connectionType: "tcp", activationNotes: "Compact 4G tracker" },
+        { manufacturer: "Teltonika", modelName: "FM3001", protocol: "teltonika", port: 5027, connectionType: "tcp", activationNotes: "LTE Cat-M1 tracker" },
+        { manufacturer: "Queclink", modelName: "GV300", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "GT06 compatible vehicle tracker" },
+        { manufacturer: "Queclink", modelName: "GV500", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "4G LTE Queclink tracker" },
+        { manufacturer: "Boxty", modelName: "VT-200", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Budget GT06 tracker" },
+        { manufacturer: "Sinotrack", modelName: "ST-901", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Popular budget tracker, GT06 protocol" },
+        { manufacturer: "Sinotrack", modelName: "ST-906", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Wired tracker with relay" },
+        { manufacturer: "Meiligao", modelName: "MVT340", protocol: "meiligao", port: 5026, connectionType: "tcp", activationNotes: "Meiligao protocol tracker" },
+        { manufacturer: "Meiligao", modelName: "MVT600", protocol: "meiligao", port: 5026, connectionType: "tcp", activationNotes: "Fleet-grade Meiligao tracker" },
+        { manufacturer: "TopFlyTech", modelName: "T8803", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "GT06 compatible 4G tracker" },
+        { manufacturer: "Suntech", modelName: "ST310U", protocol: "suntech", port: 5025, connectionType: "tcp", activationNotes: "Suntech protocol asset tracker" },
+        { manufacturer: "Suntech", modelName: "ST600R", protocol: "suntech", port: 5025, connectionType: "tcp", activationNotes: "Suntech vehicle tracker" },
+        { manufacturer: "Ruptela", modelName: "FM-Eco4+", protocol: "ruptela", port: 5028, connectionType: "tcp", activationNotes: "EU-grade Ruptela tracker" },
+        { manufacturer: "CalAmp", modelName: "LMU-2630", protocol: "calamp", port: 5029, connectionType: "tcp", activationNotes: "CalAmp OBD tracker" },
+        { manufacturer: "Digital Matter", modelName: "Oyster3", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Long-life battery asset tracker" },
+        { manufacturer: "Trackimo", modelName: "Optimus 2.0", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Compact personal/vehicle tracker" },
+        { manufacturer: "Jimi IoT", modelName: "JM-LL501", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "4G dashcam + tracker combo" },
+        { manufacturer: "Jimi IoT", modelName: "VL502", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Plug-n-play OBD GT06 tracker" },
+        { manufacturer: "Gosafe", modelName: "G1SE", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Wired GT06 2G tracker" },
+        { manufacturer: "Gosafe", modelName: "G797", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "4G fleet tracker, GT06" },
+        { manufacturer: "Neomatica", modelName: "ADM700", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Professional fleet tracker" },
+        { manufacturer: "Jointech", modelName: "JT703", protocol: "gt06", port: 5023, connectionType: "tcp", activationNotes: "Cargo/container tracker GT06" },
+      ];
+      for (const model of SEED_MODELS) {
+        await storage.createDeviceModel(model);
+      }
+      log(`✓ Seeded ${SEED_MODELS.length} device models`);
+    } else {
+      log(`✓ Device models: ${existingModels.length} exist (no seed needed)`);
+    }
+  } catch (seedErr) {
+    log("Warning: device model seeding failed — " + (seedErr instanceof Error ? seedErr.message : String(seedErr)));
+  }
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
