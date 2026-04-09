@@ -78,13 +78,15 @@ export function VehicleDetailPanel({ vehicleId, vehicles, locations, onClose }: 
     staleTime: 60000,
   });
 
-  const { data: recentEvents } = useQuery<Event[]>({
+  const { data: recentEventsData } = useQuery<Event[] | { events: Event[]; total: number }>({
     queryKey: ["/api/events", vehicleId, "recent"],
     queryFn: async () => {
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const params = new URLSearchParams({
         vehicleId,
         startDate: yesterday.toISOString(),
+        limit: "50",
+        page: "1",
       });
       const res = await fetch(`/api/events?${params}`);
       if (!res.ok) throw new Error("Failed");
@@ -93,6 +95,10 @@ export function VehicleDetailPanel({ vehicleId, vehicles, locations, onClose }: 
     enabled: !!vehicleId,
     staleTime: 30000,
   });
+  // Normalise: backend returns paginated object; handle both shapes for safety
+  const recentEvents: Event[] = Array.isArray(recentEventsData)
+    ? recentEventsData
+    : ((recentEventsData as { events?: Event[] })?.events ?? []);
 
   if (!vehicle) return null;
 

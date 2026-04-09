@@ -24,6 +24,13 @@ interface FleetEvent {
   timestamp: string;
 }
 
+interface EventsResponse {
+  events: FleetEvent[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 interface TripSegment {
   vehicleId: string;
   date: string;
@@ -166,10 +173,18 @@ export default function Dashboard() {
     refetchInterval: REFRESH,
   });
 
-  const { data: events, isLoading: eventsLoading } = useQuery<FleetEvent[]>({
+  const { data: eventsData, isLoading: eventsLoading } = useQuery<EventsResponse>({
     queryKey: ["/api/events"],
     refetchInterval: REFRESH,
+    queryFn: async () => {
+      const res = await fetch("/api/events?limit=50&page=1", { credentials: "include" });
+      const json = await res.json();
+      // Normalise: backend may return paginated object or legacy array
+      if (Array.isArray(json)) return { events: json, total: json.length, page: 1, pageSize: json.length };
+      return json as EventsResponse;
+    },
   });
+  const events = eventsData?.events ?? [];
 
   const { data: todaySegments, isLoading: segmentsLoading } = useQuery<TripSegment[]>({
     queryKey: ["/api/locations/trips", "dashboard-today", todayStart],
