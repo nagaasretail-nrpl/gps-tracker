@@ -25,6 +25,7 @@ import {
   Banknote,
   CreditCard,
   LayoutDashboard,
+  Receipt,
 } from "lucide-react";
 import {
   Sidebar,
@@ -81,6 +82,7 @@ const fleetMenuItems: MenuItem[] = [
   { title: "Maintenance", url: "/maintenance", icon: Wrench },
   { title: "Expenses", url: "/expenses", icon: Banknote },
   { title: "Billing", url: "/billing", icon: CreditCard },
+  { title: "Billing History", url: "/billing/history", icon: Receipt },
   { title: "Alert Settings", url: "/alert-settings", icon: Bell },
 ];
 

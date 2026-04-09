@@ -1530,20 +1530,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ────────────────────────────────────────────
   app.get("/api/events", requireAuth, async (req, res) => {
     try {
-      const { vehicleId, type, severity, startDate, endDate, page, limit } = req.query;
+      const { vehicleId, type, types, severity, startDate, endDate, page, limit } = req.query;
       const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
-      // If a specific vehicleId is requested, check access first
       if (vehicleId && allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
         return res.status(403).json({ error: "Access denied" });
       }
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
       const filterVehicleId = vehicleId as string | undefined;
-      const evts = await storage.getEvents(filterVehicleId, start, end, type as string | undefined, severity as string | undefined);
+      // Support single `type` param or multi `types` CSV param
+      const typeFilter = type as string | undefined;
+      const typesFilter: string[] = types
+        ? String(types).split(",").map(t => t.trim()).filter(Boolean)
+        : typeFilter
+        ? [typeFilter]
+        : [];
+      const evts = await storage.getEvents(filterVehicleId, start, end, undefined, severity as string | undefined);
       // Apply vehicle-level scoping for non-admin users
-      const filtered = allowedIds === null ? evts : evts.filter(e => allowedIds.includes(e.vehicleId));
-      const pageNum = parseInt((page as string) || "1", 10);
-      const pageSize = parseInt((limit as string) || "50", 10);
+      let filtered = allowedIds === null ? evts : evts.filter(e => allowedIds.includes(e.vehicleId));
+      // Apply server-side multi-type filtering
+      if (typesFilter.length > 0) {
+        filtered = filtered.filter(e => typesFilter.includes(e.type));
+      }
+      const pageNum = Math.max(1, parseInt((page as string) || "1", 10));
+      const pageSize = Math.min(200, Math.max(1, parseInt((limit as string) || "50", 10)));
       const total = filtered.length;
       const paginated = filtered.slice((pageNum - 1) * pageSize, pageNum * pageSize);
       res.json({ events: paginated, total, page: pageNum, pageSize });
@@ -1564,9 +1574,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/drivers/:id", requireAuth, async (req, res) => {
-    const driver = await storage.getDriver(req.params.id);
-    if (!driver) return res.status(404).json({ error: "Driver not found" });
-    res.json(driver);
+    try {
+      const driver = await storage.getDriver(req.params.id);
+      if (!driver) return res.status(404).json({ error: "Driver not found" });
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (allowedIds !== null && driver.assignedVehicleId && !allowedIds.includes(driver.assignedVehicleId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      res.json(driver);
+    } catch { res.status(500).json({ error: "Failed to fetch driver" }); }
   });
 
   app.post("/api/drivers", requireAuth, requireAdmin, async (req, res) => {
@@ -1614,9 +1630,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/maintenance/:id", requireAuth, async (req, res) => {
-    const record = await storage.getMaintenanceRecord(req.params.id);
-    if (!record) return res.status(404).json({ error: "Record not found" });
-    res.json(record);
+    try {
+      const record = await storage.getMaintenanceRecord(req.params.id);
+      if (!record) return res.status(404).json({ error: "Record not found" });
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (allowedIds !== null && !allowedIds.includes(record.vehicleId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      res.json(record);
+    } catch { res.status(500).json({ error: "Failed to fetch maintenance record" }); }
   });
 
   app.post("/api/maintenance", requireAuth, async (req, res) => {
@@ -1810,6 +1832,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }));
       res.json(result);
     } catch { res.status(500).json({ error: "Failed to fetch subscriptions" }); }
+  });
+
+  // Billing history — all vehicle subscriptions as history records
+  app.get("/api/billing/history", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const subs = await storage.getVehicleSubscriptions();
+      const vehicles = await storage.getVehicles();
+      const vehicleMap = new Map(vehicles.map(v => [v.id, v]));
+      // Return all subscription records as billing history
+      const history = subs.map(s => ({
+        id: s.id,
+        vehicleId: s.vehicleId,
+        vehicleName: vehicleMap.get(s.vehicleId)?.name ?? s.vehicleId,
+        deviceId: vehicleMap.get(s.vehicleId)?.deviceId ?? null,
+        plan: s.plan,
+        status: s.status,
+        expiresAt: s.expiresAt,
+        createdAt: s.createdAt,
+      }));
+      res.json(history);
+    } catch { res.status(500).json({ error: "Failed to fetch billing history" }); }
   });
 
   app.post("/api/billing/activate", requireAuth, requireAdmin, async (req, res) => {

@@ -75,7 +75,11 @@ export default function EventsPage() {
     endDate: endDate.toISOString(),
   });
   if (vehicleId !== "all") params.set("vehicleId", vehicleId);
-  if (selectedTypes.size === 1) params.set("type", Array.from(selectedTypes)[0]);
+  if (selectedTypes.size === 1) {
+    params.set("type", Array.from(selectedTypes)[0]);
+  } else if (selectedTypes.size > 1) {
+    params.set("types", Array.from(selectedTypes).sort().join(","));
+  }
   if (severity !== "all") params.set("severity", severity);
 
   const { data, isLoading } = useQuery<{ events: Event[]; total: number; page: number }>({
@@ -101,10 +105,7 @@ export default function EventsPage() {
     setEndDate(new Date());
   };
 
-  // Client-side multi-type filtering when >1 type selected
-  const filteredEvents = selectedTypes.size > 1
-    ? (data?.events ?? []).filter(e => selectedTypes.has(e.type))
-    : (data?.events ?? []);
+  const filteredEvents = data?.events ?? [];
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
