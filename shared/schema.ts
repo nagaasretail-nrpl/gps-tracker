@@ -318,6 +318,95 @@ export const insertTripSchema = createInsertSchema(trips).omit({
 export type InsertTrip = z.infer<typeof insertTripSchema>;
 export type Trip = typeof trips.$inferSelect;
 
+// Drivers table
+export const drivers = pgTable("drivers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  licenseNumber: text("license_number"),
+  assignedVehicleId: varchar("assigned_vehicle_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertDriverSchema = createInsertSchema(drivers).omit({ id: true, createdAt: true }).extend({
+  name: z.string().min(1, "Driver name is required"),
+});
+export const updateDriverSchema = insertDriverSchema.partial();
+export type InsertDriver = z.infer<typeof insertDriverSchema>;
+export type Driver = typeof drivers.$inferSelect;
+
+// Maintenance records table
+export const maintenanceRecords = pgTable("maintenance_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vehicleId: varchar("vehicle_id").notNull(),
+  serviceType: text("service_type").notNull(), // oil_change, tire, inspection, battery, other
+  serviceDate: timestamp("service_date").notNull(),
+  odometer: integer("odometer"), // km
+  cost: decimal("cost", { precision: 10, scale: 2 }),
+  notes: text("notes"),
+  nextDueOdometer: integer("next_due_odometer"),
+  nextDueDate: timestamp("next_due_date"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertMaintenanceSchema = createInsertSchema(maintenanceRecords).omit({ id: true, createdAt: true }).extend({
+  vehicleId: z.string().min(1, "Vehicle is required"),
+  serviceType: z.string().min(1, "Service type is required"),
+  serviceDate: z.coerce.date(),
+  odometer: z.coerce.number().int().nonnegative().nullable().optional(),
+  cost: z.coerce.number().nonnegative().nullable().optional(),
+  nextDueOdometer: z.coerce.number().int().nonnegative().nullable().optional(),
+  nextDueDate: z.coerce.date().nullable().optional(),
+});
+export const updateMaintenanceSchema = insertMaintenanceSchema.partial();
+export type InsertMaintenance = z.infer<typeof insertMaintenanceSchema>;
+export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
+
+// Expenses table
+export const expenses = pgTable("expenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vehicleId: varchar("vehicle_id").notNull(),
+  category: text("category").notNull().default("other"), // fuel, repair, other
+  date: timestamp("date").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  liters: decimal("liters", { precision: 8, scale: 2 }), // for fuel entries
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, createdAt: true }).extend({
+  vehicleId: z.string().min(1, "Vehicle is required"),
+  category: z.enum(["fuel", "repair", "other"]).default("other"),
+  date: z.coerce.date(),
+  amount: z.coerce.number().positive("Amount must be positive"),
+  liters: z.coerce.number().positive().nullable().optional(),
+});
+export const updateExpenseSchema = insertExpenseSchema.partial();
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+export type Expense = typeof expenses.$inferSelect;
+
+// Device models registry
+export const deviceModels = pgTable("device_models", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  manufacturer: text("manufacturer").notNull(),
+  modelName: text("model_name").notNull(),
+  protocol: text("protocol").notNull().default("gt06"), // gt06, teltonika, coban, concox, etc.
+  port: integer("port"),
+  connectionType: text("connection_type").notNull().default("tcp"), // tcp, udp, both
+  activationNotes: text("activation_notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertDeviceModelSchema = createInsertSchema(deviceModels).omit({ id: true, createdAt: true }).extend({
+  manufacturer: z.string().min(1, "Manufacturer is required"),
+  modelName: z.string().min(1, "Model name is required"),
+  port: z.coerce.number().int().positive().nullable().optional(),
+});
+export const updateDeviceModelSchema = insertDeviceModelSchema.partial();
+export type InsertDeviceModel = z.infer<typeof insertDeviceModelSchema>;
+export type DeviceModel = typeof deviceModels.$inferSelect;
+
 // Push notification subscriptions (Web Push API)
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -26,6 +26,14 @@ import {
   updateProfileSchema,
   adminUpdateUserSchema,
   insertUserAlertSettingsSchema,
+  insertDriverSchema,
+  updateDriverSchema,
+  insertMaintenanceSchema,
+  updateMaintenanceSchema,
+  insertExpenseSchema,
+  updateExpenseSchema,
+  insertDeviceModelSchema,
+  updateDeviceModelSchema,
   type User,
 } from "@shared/schema";
 
@@ -591,13 +599,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const start = new Date(startDate as string);
       const end = new Date(endDate as string);
 
-      function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+      const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
         const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      }
+      };
 
       type LocRow = Awaited<ReturnType<typeof storage.getLocationHistory>>[number];
 
@@ -609,7 +617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stopCount: number; avgSpeedKmh: number;
       }
 
-      function isValidGpsPoint(loc: LocRow): boolean {
+      const isValidGpsPoint = (loc: LocRow): boolean => {
         if (!loc.timestamp) return false;
         const tsMs = new Date(loc.timestamp).getTime();
         if (!isFinite(tsMs) || tsMs <= 0) return false;
@@ -621,9 +629,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const spd = parseFloat(String(loc.speed || "0")) || 0;
         if (spd > 300) return false;
         return true;
-      }
+      };
 
-      function detectSegments(locs: LocRow[], vid: string) {
+      const detectSegments = (locs: LocRow[], vid: string) => {
         const SPEED_THRESHOLD = 3;
         const STOP_GAP_MS = 5 * 60 * 1000;
         const IDLE_MIN_MS = 2 * 60 * 1000;
@@ -759,7 +767,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       type LocRow = Awaited<ReturnType<typeof storage.getLocationHistory>>[number];
 
-      function isValidGpsPoint(loc: LocRow): boolean {
+      const isValidGpsPoint2 = (loc: LocRow): boolean => {
         if (!loc.timestamp) return false;
         const tsMs = new Date(loc.timestamp).getTime();
         if (!isFinite(tsMs) || tsMs <= 0) return false;
@@ -771,7 +779,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const spd = parseFloat(String(loc.speed || "0")) || 0;
         if (spd > 300) return false;
         return true;
-      }
+      };
 
       interface ParkingEvent {
         vehicleId: string;
@@ -784,12 +792,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pointCount: number;
       }
 
-      function detectParkingEvents(locs: LocRow[], vid: string): ParkingEvent[] {
+      const detectParkingEvents = (locs: LocRow[], vid: string): ParkingEvent[] => {
         const SPEED_THRESHOLD = 3;
         const MIN_PARK_MS = 5 * 60 * 1000;
 
         const sorted = [...locs]
-          .filter(isValidGpsPoint)
+          .filter(isValidGpsPoint2)
           .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
         const events: ParkingEvent[] = [];
@@ -1425,6 +1433,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin: upsert a single setting by key in the URL path
+  app.put("/api/settings/:key", requireAdmin, async (req, res) => {
+    try {
+      const schema = z.object({ value: z.string() });
+      const { value } = schema.parse(req.body);
+      const setting = await storage.setSetting(req.params.key, value);
+      res.json(setting);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      res.status(500).json({ error: "Failed to save setting" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // WebSocket server for real-time location updates
@@ -1512,6 +1535,257 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid alert settings" });
       }
       res.status(500).json({ error: "Failed to save alert settings" });
+    }
+  });
+
+  // ────────────────────────────────────────────
+  // EVENTS — filtered listing
+  // ────────────────────────────────────────────
+  app.get("/api/events", requireAuth, async (req, res) => {
+    try {
+      const { vehicleId, type, severity, startDate, endDate, page, limit } = req.query;
+      const start = startDate ? new Date(startDate as string) : undefined;
+      const end = endDate ? new Date(endDate as string) : undefined;
+      const evts = await storage.getEvents(
+        vehicleId as string | undefined,
+        start,
+        end,
+        type as string | undefined,
+        severity as string | undefined
+      );
+      const pageNum = parseInt((page as string) || "1", 10);
+      const pageSize = parseInt((limit as string) || "50", 10);
+      const total = evts.length;
+      const paginated = evts.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+      res.json({ events: paginated, total, page: pageNum, pageSize });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch events" });
+    }
+  });
+
+  // ────────────────────────────────────────────
+  // DRIVERS — full CRUD
+  // ────────────────────────────────────────────
+  app.get("/api/drivers", requireAuth, async (_req, res) => {
+    try {
+      const all = await storage.getDrivers();
+      res.json(all);
+    } catch { res.status(500).json({ error: "Failed to fetch drivers" }); }
+  });
+
+  app.get("/api/drivers/:id", requireAuth, async (req, res) => {
+    const driver = await storage.getDriver(req.params.id);
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    res.json(driver);
+  });
+
+  app.post("/api/drivers", requireAuth, async (req, res) => {
+    try {
+      const data = insertDriverSchema.parse(req.body);
+      const driver = await storage.createDriver(data);
+      res.status(201).json(driver);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
+      res.status(500).json({ error: "Failed to create driver" });
+    }
+  });
+
+  app.put("/api/drivers/:id", requireAuth, async (req, res) => {
+    try {
+      const data = updateDriverSchema.parse(req.body);
+      const driver = await storage.updateDriver(req.params.id, data);
+      if (!driver) return res.status(404).json({ error: "Driver not found" });
+      res.json(driver);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
+      res.status(500).json({ error: "Failed to update driver" });
+    }
+  });
+
+  app.delete("/api/drivers/:id", requireAuth, requireAdmin, async (req, res) => {
+    const ok = await storage.deleteDriver(req.params.id);
+    if (!ok) return res.status(404).json({ error: "Driver not found" });
+    res.json({ ok: true });
+  });
+
+  // ────────────────────────────────────────────
+  // MAINTENANCE RECORDS — full CRUD
+  // ────────────────────────────────────────────
+  app.get("/api/maintenance", requireAuth, async (req, res) => {
+    try {
+      const { vehicleId } = req.query;
+      const records = await storage.getMaintenanceRecords(vehicleId as string | undefined);
+      res.json(records);
+    } catch { res.status(500).json({ error: "Failed to fetch maintenance records" }); }
+  });
+
+  app.get("/api/maintenance/:id", requireAuth, async (req, res) => {
+    const record = await storage.getMaintenanceRecord(req.params.id);
+    if (!record) return res.status(404).json({ error: "Record not found" });
+    res.json(record);
+  });
+
+  app.post("/api/maintenance", requireAuth, async (req, res) => {
+    try {
+      const data = insertMaintenanceSchema.parse(req.body);
+      const record = await storage.createMaintenanceRecord(data);
+      res.status(201).json(record);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
+      res.status(500).json({ error: "Failed to create record" });
+    }
+  });
+
+  app.put("/api/maintenance/:id", requireAuth, async (req, res) => {
+    try {
+      const data = updateMaintenanceSchema.parse(req.body);
+      const record = await storage.updateMaintenanceRecord(req.params.id, data as any);
+      if (!record) return res.status(404).json({ error: "Record not found" });
+      res.json(record);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
+      res.status(500).json({ error: "Failed to update record" });
+    }
+  });
+
+  app.delete("/api/maintenance/:id", requireAuth, async (req, res) => {
+    const ok = await storage.deleteMaintenanceRecord(req.params.id);
+    if (!ok) return res.status(404).json({ error: "Record not found" });
+    res.json({ ok: true });
+  });
+
+  // ────────────────────────────────────────────
+  // EXPENSES — full CRUD
+  // ────────────────────────────────────────────
+  app.get("/api/expenses", requireAuth, async (req, res) => {
+    try {
+      const { vehicleId, startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : undefined;
+      const end = endDate ? new Date(endDate as string) : undefined;
+      const all = await storage.getExpenses(vehicleId as string | undefined, start, end);
+      res.json(all);
+    } catch { res.status(500).json({ error: "Failed to fetch expenses" }); }
+  });
+
+  app.get("/api/expenses/:id", requireAuth, async (req, res) => {
+    const expense = await storage.getExpense(req.params.id);
+    if (!expense) return res.status(404).json({ error: "Expense not found" });
+    res.json(expense);
+  });
+
+  app.post("/api/expenses", requireAuth, async (req, res) => {
+    try {
+      const data = insertExpenseSchema.parse(req.body);
+      const expense = await storage.createExpense(data);
+      res.status(201).json(expense);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
+      res.status(500).json({ error: "Failed to create expense" });
+    }
+  });
+
+  app.put("/api/expenses/:id", requireAuth, async (req, res) => {
+    try {
+      const data = updateExpenseSchema.parse(req.body);
+      const expense = await storage.updateExpense(req.params.id, data as any);
+      if (!expense) return res.status(404).json({ error: "Expense not found" });
+      res.json(expense);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
+      res.status(500).json({ error: "Failed to update expense" });
+    }
+  });
+
+  app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
+    const ok = await storage.deleteExpense(req.params.id);
+    if (!ok) return res.status(404).json({ error: "Expense not found" });
+    res.json({ ok: true });
+  });
+
+  // ────────────────────────────────────────────
+  // DEVICE MODELS REGISTRY — admin CRUD + public GET
+  // ────────────────────────────────────────────
+  app.get("/api/device-models", async (_req, res) => {
+    try {
+      const models = await storage.getDeviceModels();
+      res.json(models);
+    } catch { res.status(500).json({ error: "Failed to fetch device models" }); }
+  });
+
+  app.get("/api/device-models/:id", requireAuth, async (req, res) => {
+    const model = await storage.getDeviceModel(req.params.id);
+    if (!model) return res.status(404).json({ error: "Model not found" });
+    res.json(model);
+  });
+
+  app.post("/api/device-models", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const data = insertDeviceModelSchema.parse(req.body);
+      const model = await storage.createDeviceModel(data);
+      res.status(201).json(model);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
+      res.status(500).json({ error: "Failed to create device model" });
+    }
+  });
+
+  app.put("/api/device-models/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const data = updateDeviceModelSchema.parse(req.body);
+      const model = await storage.updateDeviceModel(req.params.id, data as any);
+      if (!model) return res.status(404).json({ error: "Model not found" });
+      res.json(model);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
+      res.status(500).json({ error: "Failed to update device model" });
+    }
+  });
+
+  app.delete("/api/device-models/:id", requireAuth, requireAdmin, async (req, res) => {
+    const ok = await storage.deleteDeviceModel(req.params.id);
+    if (!ok) return res.status(404).json({ error: "Model not found" });
+    res.json({ ok: true });
+  });
+
+  // ────────────────────────────────────────────
+  // BILLING — plans, activation
+  // ────────────────────────────────────────────
+  app.get("/api/billing/plans", async (_req, res) => {
+    try {
+      const plansSetting = await storage.getSetting("subscription_plans");
+      if (plansSetting?.value) {
+        const plans = JSON.parse(plansSetting.value);
+        return res.json({ plans });
+      }
+      // Default plans
+      res.json({
+        plans: [
+          { id: "basic", name: "Basic", maxVehicles: 5, pricePerYear: 1500, features: ["Live Tracking", "History", "Geofences", "Basic Reports"] },
+          { id: "pro", name: "Pro", maxVehicles: 20, pricePerYear: 3500, features: ["All Basic features", "Advanced Reports", "Drivers Module", "Maintenance", "Expenses"] },
+          { id: "fleet", name: "Fleet", maxVehicles: 100, pricePerYear: 8000, features: ["All Pro features", "Unlimited vehicles", "Priority support", "API Access"] },
+        ],
+      });
+    } catch { res.status(500).json({ error: "Failed to fetch plans" }); }
+  });
+
+  app.post("/api/billing/activate", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const schema = z.object({ imei: z.string().min(10, "IMEI must be at least 10 characters"), name: z.string().optional() });
+      const { imei, name } = schema.parse(req.body);
+      const existing = await storage.getVehicleByDeviceId(imei);
+      if (existing) {
+        return res.json({ status: "existing", vehicle: existing, message: "Vehicle with this IMEI already exists" });
+      }
+      const vehicle = await storage.createVehicle({
+        name: name || `Vehicle ${imei.slice(-6)}`,
+        deviceId: imei,
+        type: "car",
+        status: "offline",
+      });
+      res.status(201).json({ status: "created", vehicle, message: "Vehicle registered successfully" });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
+      res.status(500).json({ error: "Failed to activate device" });
     }
   });
 

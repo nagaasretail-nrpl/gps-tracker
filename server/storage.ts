@@ -21,6 +21,14 @@ import {
   type UserAlertSettings,
   type PushSubscription,
   type InsertPushSubscription,
+  type Driver,
+  type InsertDriver,
+  type MaintenanceRecord,
+  type InsertMaintenance,
+  type Expense,
+  type InsertExpense,
+  type DeviceModel,
+  type InsertDeviceModel,
   vehicles,
   locations,
   geofences,
@@ -33,6 +41,10 @@ import {
   appSettings,
   userAlertSettings,
   pushSubscriptions,
+  drivers,
+  maintenanceRecords,
+  expenses,
+  deviceModels,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db, neonSql } from "./db";
@@ -98,8 +110,36 @@ export interface IStorage {
   deletePoi(id: string): Promise<boolean>;
 
   // Events
-  getEvents(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Event[]>;
+  getEvents(vehicleId?: string, startDate?: Date, endDate?: Date, type?: string, severity?: string): Promise<Event[]>;
   createEvent(event: InsertEvent): Promise<Event>;
+
+  // Drivers
+  getDrivers(): Promise<Driver[]>;
+  getDriver(id: string): Promise<Driver | undefined>;
+  createDriver(driver: InsertDriver): Promise<Driver>;
+  updateDriver(id: string, driver: Partial<Driver>): Promise<Driver | undefined>;
+  deleteDriver(id: string): Promise<boolean>;
+
+  // Maintenance Records
+  getMaintenanceRecords(vehicleId?: string): Promise<MaintenanceRecord[]>;
+  getMaintenanceRecord(id: string): Promise<MaintenanceRecord | undefined>;
+  createMaintenanceRecord(record: InsertMaintenance): Promise<MaintenanceRecord>;
+  updateMaintenanceRecord(id: string, record: Partial<MaintenanceRecord>): Promise<MaintenanceRecord | undefined>;
+  deleteMaintenanceRecord(id: string): Promise<boolean>;
+
+  // Expenses
+  getExpenses(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Expense[]>;
+  getExpense(id: string): Promise<Expense | undefined>;
+  createExpense(expense: InsertExpense): Promise<Expense>;
+  updateExpense(id: string, expense: Partial<Expense>): Promise<Expense | undefined>;
+  deleteExpense(id: string): Promise<boolean>;
+
+  // Device Models
+  getDeviceModels(): Promise<DeviceModel[]>;
+  getDeviceModel(id: string): Promise<DeviceModel | undefined>;
+  createDeviceModel(model: InsertDeviceModel): Promise<DeviceModel>;
+  updateDeviceModel(id: string, model: Partial<DeviceModel>): Promise<DeviceModel | undefined>;
+  deleteDeviceModel(id: string): Promise<boolean>;
 
   // Trips
   getTrips(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Trip[]>;
@@ -607,7 +647,7 @@ export class DbStorage implements IStorage {
     return result.rowCount ? result.rowCount > 0 : false;
   }
 
-  async getEvents(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Event[]> {
+  async getEvents(vehicleId?: string, startDate?: Date, endDate?: Date, type?: string, severity?: string): Promise<Event[]> {
     const conditions = [];
     
     if (vehicleId) {
@@ -618,6 +658,12 @@ export class DbStorage implements IStorage {
     }
     if (endDate) {
       conditions.push(lte(events.timestamp, endDate));
+    }
+    if (type) {
+      conditions.push(eq(events.type, type));
+    }
+    if (severity) {
+      conditions.push(eq(events.severity, severity));
     }
 
     let query = db.select().from(events);
@@ -639,6 +685,157 @@ export class DbStorage implements IStorage {
   async createEvent(insertEvent: InsertEvent): Promise<Event> {
     const result = await db.insert(events).values(insertEvent).returning();
     return result[0];
+  }
+
+  // Drivers
+  async getDrivers(): Promise<Driver[]> {
+    try {
+      return await db.select().from(drivers).orderBy(drivers.name);
+    } catch (err) {
+      if (err instanceof TypeError && String(err.message).includes("map")) return [];
+      throw err;
+    }
+  }
+
+  async getDriver(id: string): Promise<Driver | undefined> {
+    const result = await db.select().from(drivers).where(eq(drivers.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createDriver(driver: InsertDriver): Promise<Driver> {
+    const result = await db.insert(drivers).values(driver).returning();
+    return result[0];
+  }
+
+  async updateDriver(id: string, updates: Partial<Driver>): Promise<Driver | undefined> {
+    if (Object.keys(updates).length === 0) {
+      return this.getDriver(id);
+    }
+    const set: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      set[key] = val === null ? sql`NULL` : val;
+    }
+    await db.update(drivers).set(set).where(eq(drivers.id, id));
+    return this.getDriver(id);
+  }
+
+  async deleteDriver(id: string): Promise<boolean> {
+    const result = await db.delete(drivers).where(eq(drivers.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Maintenance Records
+  async getMaintenanceRecords(vehicleId?: string): Promise<MaintenanceRecord[]> {
+    try {
+      const query = vehicleId
+        ? db.select().from(maintenanceRecords).where(eq(maintenanceRecords.vehicleId, vehicleId)).orderBy(desc(maintenanceRecords.serviceDate))
+        : db.select().from(maintenanceRecords).orderBy(desc(maintenanceRecords.serviceDate));
+      return await query;
+    } catch (err) {
+      if (err instanceof TypeError && String(err.message).includes("map")) return [];
+      throw err;
+    }
+  }
+
+  async getMaintenanceRecord(id: string): Promise<MaintenanceRecord | undefined> {
+    const result = await db.select().from(maintenanceRecords).where(eq(maintenanceRecords.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createMaintenanceRecord(record: InsertMaintenance): Promise<MaintenanceRecord> {
+    const result = await db.insert(maintenanceRecords).values(record as any).returning();
+    return result[0];
+  }
+
+  async updateMaintenanceRecord(id: string, updates: Partial<MaintenanceRecord>): Promise<MaintenanceRecord | undefined> {
+    if (Object.keys(updates).length === 0) return this.getMaintenanceRecord(id);
+    const set: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      set[key] = val === null ? sql`NULL` : val;
+    }
+    await db.update(maintenanceRecords).set(set).where(eq(maintenanceRecords.id, id));
+    return this.getMaintenanceRecord(id);
+  }
+
+  async deleteMaintenanceRecord(id: string): Promise<boolean> {
+    const result = await db.delete(maintenanceRecords).where(eq(maintenanceRecords.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Expenses
+  async getExpenses(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Expense[]> {
+    const conditions = [];
+    if (vehicleId) conditions.push(eq(expenses.vehicleId, vehicleId));
+    if (startDate) conditions.push(gte(expenses.date, startDate));
+    if (endDate) conditions.push(lte(expenses.date, endDate));
+    let query = db.select().from(expenses);
+    if (conditions.length > 0) query = query.where(and(...conditions)) as typeof query;
+    try {
+      return await query.orderBy(desc(expenses.date));
+    } catch (err) {
+      if (err instanceof TypeError && String(err.message).includes("map")) return [];
+      throw err;
+    }
+  }
+
+  async getExpense(id: string): Promise<Expense | undefined> {
+    const result = await db.select().from(expenses).where(eq(expenses.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createExpense(expense: InsertExpense): Promise<Expense> {
+    const result = await db.insert(expenses).values(expense as any).returning();
+    return result[0];
+  }
+
+  async updateExpense(id: string, updates: Partial<Expense>): Promise<Expense | undefined> {
+    if (Object.keys(updates).length === 0) return this.getExpense(id);
+    const set: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      set[key] = val === null ? sql`NULL` : val;
+    }
+    await db.update(expenses).set(set).where(eq(expenses.id, id));
+    return this.getExpense(id);
+  }
+
+  async deleteExpense(id: string): Promise<boolean> {
+    const result = await db.delete(expenses).where(eq(expenses.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Device Models
+  async getDeviceModels(): Promise<DeviceModel[]> {
+    try {
+      return await db.select().from(deviceModels).orderBy(deviceModels.manufacturer, deviceModels.modelName);
+    } catch (err) {
+      if (err instanceof TypeError && String(err.message).includes("map")) return [];
+      throw err;
+    }
+  }
+
+  async getDeviceModel(id: string): Promise<DeviceModel | undefined> {
+    const result = await db.select().from(deviceModels).where(eq(deviceModels.id, id)).limit(1);
+    return result[0];
+  }
+
+  async createDeviceModel(model: InsertDeviceModel): Promise<DeviceModel> {
+    const result = await db.insert(deviceModels).values(model as any).returning();
+    return result[0];
+  }
+
+  async updateDeviceModel(id: string, updates: Partial<DeviceModel>): Promise<DeviceModel | undefined> {
+    if (Object.keys(updates).length === 0) return this.getDeviceModel(id);
+    const set: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      set[key] = val === null ? sql`NULL` : val;
+    }
+    await db.update(deviceModels).set(set).where(eq(deviceModels.id, id));
+    return this.getDeviceModel(id);
+  }
+
+  async deleteDeviceModel(id: string): Promise<boolean> {
+    const result = await db.delete(deviceModels).where(eq(deviceModels.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
   }
 
   async getTrips(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Trip[]> {

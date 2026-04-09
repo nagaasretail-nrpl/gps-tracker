@@ -142,7 +142,7 @@ export default function Routes() {
                     <Label htmlFor="description">Description</Label>
                     <Textarea
                       id="description"
-                      value={newRoute.description}
+                      value={newRoute.description ?? ""}
                       onChange={(e) => setNewRoute({ ...newRoute, description: e.target.value })}
                       placeholder="Optional description"
                       data-testid="input-route-description"
@@ -153,7 +153,7 @@ export default function Routes() {
                     <Input
                       id="color"
                       type="color"
-                      value={newRoute.color}
+                      value={newRoute.color ?? "#e4006e"}
                       onChange={(e) => setNewRoute({ ...newRoute, color: e.target.value })}
                       data-testid="input-route-color"
                     />

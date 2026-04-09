@@ -46,6 +46,13 @@ import ParkingReport from "@/pages/parking-report";
 import AlertSettings from "@/pages/alert-settings";
 import VehicleAppearance from "@/pages/vehicle-appearance";
 import AdminDevices from "@/pages/admin-devices";
+import EventsPage from "@/pages/events";
+import DriversPage from "@/pages/drivers";
+import MaintenancePage from "@/pages/maintenance";
+import ExpensesPage from "@/pages/expenses";
+import BillingPage from "@/pages/billing";
+import AdminDeviceModels from "@/pages/admin-device-models";
+import AdminControlPanel from "@/pages/admin-control-panel";
 import NotFound from "@/pages/not-found";
 
 // Pages — docs site
@@ -147,9 +154,16 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
       <Route path="/profile" component={guard("/profile", Profile)} />
       <Route path="/alert-settings" component={guard("/alert-settings", AlertSettings)} />
       <Route path="/vehicle-appearance" component={guard("/vehicle-appearance", VehicleAppearance)} />
+      <Route path="/events" component={guard("/events", EventsPage)} />
+      <Route path="/drivers" component={guard("/drivers", DriversPage)} />
+      <Route path="/maintenance" component={guard("/maintenance", MaintenancePage)} />
+      <Route path="/expenses" component={guard("/expenses", ExpensesPage)} />
+      <Route path="/billing" component={guard("/billing", BillingPage)} />
       <Route path="/admin-users" component={AdminUsers} />
       <Route path="/admin-settings" component={AdminSettings} />
       <Route path="/admin-devices" component={AdminDevices} />
+      <Route path="/admin-device-models" component={AdminDeviceModels} />
+      <Route path="/admin-control-panel" component={AdminControlPanel} />
       <Route path="/renew" component={() =>
         currentUser ? (
           <Renew

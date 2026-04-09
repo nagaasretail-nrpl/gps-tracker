@@ -19,6 +19,12 @@ import {
   Bell,
   Palette,
   Cpu,
+  Zap,
+  UserRound,
+  Wrench,
+  Banknote,
+  CreditCard,
+  LayoutDashboard,
 } from "lucide-react";
 import {
   Sidebar,
@@ -63,13 +69,18 @@ const fleetMenuItems: MenuItem[] = [
   { title: "Fleet Dashboard", url: "/dashboard", icon: BarChart3, menuKey: "/" },
   { title: "Live Tracking", url: "/tracking", icon: Radio },
   { title: "Vehicles", url: "/vehicles", icon: Car },
+  { title: "Drivers", url: "/drivers", icon: UserRound },
   { title: "Trips", url: "/trips", icon: Navigation },
+  { title: "Events Log", url: "/events", icon: Zap },
   { title: "Location History", url: "/history", icon: History },
   { title: "Parking Report", url: "/parking-report", icon: ParkingSquare },
   { title: "Geofences", url: "/geofences", icon: Shield },
   { title: "Routes", url: "/routes", icon: Route },
   { title: "Points of Interest", url: "/pois", icon: MapPin },
   { title: "Reports", url: "/reports", icon: FileText },
+  { title: "Maintenance", url: "/maintenance", icon: Wrench },
+  { title: "Expenses", url: "/expenses", icon: Banknote },
+  { title: "Billing", url: "/billing", icon: CreditCard },
   { title: "Alert Settings", url: "/alert-settings", icon: Bell },
 ];
 
@@ -77,6 +88,8 @@ const adminMenuItems: MenuItem[] = [
   { title: "User Management", url: "/admin-users", icon: Users },
   { title: "Settings", url: "/admin-settings", icon: Settings },
   { title: "Devices", url: "/admin-devices", icon: Cpu },
+  { title: "Device Models", url: "/admin-device-models", icon: LayoutDashboard },
+  { title: "Control Panel", url: "/admin-control-panel", icon: Shield },
 ];
 
 const userMenuItems: MenuItem[] = [
