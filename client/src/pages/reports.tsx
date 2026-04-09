@@ -1344,26 +1344,12 @@ export default function Reports() {
     enabled: !!startDate && !!endDate,
   });
 
-  // Consolidated backend report endpoint — handles server-side computation for
-  // mileage, activity, idle, fuel, stops, speeding, zone-visits, and trips.
-  const { data: reportData, isLoading: reportLoading } = useQuery<object[]>({
-    queryKey: ["/api/reports", reportType, selectedVehicle, startDate?.toISOString(), endDate?.toISOString()],
-    queryFn: async () => {
-      const params = new URLSearchParams({ type: reportType });
-      if (selectedVehicle && selectedVehicle !== "all") params.set("vehicleId", selectedVehicle);
-      params.set("startDate", startDate.toISOString());
-      params.set("endDate", endDate.toISOString());
-      const res = await fetch(`/api/reports?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch report");
-      return res.json();
-    },
-    enabled: !!startDate && !!endDate,
-  });
-
-  const isLoading = vehiclesLoading || segmentsLoading || reportLoading;
+  const isLoading = vehiclesLoading || segmentsLoading;
   const safeSegments = segments ?? [];
   const safeVehicles = vehicles ?? [];
-  void reportData; // consumed by individual views via /api/reports when needed
+  // Note: backend /api/reports endpoint provides server-side aggregations;
+  // SpeedingView and ZoneVisitsView fetch independently via /api/events;
+  // other views (mileage/activity/idle/fuel/stops) aggregate from trip segments.
 
   return (
     <div className="flex flex-col gap-6 p-6">

@@ -1018,14 +1018,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (type === "speeding") {
         const allEvents: object[] = [];
         await Promise.all(vehicleIds.map(async (vid) => {
-          const events = await storage.getEvents(vid, start, end, "speed_violation");
-          allEvents.push(...events.map(e => ({
-            vehicleId: vid,
-            timestamp: e.timestamp,
-            speed: e.metadata && typeof e.metadata === "object" ? (e.metadata as Record<string, unknown>).speed ?? null : null,
-            limit: e.metadata && typeof e.metadata === "object" ? (e.metadata as Record<string, unknown>).limit ?? null : null,
-            lat: e.latitude, lng: e.longitude,
-          })));
+          const evs = await storage.getEvents(vid, start, end, "speed_violation");
+          allEvents.push(...evs.map(e => {
+            const d = e.data && typeof e.data === "object" ? e.data as Record<string, unknown> : {};
+            return {
+              vehicleId: vid,
+              timestamp: e.timestamp,
+              description: e.description,
+              speed: d.speed ?? null,
+              limit: d.limit ?? null,
+            };
+          }));
         }));
         return res.json(allEvents);
       }
@@ -1033,17 +1036,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (type === "zone") {
         const allEvents: object[] = [];
         await Promise.all(vehicleIds.map(async (vid) => {
-          const eventsGeoEntry = await storage.getEvents(vid, start, end, "geofence_entry");
-          const eventsGeoExit = await storage.getEvents(vid, start, end, "geofence_exit");
-          const combined = [...eventsGeoEntry, ...eventsGeoExit];
-          allEvents.push(...combined.map(e => ({
-            vehicleId: vid,
-            type: e.type,
-            timestamp: e.timestamp,
-            zoneName: e.metadata && typeof e.metadata === "object"
-              ? (e.metadata as Record<string, unknown>).zoneName ?? "Unknown"
-              : "Unknown",
-          })));
+          const entry = await storage.getEvents(vid, start, end, "geofence_entry");
+          const exit = await storage.getEvents(vid, start, end, "geofence_exit");
+          [...entry, ...exit].forEach(e => {
+            const d = e.data && typeof e.data === "object" ? e.data as Record<string, unknown> : {};
+            allEvents.push({
+              vehicleId: vid,
+              type: e.type,
+              timestamp: e.timestamp,
+              description: e.description,
+              zoneName: d.zoneName ?? d.geofenceName ?? "Unknown",
+            });
+          });
         }));
         return res.json(allEvents);
       }
@@ -1865,7 +1869,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Fetch current odometer readings for all vehicles in one pass
       const vehicleOdoMap: Record<string, number> = {};
-      const uniqueVids = [...new Set(records.map(r => r.vehicleId))];
+      const uniqueVids = Array.from(new Set(records.map(r => r.vehicleId)));
       await Promise.all(uniqueVids.map(async (vid) => {
         const locs = await storage.getLocationHistory(vid, new Date(now - 30 * 24 * 3600_000), new Date(now));
         if (locs.length > 0) {
