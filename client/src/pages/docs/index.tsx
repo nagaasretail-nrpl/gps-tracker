@@ -1,17 +1,35 @@
 import { useState, useMemo, useEffect } from "react";
-import { useLocation, useRoute, Link } from "wouter";
+import { useRoute, useLocation, Link } from "wouter";
 import {
   Search,
   ChevronDown,
   ChevronRight,
-  Menu,
-  X,
   ArrowLeft,
   ArrowRight,
   MapPin,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
+  SidebarInput,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import {
   getSections,
   getArticle,
@@ -20,7 +38,8 @@ import {
   type DocArticle,
 } from "@/lib/docs-content";
 
-function articleUrl(a: DocArticle): string {
+// ─── URL helpers ──────────────────────────────────────────────────────────────
+function articleUrl(a: { sectionId: string; slug: string }): string {
   return `/docs/${a.sectionId}/${a.slug}`;
 }
 
@@ -29,7 +48,7 @@ function sectionUrl(s: DocSection): string {
   return first ? articleUrl(first) : "/docs";
 }
 
-// ─── Docs home ───────────────────────────────────────────────────────────────
+// ─── Docs home grid ───────────────────────────────────────────────────────────
 function DocsHome() {
   const sections = getSections();
   return (
@@ -93,12 +112,11 @@ function ArticleView({ sectionId, slug }: { sectionId: string; slug: string }) {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6 text-foreground">{article.title}</h1>
-      <div className="prose-content">{article.content}</div>
-
+      <div>{article.content}</div>
       {/* Prev / Next navigation */}
       <div className="mt-12 pt-6 border-t border-border flex flex-wrap gap-3 justify-between">
         {article.prev ? (
-          <Link href={articleUrl(article.prev as DocArticle)}>
+          <Link href={articleUrl(article.prev)}>
             <Button
               variant="outline"
               className="flex items-center gap-2"
@@ -112,7 +130,7 @@ function ArticleView({ sectionId, slug }: { sectionId: string; slug: string }) {
           <div />
         )}
         {article.next ? (
-          <Link href={articleUrl(article.next as DocArticle)}>
+          <Link href={articleUrl(article.next)}>
             <Button
               variant="outline"
               className="flex items-center gap-2"
@@ -130,76 +148,74 @@ function ArticleView({ sectionId, slug }: { sectionId: string; slug: string }) {
   );
 }
 
-// ─── Section nav item (self-managing collapse) ────────────────────────────────
-function SectionNav({
+// ─── Section nav item using SidebarMenuSub + Collapsible ─────────────────────
+function DocsSectionNav({
   section,
   currentSectionId,
   currentSlug,
-  onNav,
 }: {
   section: DocSection;
   currentSectionId: string | null;
   currentSlug: string | null;
-  onNav?: () => void;
 }) {
   const isActive = section.id === currentSectionId;
   const [open, setOpen] = useState(isActive);
 
-  // Auto-expand when navigating to this section
   useEffect(() => {
     if (isActive) setOpen(true);
   }, [isActive]);
 
   return (
-    <div className="mb-1">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
-        aria-expanded={open}
-        data-testid={`btn-section-${section.id}`}
-      >
-        <span>{section.title}</span>
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-      </button>
-      <div className={open ? "mt-0.5 mb-1" : "hidden"}>
-        {section.articles.map((article) => {
-          const isCurrentArticle =
-            article.sectionId === currentSectionId && article.slug === currentSlug;
-          return (
-            <Link key={`${article.sectionId}/${article.slug}`} href={articleUrl(article)}>
-              <div
-                className={`px-3 py-1 rounded-md text-sm cursor-pointer leading-snug ${
-                  isCurrentArticle
-                    ? "bg-primary text-primary-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover-elevate"
-                }`}
-                onClick={onNav}
-                data-testid={`link-article-${article.slug}`}
-              >
-                {article.title}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-    </div>
+    <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton
+            className="text-sidebar-foreground/70 font-semibold uppercase tracking-wide text-xs"
+            data-testid={`btn-section-${section.id}`}
+          >
+            {section.title}
+            {open ? (
+              <ChevronDown className="ml-auto h-3.5 w-3.5 transition-transform" />
+            ) : (
+              <ChevronRight className="ml-auto h-3.5 w-3.5 transition-transform" />
+            )}
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {section.articles.map((article) => {
+              const isCurrentArticle =
+                article.sectionId === currentSectionId && article.slug === currentSlug;
+              return (
+                <SidebarMenuSubItem key={`${article.sectionId}/${article.slug}`}>
+                  <SidebarMenuSubButton
+                    asChild
+                    isActive={isCurrentArticle}
+                    data-testid={`link-article-${article.slug}`}
+                  >
+                    <Link href={articleUrl(article)}>{article.title}</Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              );
+            })}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
   );
 }
 
-// ─── Sidebar content ─────────────────────────────────────────────────────────
-function SidebarContent({
-  query,
-  onQueryChange,
+// ─── Docs sidebar inner content ───────────────────────────────────────────────
+function DocsSidebar({
   currentSectionId,
   currentSlug,
-  onNav,
+  query,
+  onQueryChange,
 }: {
-  query: string;
-  onQueryChange: (q: string) => void;
   currentSectionId: string | null;
   currentSlug: string | null;
-  onNav?: () => void;
+  query: string;
+  onQueryChange: (q: string) => void;
 }) {
   const sections = getSections();
 
@@ -210,206 +226,180 @@ function SidebarContent({
   }, [query]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className="px-4 py-4 border-b border-border/40 flex items-center gap-2 shrink-0">
-        <MapPin className="h-5 w-5 text-primary shrink-0" />
-        <Link href="/home">
-          <span className="font-bold text-foreground text-sm">NistaGPS</span>
-        </Link>
-        <span className="text-muted-foreground text-xs ml-1">Docs</span>
-      </div>
-
-      {/* Search */}
-      <div className="px-3 py-3 shrink-0">
+    <>
+      <SidebarHeader className="pb-0">
+        {/* Logo */}
+        <div className="flex items-center gap-2 px-2 py-1">
+          <MapPin className="h-4 w-4 text-sidebar-primary shrink-0" />
+          <Link href="/home">
+            <span className="font-bold text-sidebar-foreground text-sm">NistaGPS</span>
+          </Link>
+          <span className="text-sidebar-foreground/50 text-xs">Docs</span>
+        </div>
+        {/* Search */}
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-sidebar-foreground/50 pointer-events-none" />
+          <SidebarInput
             placeholder="Search articles…"
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            className="pl-8 h-8 text-sm bg-background"
+            className="pl-8"
             data-testid="input-docs-search"
           />
         </div>
-      </div>
+      </SidebarHeader>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto pb-6 px-2">
-        {/* Docs home link */}
-        <Link href="/docs">
-          <div
-            className={`px-3 py-1.5 rounded-md text-sm cursor-pointer mb-1 ${
-              !currentSectionId
-                ? "bg-primary text-primary-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground hover-elevate"
-            }`}
-            onClick={onNav}
-            data-testid="link-docs-home"
-          >
-            Overview
-          </div>
-        </Link>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {/* Docs home link */}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={!currentSectionId}
+                  data-testid="link-docs-home"
+                >
+                  <Link href="/docs">Overview</Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
-        {/* Filtered search results */}
-        {filtered !== null ? (
-          <div className="mt-2">
-            <p className="text-xs font-medium text-muted-foreground px-3 mb-1 uppercase tracking-wide">
-              Results ({filtered.length})
-            </p>
-            {filtered.length === 0 ? (
-              <p className="text-sm text-muted-foreground px-3 py-2">No articles match.</p>
-            ) : (
-              filtered.map((a) => (
-                <Link key={`${a.sectionId}/${a.slug}`} href={articleUrl(a)}>
-                  <div
-                    className={`px-3 py-1.5 rounded-md text-sm cursor-pointer ${
-                      a.sectionId === currentSectionId && a.slug === currentSlug
-                        ? "bg-primary text-primary-foreground font-medium"
-                        : "text-foreground hover-elevate"
-                    }`}
-                    onClick={onNav}
-                    data-testid={`link-article-${a.slug}`}
-                  >
-                    {a.title}
-                  </div>
-                </Link>
-              ))
-            )}
-          </div>
-        ) : (
-          sections.map((section) => (
-            <SectionNav
-              key={section.id}
-              section={section}
-              currentSectionId={currentSectionId}
-              currentSlug={currentSlug}
-              onNav={onNav}
-            />
-          ))
-        )}
-      </nav>
-    </div>
+              {/* Filtered search results */}
+              {filtered !== null ? (
+                <>
+                  <li className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/50 mt-2">
+                    Results ({filtered.length})
+                  </li>
+                  {filtered.length === 0 ? (
+                    <li className="px-2 py-1 text-sm text-sidebar-foreground/50">
+                      No articles match.
+                    </li>
+                  ) : (
+                    filtered.map((a) => (
+                      <SidebarMenuItem key={`${a.sectionId}/${a.slug}`}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={
+                            a.sectionId === currentSectionId && a.slug === currentSlug
+                          }
+                          data-testid={`link-article-${a.slug}`}
+                        >
+                          <Link href={articleUrl(a)}>{a.title}</Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))
+                  )}
+                </>
+              ) : (
+                sections.map((section) => (
+                  <DocsSectionNav
+                    key={section.id}
+                    section={section}
+                    currentSectionId={currentSectionId}
+                    currentSlug={currentSlug}
+                  />
+                ))
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </>
   );
+}
+
+// ─── Section landing redirect (declarative) ───────────────────────────────────
+function SectionLanding({ sectionId }: { sectionId: string }) {
+  const [, setLocation] = useLocation();
+  const sections = getSections();
+
+  useEffect(() => {
+    const section = sections.find((s) => s.id === sectionId);
+    const first = section?.articles[0];
+    if (first) {
+      setLocation(articleUrl(first));
+    }
+  }, [sectionId, sections, setLocation]);
+
+  return null;
 }
 
 // ─── Main DocsPage ────────────────────────────────────────────────────────────
 export default function DocsPage() {
-  const [location] = useLocation();
   const [isDocsRoot] = useRoute("/docs");
   const [, sectionParams] = useRoute<{ section: string }>("/docs/:section");
   const [, articleParams] = useRoute<{ section: string; article: string }>(
     "/docs/:section/:article",
   );
 
-  // Determine current section and article from URL
   const currentSectionId = articleParams?.section ?? sectionParams?.section ?? null;
   const currentSlug = articleParams?.article ?? null;
 
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const closeMobile = () => setMobileOpen(false);
-
-  // Resolve article title for breadcrumb
   const currentArticle =
     currentSectionId && currentSlug ? getArticle(currentSectionId, currentSlug) : null;
 
+  const sidebarStyle = {
+    "--sidebar-width": "17rem",
+    "--sidebar-width-icon": "3rem",
+  } as React.CSSProperties;
+
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:flex flex-col w-72 shrink-0 border-r border-border bg-card overflow-hidden">
-        <SidebarContent
-          query={searchQuery}
-          onQueryChange={setSearchQuery}
-          currentSectionId={currentSectionId}
-          currentSlug={currentSlug}
-        />
-      </aside>
-
-      {/* Mobile sidebar overlay */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden flex">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={closeMobile}
-            aria-hidden="true"
+    <SidebarProvider style={sidebarStyle} defaultOpen={true}>
+      <div className="flex h-screen w-full overflow-hidden bg-background">
+        {/* Docs sidebar — dark themed via bg-sidebar CSS var */}
+        <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border">
+          <DocsSidebar
+            currentSectionId={currentSectionId}
+            currentSlug={currentSlug}
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
           />
-          <aside className="relative flex flex-col w-72 max-w-full bg-card border-r border-border shadow-lg z-10 overflow-hidden">
-            <div className="absolute top-3 right-3">
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={closeMobile}
-                data-testid="button-close-mobile-sidebar"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <SidebarContent
-              query={searchQuery}
-              onQueryChange={setSearchQuery}
-              currentSectionId={currentSectionId}
-              currentSlug={currentSlug}
-              onNav={closeMobile}
+        </Sidebar>
+
+        {/* Main content area */}
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Top bar */}
+          <header className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
+            <SidebarTrigger
+              className="h-8 w-8"
+              data-testid="button-mobile-sidebar-toggle"
             />
-          </aside>
-        </div>
-      )}
-
-      {/* Main content */}
-      <div className="flex flex-col flex-1 overflow-hidden">
-        {/* Top bar */}
-        <header className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
-          <Button
-            size="icon"
-            variant="ghost"
-            className="lg:hidden"
-            onClick={() => setMobileOpen(true)}
-            data-testid="button-mobile-sidebar-toggle"
-          >
-            <Menu className="h-4 w-4" />
-          </Button>
-          <Link href="/home">
-            <span className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-              &larr; Back to NistaGPS
-            </span>
-          </Link>
-          {currentArticle && (
-            <>
-              <span className="text-muted-foreground hidden sm:block">/</span>
-              <span className="text-sm text-foreground font-medium truncate">
-                {currentArticle.title}
+            <Link href="/home">
+              <span className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
+                &larr; Back to NistaGPS
               </span>
-            </>
-          )}
-        </header>
-
-        {/* Article area */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-6 py-10">
-            {isDocsRoot && !currentSectionId ? (
-              <DocsHome />
-            ) : currentSectionId && currentSlug ? (
-              <ArticleView sectionId={currentSectionId} slug={currentSlug} />
-            ) : currentSectionId ? (
-              // Section landing — redirect to first article in section
-              (() => {
-                const sections = getSections();
-                const section = sections.find((s) => s.id === currentSectionId);
-                const first = section?.articles[0];
-                if (first) {
-                  // Redirect to first article
-                  window.location.replace(articleUrl(first));
-                }
-                return <DocsHome />;
-              })()
-            ) : (
-              <DocsHome />
+            </Link>
+            {currentArticle && (
+              <>
+                <span className="text-muted-foreground hidden sm:block">/</span>
+                <span className="text-sm text-foreground font-medium truncate">
+                  {currentArticle.title}
+                </span>
+              </>
             )}
-          </div>
-        </main>
+          </header>
+
+          {/* Article area */}
+          <main className="flex-1 overflow-y-auto">
+            <div className="max-w-3xl mx-auto px-6 py-10">
+              {/* Section-only URL → redirect to first article (declarative, no render side-effect) */}
+              {currentSectionId && !currentSlug && !isDocsRoot && (
+                <SectionLanding sectionId={currentSectionId} />
+              )}
+
+              {isDocsRoot && !currentSectionId ? (
+                <DocsHome />
+              ) : currentSectionId && currentSlug ? (
+                <ArticleView sectionId={currentSectionId} slug={currentSlug} />
+              ) : (
+                <DocsHome />
+              )}
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

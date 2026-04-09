@@ -389,6 +389,117 @@ const ARTICLE_BODIES: ArticleBody[] = [
     ),
   },
 
+  {
+    slug: "gps-server-mobile",
+    sectionId: "workspace",
+    title: "GPS Server Mobile App",
+    content: (
+      <>
+        <P>
+          The GPS Server Android app turns a smartphone or tablet into a local tracking server.
+          It receives GPS data from nearby tracker devices over a local Wi-Fi network or mobile
+          hotspot and relays it to the NistaGPS cloud server.
+        </P>
+        <H2>Use case</H2>
+        <P>
+          Ideal for small fleets or remote sites where internet connectivity is intermittent. The
+          local server buffers incoming GPS packets and forwards them in bulk when connectivity
+          is restored.
+        </P>
+        <H2>Setup</H2>
+        <UL>
+          <LI>Download the app from Google Play Store on an Android device</LI>
+          <LI>
+            Open the app and enter your NistaGPS server address (<Code>34.133.128.65</Code>) and
+            port (<Code>5023</Code>)
+          </LI>
+          <LI>Configure your GPS tracker devices to connect to the Android phone&apos;s local IP</LI>
+          <LI>Start the server in the app — incoming connections are shown in real time</LI>
+        </UL>
+        <Callout type="tip">
+          Keep the device plugged in and set &ldquo;Keep screen on while charging&rdquo; to
+          prevent Android from killing the background server process.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    slug: "gps-tracker-app",
+    sectionId: "workspace",
+    title: "GPS Tracker App",
+    content: (
+      <>
+        <P>
+          The GPS Tracker app turns any Android or iOS smartphone into a GPS tracking device
+          that reports to NistaGPS. No dedicated hardware is required — just the app and a data
+          plan.
+        </P>
+        <H2>Use case</H2>
+        <P>
+          Great for field staff, courier drivers, or personal vehicles where a hardwired tracker
+          is not practical. The app sends the phone&apos;s GPS position to NistaGPS at a
+          configurable interval.
+        </P>
+        <H2>Setup</H2>
+        <UL>
+          <LI>Download from Google Play (Android) or Apple App Store (iOS)</LI>
+          <LI>Log in with your NistaGPS credentials</LI>
+          <LI>The app will appear as a vehicle in your fleet automatically</LI>
+          <LI>Set the tracking interval (30 s, 1 min, 5 min) and battery saving mode</LI>
+        </UL>
+        <H2>Battery impact</H2>
+        <P>
+          Continuous GPS tracking drains battery faster. Enable battery-saving mode to reduce GPS
+          accuracy slightly in exchange for significantly lower power consumption. The app also
+          supports track-on-motion (only sends updates when the phone is moving).
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "map-controls",
+    sectionId: "workspace",
+    title: "Map Controls",
+    content: (
+      <>
+        <P>
+          The map canvas has a set of built-in controls that let you interact with the live view,
+          change tile layers, and access quick tools without leaving the tracking screen.
+        </P>
+        <H2>Zoom controls</H2>
+        <P>
+          Use the <strong>+</strong> and <strong>&minus;</strong> buttons in the bottom-right corner
+          to zoom in and out. Alternatively, scroll the mouse wheel or use a pinch gesture on
+          touch devices. Double-clicking the map also zooms in by one level.
+        </P>
+        <H2>Fit all</H2>
+        <P>
+          The <strong>Fit All</strong> button (square icon in the toolbar) adjusts the zoom and
+          pan automatically to show all visible vehicles at once. Useful when a vehicle has
+          driven far from the current view.
+        </P>
+        <H2>Tile layer switcher</H2>
+        <P>
+          Click the <strong>Layers</strong> icon to open the tile layer selector. Available
+          layers include road map, satellite imagery, terrain, and hybrid. The selected layer is
+          remembered per user session.
+        </P>
+        <H2>Drawing tools</H2>
+        <P>
+          The drawing toolbar (pencil icon) provides tools for creating geofences, routes, and
+          POIs directly on the map without navigating to a separate module. Select a shape
+          (circle, rectangle, polygon) and click on the map to draw.
+        </P>
+        <H2>Ruler / distance tool</H2>
+        <P>
+          The ruler tool measures the straight-line distance between two or more points on the
+          map. Click to place measurement points; the total distance is shown in the toolbar.
+          Useful for estimating route lengths before assigning them to vehicles.
+        </P>
+      </>
+    ),
+  },
+
   // ─── Control panel ───────────────────────────────────────────────────────────
   {
     slug: "overview",
@@ -726,6 +837,145 @@ const ARTICLE_BODIES: ArticleBody[] = [
       </>
     ),
   },
+  {
+    slug: "languages",
+    sectionId: "control-panel",
+    title: "Languages & Localisation",
+    content: (
+      <>
+        <P>
+          NistaGPS supports multiple interface languages. Administrators can set the default
+          language for the organisation, and individual users can override this in their Profile.
+        </P>
+        <H2>Setting the default language</H2>
+        <P>
+          Go to <strong>Control Panel &rarr; Languages</strong> and select the organisation-wide
+          default language from the dropdown. Currently supported languages include English, Hindi,
+          Tamil, Telugu, and Arabic.
+        </P>
+        <H2>User-level override</H2>
+        <P>
+          Each user can set their own preferred language from their Profile page. The user-level
+          setting overrides the organisation default for that user only. Other users are not
+          affected.
+        </P>
+        <H2>Date, time, and unit formats</H2>
+        <P>
+          Localisation also controls the date format (DD/MM/YYYY vs MM/DD/YYYY), time format
+          (12-hour vs 24-hour), and unit system (metric km/km/h vs imperial miles/mph). These can
+          be configured independently of the interface language.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "cp-templates",
+    sectionId: "control-panel",
+    title: "Templates (Admin)",
+    content: (
+      <>
+        <P>
+          The Templates section in the Control Panel is where administrators manage the content
+          templates used for automated notifications, reports, and driver messages. These are
+          organisation-wide defaults that apply to all alert events.
+        </P>
+        <H2>Email templates</H2>
+        <P>
+          Customise the HTML body of email alerts and scheduled reports. Use the built-in template
+          editor with a preview pane to see how the email will render in a mail client.
+        </P>
+        <H2>SMS templates</H2>
+        <P>
+          Define the text content for SMS alert messages. Keep them concise — under 160 characters
+          — to avoid multi-part SMS charges. Supported variables include{" "}
+          <Code>{"{vehicle_name}"}</Code>, <Code>{"{speed}"}</Code>, <Code>{"{address}"}</Code>,
+          and <Code>{"{timestamp}"}</Code>.
+        </P>
+        <H2>Chat quick-replies</H2>
+        <P>
+          Pre-define quick-reply messages that fleet managers can send to drivers with a single
+          click, without typing. Examples: &ldquo;Proceed to next stop&rdquo;, &ldquo;Call base
+          immediately&rdquo;, &ldquo;Vehicle inspection required&rdquo;.
+        </P>
+        <Callout type="info">
+          Template changes take effect immediately — the next alert or message will use the
+          updated template content.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    slug: "tools",
+    sectionId: "control-panel",
+    title: "Tools",
+    content: (
+      <>
+        <P>
+          The Tools section in the Control Panel provides utility functions for data management,
+          device diagnostics, and system health monitoring.
+        </P>
+        <H2>Data import</H2>
+        <P>
+          Bulk-import vehicles, drivers, geofences, or POIs from CSV or KML files. Each import
+          type has a downloadable template. After upload, the system validates each row and shows
+          any errors before committing the data.
+        </P>
+        <H2>Data export</H2>
+        <P>
+          Export the complete vehicle list, driver list, or geofence definitions to CSV for use
+          in external systems, spreadsheets, or backups.
+        </P>
+        <H2>Device ping</H2>
+        <P>
+          Enter any IMEI number and click <strong>Ping Device</strong> to check whether the
+          device is currently connected to the NistaGPS server. The result shows connection
+          status, last packet time, and IP address.
+        </P>
+        <H2>Geocoder test</H2>
+        <P>
+          Test the reverse-geocoding service by entering a GPS coordinate. The result shows the
+          street address returned by the geocoder, which is the same address shown in the
+          tracking view and reports.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "firewall",
+    sectionId: "control-panel",
+    title: "Firewall",
+    content: (
+      <>
+        <P>
+          The Firewall section lets administrators restrict login access to the NistaGPS web
+          application by IP address, device type, or time of day. Use this to improve security
+          for sensitive fleet data.
+        </P>
+        <H2>IP allowlist</H2>
+        <P>
+          Add trusted IP addresses or CIDR ranges to the allowlist. When the allowlist is enabled,
+          only users connecting from listed IPs can log in — all other login attempts are blocked
+          with a &ldquo;Access Restricted&rdquo; message.
+        </P>
+        <Callout type="warning">
+          Before enabling the IP allowlist, ensure your own current IP is included. Locking
+          yourself out requires contacting NistaGPS support to reset the firewall.
+        </Callout>
+        <H2>Login time restrictions</H2>
+        <P>
+          Set allowed login hours per user role. For example, Viewer accounts may only be
+          permitted to log in during business hours (9 AM – 6 PM, Monday to Friday). Attempts
+          outside these hours are blocked.
+        </P>
+        <H2>Failed login lockout</H2>
+        <P>
+          Configure the number of failed login attempts before an account is temporarily locked.
+          The default is 5 attempts before a 30-minute lockout. Administrators can manually
+          unlock accounts from User Management.
+        </P>
+      </>
+    ),
+  },
 
   // ─── Objects ─────────────────────────────────────────────────────────────────
   {
@@ -861,6 +1111,452 @@ const ARTICLE_BODIES: ArticleBody[] = [
         <P>
           Passenger and trailer associations are included in trip reports, allowing you to generate
           manifests, cargo tracking records, or mileage claims for specific assets.
+        </P>
+      </>
+    ),
+  },
+
+  {
+    slug: "tasks",
+    sectionId: "objects",
+    title: "Tasks",
+    content: (
+      <>
+        <P>
+          The Tasks module lets you create scheduled work orders and to-do items linked to specific
+          vehicles or drivers. Tasks appear in the tracking view as reminders and can be marked
+          complete from the mobile app.
+        </P>
+        <H2>Creating a task</H2>
+        <P>
+          Go to <strong>Objects &rarr; Tasks</strong> and click <strong>Add Task</strong>. Enter a
+          title, assign a vehicle or driver, set a due date and optional location. You can attach
+          notes or documents to the task.
+        </P>
+        <H2>Task types</H2>
+        <UL>
+          <LI>
+            <strong>Vehicle service</strong> — schedule oil change, tyre rotation, or other routine
+            maintenance
+          </LI>
+          <LI>
+            <strong>Driver task</strong> — delivery confirmation, inspection checklist, or admin
+            form
+          </LI>
+          <LI>
+            <strong>Location task</strong> — tied to a geofence; completes automatically when the
+            vehicle enters the zone
+          </LI>
+        </UL>
+        <H2>Status tracking</H2>
+        <P>
+          Tasks move through statuses: <em>Pending</em>, <em>In Progress</em>,{" "}
+          <em>Completed</em>, and <em>Overdue</em>. Overdue tasks generate an alert if configured
+          in Alert Settings.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "rfid-ibutton",
+    sectionId: "objects",
+    title: "RFID / iButton",
+    content: (
+      <>
+        <P>
+          NistaGPS supports driver identification via RFID cards and iButton (Dallas key) tokens.
+          When a driver presents their credential to the in-vehicle reader, the system logs who is
+          driving the vehicle and links subsequent GPS data to that driver.
+        </P>
+        <H2>How it works</H2>
+        <P>
+          The GPS tracker device includes an RFID reader port or iButton socket. When the driver
+          touches their card/key to the reader, the device sends the credential ID in the next GPS
+          packet. NistaGPS matches the ID to the registered driver and marks them as active on
+          that vehicle.
+        </P>
+        <H2>Registering credentials</H2>
+        <P>
+          Go to <strong>Objects &rarr; Drivers</strong>, open a driver profile, and enter the RFID
+          card number or iButton ID in the <strong>Identifier</strong> field. The identifier is
+          usually printed on the card or can be read with an NFC reader app on Android.
+        </P>
+        <H2>Unidentified driving</H2>
+        <P>
+          If a vehicle moves without a recognised RFID/iButton being presented, NistaGPS logs the
+          trip as &ldquo;Driver Unknown&rdquo;. You can configure an alert to notify managers
+          when this occurs.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "dtc",
+    sectionId: "objects",
+    title: "Fault Codes (DTC)",
+    content: (
+      <>
+        <P>
+          NistaGPS can display Diagnostic Trouble Codes (DTCs) from the vehicle&apos;s OBD-II
+          port when your GPS tracker supports the OBD-II protocol. DTCs indicate engine faults and
+          warning light conditions.
+        </P>
+        <H2>Requirements</H2>
+        <UL>
+          <LI>An OBD-II compatible GPS tracker (e.g. Teltonika FMB series with OBDII cable)</LI>
+          <LI>Vehicle must be OBD-II compliant (most vehicles manufactured after 2000)</LI>
+          <LI>DTC data must be enabled in the tracker&apos;s configuration</LI>
+        </UL>
+        <H2>Viewing fault codes</H2>
+        <P>
+          Open any vehicle in the tracking view and click the <strong>DTC</strong> tab in the
+          vehicle information panel. The tab shows a list of active fault codes with their
+          standardised descriptions.
+        </P>
+        <H2>Common codes</H2>
+        <UL>
+          <LI>
+            <Code>P0XXX</Code> — powertrain codes (engine, transmission)
+          </LI>
+          <LI>
+            <Code>B0XXX</Code> — body codes (airbag, climate control)
+          </LI>
+          <LI>
+            <Code>C0XXX</Code> — chassis codes (ABS, suspension)
+          </LI>
+          <LI>
+            <Code>U0XXX</Code> — network / communication codes
+          </LI>
+        </UL>
+        <Callout type="warning">
+          NistaGPS displays the raw DTC codes. Consult a qualified mechanic to diagnose and repair
+          the underlying issue before clearing codes.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    slug: "maintenance",
+    sectionId: "objects",
+    title: "Maintenance",
+    content: (
+      <>
+        <P>
+          The Maintenance module tracks scheduled service intervals for each vehicle and alerts
+          you when a service is due. This helps prevent costly breakdowns caused by missed
+          servicing.
+        </P>
+        <H2>Setting up a maintenance schedule</H2>
+        <P>
+          Open a vehicle&apos;s settings from the Vehicles list and go to the{" "}
+          <strong>Maintenance</strong> tab. Click <strong>Add Interval</strong>. Choose a trigger:
+        </P>
+        <UL>
+          <LI>
+            <strong>Distance</strong> — e.g. every 10,000 km
+          </LI>
+          <LI>
+            <strong>Engine hours</strong> — e.g. every 250 hours
+          </LI>
+          <LI>
+            <strong>Calendar</strong> — e.g. every 6 months
+          </LI>
+        </UL>
+        <H2>Reminders</H2>
+        <P>
+          Set a reminder lead time (e.g. 500 km before the service is due). When the vehicle
+          approaches that threshold, a warning badge appears on the vehicle in the tracking view
+          and email notifications are sent to the configured recipients.
+        </P>
+        <H2>Logging completed service</H2>
+        <P>
+          After a vehicle is serviced, click <strong>Log Service</strong> on the maintenance
+          record. Enter the date, mileage, service centre name, and cost. This resets the
+          reminder counter and creates a permanent service history record.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "expenses",
+    sectionId: "objects",
+    title: "Expenses",
+    content: (
+      <>
+        <P>
+          The Expenses module records running costs for each vehicle — fuel fill-ups, tolls,
+          repairs, and other operational expenses. This data feeds into fleet cost reports.
+        </P>
+        <H2>Adding an expense</H2>
+        <P>
+          Open a vehicle from the Vehicles list and go to the <strong>Expenses</strong> tab. Click{" "}
+          <strong>Add Expense</strong>. Fill in:
+        </P>
+        <UL>
+          <LI>
+            <strong>Type</strong> — Fuel, Toll, Repair, Insurance, or Custom
+          </LI>
+          <LI>
+            <strong>Amount</strong> — cost in your local currency
+          </LI>
+          <LI>
+            <strong>Date</strong> — when the expense occurred
+          </LI>
+          <LI>
+            <strong>Notes</strong> — optional description (e.g. vendor name, invoice number)
+          </LI>
+        </UL>
+        <H2>Fuel entries</H2>
+        <P>
+          For fuel entries, also enter the number of litres filled and the current odometer
+          reading. NistaGPS calculates litres per 100 km and tracks fuel efficiency trends over
+          time.
+        </P>
+        <H2>Cost reports</H2>
+        <P>
+          All expenses are included in the Fleet Cost report available in the Reports module.
+          Filter by vehicle, date range, or expense type to analyse costs per route or department.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "object-control",
+    sectionId: "objects",
+    title: "Object Control",
+    content: (
+      <>
+        <P>
+          Object Control gives you direct interaction capabilities with a tracked vehicle — sending
+          commands, requesting live data, and remote immobilisation (where supported).
+        </P>
+        <H2>Control panel</H2>
+        <P>
+          Select a vehicle on the map and click the <strong>Control</strong> button in the vehicle
+          info panel. The Control Panel shows the device status, last command, and available
+          actions.
+        </P>
+        <H2>Available actions</H2>
+        <UL>
+          <LI>
+            <strong>Request location</strong> — force the device to send an immediate GPS update
+          </LI>
+          <LI>
+            <strong>Reboot device</strong> — restart the device firmware remotely
+          </LI>
+          <LI>
+            <strong>Set tracking interval</strong> — change how frequently the device sends GPS
+            data (1 second to 5 minutes)
+          </LI>
+          <LI>
+            <strong>Activate output</strong> — toggle a relay (e.g. engine cut, door lock) if
+            the device is wired accordingly
+          </LI>
+          <LI>
+            <strong>Custom SMS command</strong> — send a raw SMS command string to the device
+          </LI>
+        </UL>
+        <Callout type="warning">
+          Remote immobilisation (engine cut) commands should only be issued when the vehicle is
+          confirmed stationary. Never activate during driving.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    slug: "image-gallery",
+    sectionId: "objects",
+    title: "Image Gallery",
+    content: (
+      <>
+        <P>
+          The Image Gallery stores photos associated with a vehicle — photos taken by a dashcam,
+          uploaded by a driver from the mobile app, or attached to expense or maintenance records.
+        </P>
+        <H2>Viewing the gallery</H2>
+        <P>
+          Open a vehicle from the Vehicles list and click the <strong>Images</strong> tab. Photos
+          are displayed in a grid sorted by capture date. Click any photo to enlarge it and see
+          the associated timestamp and GPS location.
+        </P>
+        <H2>Dashcam integration</H2>
+        <P>
+          If your GPS device supports 4G dashcam functionality, photos can be requested remotely
+          via the Control Panel. The device captures a photo from the camera and uploads it to
+          NistaGPS automatically.
+        </P>
+        <H2>Driver photo uploads</H2>
+        <P>
+          Drivers using the GPS Tracker mobile app can upload photos from their phone. These
+          photos are linked to the current trip and vehicle automatically.
+        </P>
+        <Callout type="info">
+          Image storage is subject to your plan&apos;s retention limit. Older images may be
+          automatically deleted when storage capacity is reached.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    slug: "video-gallery",
+    sectionId: "objects",
+    title: "Video Gallery",
+    content: (
+      <>
+        <P>
+          The Video Gallery stores dashcam video clips associated with events — automatic
+          recordings triggered by harsh braking, collisions, or manual requests.
+        </P>
+        <H2>Requirements</H2>
+        <UL>
+          <LI>A 4G-enabled GPS tracker with built-in or connected dashcam</LI>
+          <LI>Premium subscription plan (video storage is not included in Basic/Standard)</LI>
+          <LI>Dashcam configured to send video to NistaGPS on event trigger</LI>
+        </UL>
+        <H2>Requesting a video clip</H2>
+        <P>
+          From the Control Panel for a vehicle, click <strong>Request Video</strong>. Select a
+          time window (past 30 seconds to 5 minutes). The device uploads the clip from its local
+          storage when it next has strong mobile data connectivity.
+        </P>
+        <H2>Automatic recordings</H2>
+        <P>
+          Configure the dashcam to automatically upload clips when harsh braking, acceleration,
+          or collision events are detected. These clips appear in the Video Gallery tagged with
+          the event type and GPS location.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "chat",
+    sectionId: "objects",
+    title: "Chat",
+    content: (
+      <>
+        <P>
+          The Chat module provides a direct messaging channel between fleet managers and drivers.
+          Messages are delivered through the GPS Tracker mobile app on the driver&apos;s phone.
+        </P>
+        <H2>Sending a message</H2>
+        <P>
+          Select a vehicle or driver from the tracking view and click the{" "}
+          <strong>Chat</strong> button. Type your message and click <strong>Send</strong>. The
+          message is delivered to the driver&apos;s mobile app immediately if they are online.
+        </P>
+        <H2>Message history</H2>
+        <P>
+          The Chat tab on any vehicle shows the full message history between the fleet manager and
+          the assigned driver for that vehicle. Messages are timestamped and show read status.
+        </P>
+        <H2>Pre-defined messages</H2>
+        <P>
+          Set up quick-reply templates for common instructions (e.g. &ldquo;Proceed to
+          warehouse&rdquo;, &ldquo;Call the office&rdquo;) to save time when dispatching drivers.
+          Templates are configured in <strong>Control Panel &rarr; Templates</strong>.
+        </P>
+        <Callout type="info">
+          Drivers must have the GPS Tracker app installed and be logged in to receive chat
+          messages. Messages sent while the driver is offline are delivered when they reconnect.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    slug: "markers",
+    sectionId: "objects",
+    title: "Markers",
+    content: (
+      <>
+        <P>
+          Markers (also called Points of Interest or POIs) are named locations pinned on the map.
+          They serve as reference points for drivers and appear as icons on the tracking map for
+          all users.
+        </P>
+        <H2>Creating a marker</H2>
+        <P>
+          Right-click anywhere on the map and choose <strong>Add Marker</strong>, or navigate to{" "}
+          <strong>Places &rarr; Markers</strong> and click <strong>Add</strong>. Enter a name,
+          choose an icon, and set the coordinates (by clicking on the map or entering lat/lng
+          directly).
+        </P>
+        <H2>Marker categories</H2>
+        <P>
+          Organise markers into categories — warehouses, customer sites, fuel stations, repair
+          centres — for easy filtering. Each category can have its own icon colour.
+        </P>
+        <H2>Sharing markers</H2>
+        <P>
+          Markers are visible to all users in your organisation. Drivers using the GPS Tracker app
+          can view markers on their in-app map for navigation reference.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "routes",
+    sectionId: "objects",
+    title: "Routes",
+    content: (
+      <>
+        <P>
+          Routes are predefined paths that vehicles are expected to follow. You can draw planned
+          routes on the map and configure alerts when a vehicle deviates from the expected path.
+        </P>
+        <H2>Creating a route</H2>
+        <P>
+          Go to <strong>Places &rarr; Routes</strong> and click <strong>Add Route</strong>. Click
+          on the map to add waypoints. NistaGPS connects them with straight lines (as-the-crow-flies
+          routing). For road-snapping, use the <strong>Snap to Road</strong> option.
+        </P>
+        <H2>Route corridor</H2>
+        <P>
+          Set a corridor width (e.g. 500 metres) around the route path. When a vehicle drifts
+          outside this corridor, a route deviation alert fires — useful for verifying delivery
+          drivers stay on approved roads.
+        </P>
+        <H2>Route assignment</H2>
+        <P>
+          Assign a route to a vehicle or group from the vehicle settings page. The assigned route
+          appears on the map when that vehicle is selected, with colour coding showing on-route vs
+          off-route segments during playback.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "zones",
+    sectionId: "objects",
+    title: "Zones (Geofences)",
+    content: (
+      <>
+        <P>
+          Zones — also called Geofences — are virtual boundaries drawn on the map. When a vehicle
+          enters or exits a zone, NistaGPS logs the event and optionally sends a notification.
+        </P>
+        <H2>Zone shapes</H2>
+        <UL>
+          <LI>
+            <strong>Circle</strong> — click a centre point and set a radius in metres
+          </LI>
+          <LI>
+            <strong>Rectangle</strong> — click two corners to define a bounding box
+          </LI>
+          <LI>
+            <strong>Polygon</strong> — click to add vertices for any irregular shape
+          </LI>
+        </UL>
+        <H2>Trigger settings</H2>
+        <P>
+          Each zone can trigger on <strong>Enter</strong>, <strong>Exit</strong>, or{" "}
+          <strong>Both</strong>. You can also set time restrictions — for example, trigger only
+          if the vehicle enters outside of business hours.
+        </P>
+        <H2>Importing zones</H2>
+        <P>
+          Import zone boundaries from a KML file (exported from Google My Maps or any GIS tool)
+          using <strong>Places &rarr; Zones &rarr; Import KML</strong>. This is faster than
+          redrawing complex boundaries manually.
         </P>
       </>
     ),
@@ -1321,6 +2017,86 @@ const ARTICLE_BODIES: ArticleBody[] = [
           NistaGPS accepts coordinates in decimal degrees format (e.g.{" "}
           <Code>12.9716, 77.5946</Code>). Degrees-minutes-seconds format is not directly supported
           — use an online converter if your data is in DMS format.
+        </P>
+      </>
+    ),
+  },
+
+  {
+    slug: "address-search",
+    sectionId: "dashboard",
+    title: "Address Search",
+    content: (
+      <>
+        <P>
+          The Address Search tool converts a street address or landmark name into a map location.
+          It is available from the search bar in the Top Panel and from the Show Point tool in
+          the map toolbar.
+        </P>
+        <H2>How to use</H2>
+        <P>
+          Type any address, business name, or landmark into the search bar. NistaGPS queries a
+          geocoding service and shows the top matches in a dropdown. Click a result to centre
+          the map on that location and place a temporary pin.
+        </P>
+        <H2>Creating a geofence at an address</H2>
+        <P>
+          After the map centres on an address, click <strong>Add Geofence Here</strong> in the
+          location popup to immediately start drawing a geofence around that address. This is
+          faster than manually navigating and drawing.
+        </P>
+        <H2>Coverage</H2>
+        <P>
+          Address search uses OpenStreetMap&apos;s Nominatim geocoder by default, which has good
+          global coverage. For Indian addresses, coverage in rural areas may be limited. If an
+          address is not found, try a nearby landmark or use GPS coordinates directly.
+        </P>
+      </>
+    ),
+  },
+  {
+    slug: "location-messages",
+    sectionId: "dashboard",
+    title: "Location Messages (Raw Data)",
+    content: (
+      <>
+        <P>
+          Location Messages is a developer/diagnostics tool that shows the raw GPS data packets
+          received from a device. It is useful for troubleshooting and understanding exactly what
+          data is being sent by a tracker.
+        </P>
+        <H2>Accessing raw messages</H2>
+        <P>
+          Select a vehicle from the tracking view and open <strong>Location Messages</strong> from
+          the vehicle&apos;s detail panel. Choose a date range and click Load. Each row in the
+          table represents one GPS packet received from the device.
+        </P>
+        <H2>Columns</H2>
+        <UL>
+          <LI>
+            <strong>Timestamp</strong> — server-side time the packet was received
+          </LI>
+          <LI>
+            <strong>Device time</strong> — GPS timestamp embedded in the packet by the device
+          </LI>
+          <LI>
+            <strong>Latitude / Longitude</strong> — GPS coordinates
+          </LI>
+          <LI>
+            <strong>Speed</strong> — speed in km/h as reported by the device
+          </LI>
+          <LI>
+            <strong>Satellites</strong> — number of GPS satellites in view
+          </LI>
+          <LI>
+            <strong>Raw</strong> — the full decoded packet data in JSON format
+          </LI>
+        </UL>
+        <H2>When to use</H2>
+        <P>
+          If you notice the vehicle position is jumping or showing an incorrect location, Location
+          Messages helps identify whether the problem is in the GPS data itself or in the
+          NistaGPS processing layer.
         </P>
       </>
     ),
