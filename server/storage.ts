@@ -50,17 +50,29 @@ import {
   deviceModels,
   vehicleSubscriptions,
   auditLogs,
+  hostedPlans,
+  subscriptions,
 } from "@shared/schema";
+import type { HostedPlan, InsertHostedPlan, Subscription, InsertSubscription } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db, neonSql } from "./db";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 
 // The Neon HTTP driver occasionally returns `null` instead of `[]` for empty
-// result sets, causing Drizzle to throw a TypeError when it tries to iterate
-// the rows. This helper wraps any SELECT query and coalesces null → [].
+// result sets. Drizzle then throws a TypeError ("Cannot read properties of null
+// (reading 'map')") when it tries to process the result. This helper wraps any
+// SELECT query, catches that known driver defect, and returns [] instead.
+// All other errors are re-thrown so genuine failures are not silently swallowed.
 async function safeSelect<T>(queryFn: () => Promise<T[]>): Promise<T[]> {
-  const rows = await queryFn();
-  return rows ?? [];
+  try {
+    const rows = await queryFn();
+    return rows ?? [];
+  } catch (err) {
+    if (err instanceof TypeError && String(err.message).includes("map")) {
+      return [];
+    }
+    throw err;
+  }
 }
 
 export interface IStorage {
@@ -162,6 +174,17 @@ export interface IStorage {
   // Audit Logs
   getAuditLogs(limit?: number): Promise<AuditLog[]>;
   addAuditLog(userId: string | null, action: string, detail?: string): Promise<void>;
+
+  // Hosted Plans
+  getHostedPlans(): Promise<HostedPlan[]>;
+  getHostedPlan(id: string): Promise<HostedPlan | undefined>;
+  createHostedPlan(plan: InsertHostedPlan): Promise<HostedPlan>;
+  updateHostedPlan(id: string, updates: Partial<InsertHostedPlan>): Promise<HostedPlan | undefined>;
+
+  // Subscriptions (per-account billing records)
+  getSubscriptions(userId?: string): Promise<Subscription[]>;
+  createSubscription(sub: InsertSubscription): Promise<Subscription>;
+  updateSubscription(id: string, updates: Partial<InsertSubscription>): Promise<Subscription | undefined>;
 
   // Trips
   getTrips(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Trip[]>;
@@ -911,6 +934,59 @@ export class DbStorage implements IStorage {
       // Log to stderr so errors are visible in server logs without impacting callers.
       console.error("[audit-log] Failed to write audit entry:", action, err instanceof Error ? err.message : String(err));
     }
+  }
+
+  // Hosted Plans
+  async getHostedPlans(): Promise<HostedPlan[]> {
+    // Use raw SQL for boolean column to avoid Neon HTTP driver "t"/"f" string comparison issue
+    return safeSelect(() => db.select().from(hostedPlans).where(sql`${hostedPlans.active} = true`).orderBy(hostedPlans.pricePerYear));
+  }
+
+  async getHostedPlan(id: string): Promise<HostedPlan | undefined> {
+    const rows = await safeSelect(() => db.select().from(hostedPlans).where(eq(hostedPlans.id, id)).limit(1));
+    return rows[0];
+  }
+
+  async createHostedPlan(plan: InsertHostedPlan): Promise<HostedPlan> {
+    const result = await db.insert(hostedPlans).values(plan).returning();
+    return result[0];
+  }
+
+  async updateHostedPlan(id: string, updates: Partial<InsertHostedPlan>): Promise<HostedPlan | undefined> {
+    if (Object.keys(updates).length === 0) return this.getHostedPlan(id);
+    const set: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      set[key] = val === null || val === undefined ? sql`NULL` : val;
+    }
+    await db.update(hostedPlans).set(set).where(eq(hostedPlans.id, id));
+    return this.getHostedPlan(id);
+  }
+
+  // Subscriptions (per-account billing records)
+  async getSubscriptions(userId?: string): Promise<Subscription[]> {
+    const query = userId
+      ? db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).orderBy(desc(subscriptions.createdAt))
+      : db.select().from(subscriptions).orderBy(desc(subscriptions.createdAt));
+    return safeSelect(() => query);
+  }
+
+  async createSubscription(sub: InsertSubscription): Promise<Subscription> {
+    const result = await db.insert(subscriptions).values(sub).returning();
+    return result[0];
+  }
+
+  async updateSubscription(id: string, updates: Partial<InsertSubscription>): Promise<Subscription | undefined> {
+    if (Object.keys(updates).length === 0) {
+      const rows = await safeSelect(() => db.select().from(subscriptions).where(eq(subscriptions.id, id)).limit(1));
+      return rows[0];
+    }
+    const set: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      set[key] = val === null || val === undefined ? sql`NULL` : val;
+    }
+    await db.update(subscriptions).set(set).where(eq(subscriptions.id, id));
+    const rows = await safeSelect(() => db.select().from(subscriptions).where(eq(subscriptions.id, id)).limit(1));
+    return rows[0];
   }
 
   async getTrips(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Trip[]> {

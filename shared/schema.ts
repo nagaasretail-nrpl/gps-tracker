@@ -417,6 +417,36 @@ export const auditLogs = pgTable("audit_logs", {
 });
 export type AuditLog = typeof auditLogs.$inferSelect;
 
+// Hosted subscription plans — admin-managed plan catalog
+export const hostedPlans = pgTable("hosted_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  maxVehicles: integer("max_vehicles").notNull().default(5),
+  pricePerYear: integer("price_per_year").notNull().default(1999),
+  features: text("features").array().notNull().default(sql`'{}'::text[]`),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export const insertHostedPlanSchema = createInsertSchema(hostedPlans).omit({ id: true, createdAt: true });
+export type InsertHostedPlan = z.infer<typeof insertHostedPlanSchema>;
+export type HostedPlan = typeof hostedPlans.$inferSelect;
+
+// Subscriptions — per-account/tenant billing records
+export const subscriptions = pgTable("subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  planId: varchar("plan_id").notNull(),
+  status: text("status").notNull().default("active"), // active, expired, cancelled
+  vehicleSlots: integer("vehicle_slots").notNull().default(1),
+  razorpayOrderId: text("razorpay_order_id"),
+  razorpayPaymentId: text("razorpay_payment_id"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true, createdAt: true });
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
+export type Subscription = typeof subscriptions.$inferSelect;
+
 // Vehicle subscriptions — per-vehicle billing records
 export const vehicleSubscriptions = pgTable("vehicle_subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

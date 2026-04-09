@@ -1804,12 +1804,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ────────────────────────────────────────────
   app.get("/api/billing/plans", async (_req, res) => {
     try {
+      // Primary: read from hosted_plans table (admin-managed catalog)
+      const dbPlans = await storage.getHostedPlans();
+      if (dbPlans.length > 0) {
+        return res.json({ plans: dbPlans.map(p => ({ id: p.id, name: p.name, maxVehicles: p.maxVehicles, pricePerYear: p.pricePerYear, features: p.features ?? [] })) });
+      }
+      // Fallback: legacy subscription_plans setting (backward compat)
       const plansSetting = await storage.getSetting("subscription_plans");
       if (plansSetting?.value) {
         const plans = JSON.parse(plansSetting.value);
         return res.json({ plans });
       }
-      // Default plans
+      // Hard-coded defaults
       res.json({
         plans: [
           { id: "basic", name: "Basic", maxVehicles: 5, pricePerYear: 1500, features: ["Live Tracking", "History", "Geofences", "Basic Reports"] },
@@ -1818,6 +1824,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ],
       });
     } catch { res.status(500).json({ error: "Failed to fetch plans" }); }
+  });
+
+  // Admin: CRUD for hosted_plans table
+  app.get("/api/billing/hosted-plans", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const plans = await storage.getHostedPlans();
+      res.json(plans);
+    } catch { res.status(500).json({ error: "Failed to fetch hosted plans" }); }
+  });
+
+  // Account subscriptions (per-user billing records backed by subscriptions table)
+  app.get("/api/billing/account-subscriptions", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const subs = await storage.getSubscriptions();
+      res.json(subs);
+    } catch (err) {
+      console.error("[billing] account-subscriptions error:", err instanceof Error ? err.message : String(err));
+      res.status(500).json({ error: "Failed to fetch subscriptions" });
+    }
   });
 
   app.get("/api/billing/subscriptions", requireAuth, requireAdmin, async (_req, res) => {
@@ -1864,25 +1889,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const { imei, name, plan } = schema.parse(req.body);
 
-      // Slot-limit check: count active vehicles vs plan limit
-      const plansSetting = await storage.getSetting("subscription_plans");
-      const allPlans = plansSetting?.value ? JSON.parse(plansSetting.value) : [
-        { id: "basic", name: "Basic", maxVehicles: 5 },
-        { id: "pro", name: "Pro", maxVehicles: 20 },
-        { id: "fleet", name: "Fleet", maxVehicles: 100 },
+      // Slot-limit check using hosted_plans table (falls back to settings)
+      const dbPlans = await storage.getHostedPlans();
+      const fallbackPlans = [
+        { id: "basic", name: "Basic", maxVehicles: 5, pricePerYear: 1500 },
+        { id: "pro", name: "Pro", maxVehicles: 20, pricePerYear: 3500 },
+        { id: "fleet", name: "Fleet", maxVehicles: 100, pricePerYear: 8000 },
       ];
-      const planDef = allPlans.find((p: { id: string; name?: string; maxVehicles: number }) => p.id === plan || p.name?.toLowerCase() === plan);
+      const allPlans = dbPlans.length > 0 ? dbPlans : fallbackPlans;
+      const planDef = allPlans.find((p) => p.id === plan || p.name?.toLowerCase() === plan);
       if (planDef) {
         const currentVehicles = await storage.getVehicles();
         const activeSubs = await storage.getVehicleSubscriptions();
         const activePlanSubs = activeSubs.filter(s => s.status === "active" && (s.plan === plan || s.plan === planDef.id));
         if (activePlanSubs.length >= planDef.maxVehicles) {
+          // Build upgrade options from higher-tier plans
+          const upgradePlans = allPlans
+            .filter(p => p.maxVehicles > planDef.maxVehicles)
+            .map(p => ({ id: p.id, name: p.name, maxVehicles: p.maxVehicles, pricePerYear: p.pricePerYear }));
+          // Attempt to create a Razorpay order for the cheapest upgrade plan, if Razorpay is configured
+          let razorpayOrderId: string | null = null;
+          let razorpayKeyId: string | null = null;
+          const nextPlan = upgradePlans[0];
+          if (nextPlan) {
+            try {
+              const keyId = (await storage.getSetting("razorpay_key_id"))?.value ?? "";
+              const keySecret = (await storage.getSetting("razorpay_key_secret"))?.value ?? "";
+              if (keyId && keySecret) {
+                const rz = new Razorpay({ key_id: keyId, key_secret: keySecret });
+                const amountPaise = nextPlan.pricePerYear * 100; // one vehicle slot upgrade
+                const order = await rz.orders.create({ amount: amountPaise, currency: "INR", receipt: `upgrade-${Date.now()}`, notes: { plan: nextPlan.name, type: "plan_upgrade" } });
+                razorpayOrderId = order.id;
+                razorpayKeyId = keyId;
+              }
+            } catch {
+              // If Razorpay order creation fails, still respond with upgrade info
+            }
+          }
           return res.status(422).json({
             error: "Slot limit reached",
             message: `Your ${planDef.name} plan allows up to ${planDef.maxVehicles} vehicles. Please upgrade to add more.`,
             currentCount: currentVehicles.length,
             maxVehicles: planDef.maxVehicles,
             upgradeRequired: true,
+            upgradePlans,
+            razorpayOrderId,
+            razorpayKeyId,
           });
         }
       }

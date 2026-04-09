@@ -996,6 +996,181 @@ function EmptyState() {
   );
 }
 
+// ── Idle Time Report ─────────────────────────────────────────────────────────
+function IdleTimeView({ segments, vehicles, isLoading, selectedVehicle, startDate, endDate }: { segments: TripSegment[]; vehicles: Vehicle[]; isLoading: boolean; selectedVehicle: string; startDate: Date; endDate: Date }) {
+  const vehicleMap = new Map(vehicles.map(v => [v.id, v.name]));
+  // Aggregate idle time per vehicle
+  const byVehicle = useMemo(() => {
+    const map = new Map<string, { idleSec: number; movingSec: number; trips: number }>();
+    for (const s of segments) {
+      if (!map.has(s.vehicleId)) map.set(s.vehicleId, { idleSec: 0, movingSec: 0, trips: 0 });
+      const r = map.get(s.vehicleId)!;
+      r.idleSec += s.idleTimeSec ?? 0;
+      r.movingSec += (s.durationSec ?? 0) - (s.idleTimeSec ?? 0);
+      r.trips++;
+    }
+    return Array.from(map.entries())
+      .map(([vehicleId, v]) => ({ vehicleId, name: vehicleMap.get(vehicleId) ?? vehicleId.slice(0, 8), ...v }))
+      .sort((a, b) => b.idleSec - a.idleSec);
+  }, [segments, vehicleMap]);
+
+  const totalIdleSec = byVehicle.reduce((s, r) => s + r.idleSec, 0);
+  const totalMovingSec = byVehicle.reduce((s, r) => s + r.movingSec, 0);
+  const dateStr = format(startDate, "yyyy-MM-dd");
+
+  const exportCSV = () => {
+    const headers = ["Vehicle", "Idle Time", "Moving Time", "Idle Ratio (%)", "Trips"];
+    const rows = byVehicle.map(r => [r.name, formatDuration(r.idleSec), formatDuration(r.movingSec), r.idleSec + r.movingSec > 0 ? ((r.idleSec / (r.idleSec + r.movingSec)) * 100).toFixed(1) : "0.0", r.trips]);
+    downloadCSV(headers, rows as (string | number)[][], `idle-report-${dateStr}.csv`);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap py-3">
+        <div className="flex gap-4 flex-wrap">
+          <div><div className="text-xs text-muted-foreground">Total Idle</div><div className="text-base font-bold" data-testid="text-idle-total">{formatDuration(totalIdleSec)}</div></div>
+          <div><div className="text-xs text-muted-foreground">Total Moving</div><div className="text-base font-bold">{formatDuration(totalMovingSec)}</div></div>
+          <div><div className="text-xs text-muted-foreground">Idle Ratio</div><div className="text-base font-bold">{totalIdleSec + totalMovingSec > 0 ? ((totalIdleSec / (totalIdleSec + totalMovingSec)) * 100).toFixed(1) : "0.0"}%</div></div>
+        </div>
+        <Button size="default" variant="outline" onClick={exportCSV} disabled={byVehicle.length === 0} data-testid="button-export-csv-idle"><Download className="h-4 w-4 mr-2" />CSV</Button>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader><TableRow><TableHead>Vehicle</TableHead><TableHead>Idle Time</TableHead><TableHead>Moving Time</TableHead><TableHead>Idle Ratio</TableHead><TableHead>Trips</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {isLoading ? Array.from({ length: 4 }).map((_, i) => <TableRow key={i}>{Array.from({ length: 5 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}</TableRow>)
+              : byVehicle.length === 0 ? <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground">No trips in this period</TableCell></TableRow>
+              : byVehicle.map((r, i) => (
+                <TableRow key={r.vehicleId} data-testid={`row-idle-${i}`}>
+                  <TableCell className="font-medium text-sm">{r.name}</TableCell>
+                  <TableCell className="text-sm font-bold">{formatDuration(r.idleSec)}</TableCell>
+                  <TableCell className="text-sm">{formatDuration(r.movingSec)}</TableCell>
+                  <TableCell className="text-sm">{r.idleSec + r.movingSec > 0 ? ((r.idleSec / (r.idleSec + r.movingSec)) * 100).toFixed(1) : "0.0"}%</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.trips}</TableCell>
+                </TableRow>
+              ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Fuel Consumption Report ───────────────────────────────────────────────────
+const FUEL_EFFICIENCY_L_PER_100KM = 10; // default assumption
+function FuelView({ segments, vehicles, isLoading, selectedVehicle, startDate, endDate }: { segments: TripSegment[]; vehicles: Vehicle[]; isLoading: boolean; selectedVehicle: string; startDate: Date; endDate: Date }) {
+  const vehicleMap = new Map(vehicles.map(v => [v.id, v.name]));
+  const byVehicle = useMemo(() => {
+    const map = new Map<string, { distanceKm: number; trips: number }>();
+    for (const s of segments) {
+      if (!map.has(s.vehicleId)) map.set(s.vehicleId, { distanceKm: 0, trips: 0 });
+      const r = map.get(s.vehicleId)!;
+      r.distanceKm += s.distanceKm ?? 0;
+      r.trips++;
+    }
+    return Array.from(map.entries())
+      .map(([vehicleId, v]) => ({ vehicleId, name: vehicleMap.get(vehicleId) ?? vehicleId.slice(0, 8), ...v, fuelL: (v.distanceKm * FUEL_EFFICIENCY_L_PER_100KM) / 100 }))
+      .sort((a, b) => b.fuelL - a.fuelL);
+  }, [segments, vehicleMap]);
+
+  const totalFuelL = byVehicle.reduce((s, r) => s + r.fuelL, 0);
+  const totalDistKm = byVehicle.reduce((s, r) => s + r.distanceKm, 0);
+  const dateStr = format(startDate, "yyyy-MM-dd");
+
+  const exportCSV = () => {
+    const headers = ["Vehicle", "Distance (km)", "Est. Fuel (L)", "Trips"];
+    const rows = byVehicle.map(r => [r.name, r.distanceKm.toFixed(1), r.fuelL.toFixed(1), r.trips]);
+    downloadCSV(headers, rows as (string | number)[][], `fuel-report-${dateStr}.csv`);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap py-3">
+        <div className="flex gap-4 flex-wrap">
+          <div><div className="text-xs text-muted-foreground">Total Distance</div><div className="text-base font-bold" data-testid="text-fuel-total-distance">{totalDistKm.toFixed(1)} km</div></div>
+          <div><div className="text-xs text-muted-foreground">Est. Fuel Used</div><div className="text-base font-bold" data-testid="text-fuel-total-liters">{totalFuelL.toFixed(1)} L</div></div>
+          <div className="text-xs text-muted-foreground self-end pb-0.5">Based on {FUEL_EFFICIENCY_L_PER_100KM}L/100km avg</div>
+        </div>
+        <Button size="default" variant="outline" onClick={exportCSV} disabled={byVehicle.length === 0} data-testid="button-export-csv-fuel"><Download className="h-4 w-4 mr-2" />CSV</Button>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader><TableRow><TableHead>Vehicle</TableHead><TableHead>Distance (km)</TableHead><TableHead>Est. Fuel (L)</TableHead><TableHead>Trips</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {isLoading ? Array.from({ length: 4 }).map((_, i) => <TableRow key={i}>{Array.from({ length: 4 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}</TableRow>)
+              : byVehicle.length === 0 ? <TableRow><TableCell colSpan={4} className="py-10 text-center text-muted-foreground">No trips in this period</TableCell></TableRow>
+              : byVehicle.map((r, i) => (
+                <TableRow key={r.vehicleId} data-testid={`row-fuel-${i}`}>
+                  <TableCell className="font-medium text-sm">{r.name}</TableCell>
+                  <TableCell className="text-sm">{r.distanceKm.toFixed(1)}</TableCell>
+                  <TableCell className="text-sm font-bold">{r.fuelL.toFixed(1)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.trips}</TableCell>
+                </TableRow>
+              ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Stops Report ──────────────────────────────────────────────────────────────
+function StopsView({ segments, vehicles, isLoading, selectedVehicle, startDate, endDate }: { segments: TripSegment[]; vehicles: Vehicle[]; isLoading: boolean; selectedVehicle: string; startDate: Date; endDate: Date }) {
+  const vehicleMap = new Map(vehicles.map(v => [v.id, v.name]));
+  const byVehicle = useMemo(() => {
+    const map = new Map<string, { stopCount: number; trips: number; totalIdleSec: number }>();
+    for (const s of segments) {
+      if (!map.has(s.vehicleId)) map.set(s.vehicleId, { stopCount: 0, trips: 0, totalIdleSec: 0 });
+      const r = map.get(s.vehicleId)!;
+      r.stopCount += s.stopCount ?? 0;
+      r.totalIdleSec += s.idleTimeSec ?? 0;
+      r.trips++;
+    }
+    return Array.from(map.entries())
+      .map(([vehicleId, v]) => ({ vehicleId, name: vehicleMap.get(vehicleId) ?? vehicleId.slice(0, 8), ...v }))
+      .sort((a, b) => b.stopCount - a.stopCount);
+  }, [segments, vehicleMap]);
+
+  const totalStops = byVehicle.reduce((s, r) => s + r.stopCount, 0);
+  const dateStr = format(startDate, "yyyy-MM-dd");
+
+  const exportCSV = () => {
+    const headers = ["Vehicle", "Total Stops", "Trips", "Idle Time", "Avg Stops/Trip"];
+    const rows = byVehicle.map(r => [r.name, r.stopCount, r.trips, formatDuration(r.totalIdleSec), r.trips > 0 ? (r.stopCount / r.trips).toFixed(1) : "0.0"]);
+    downloadCSV(headers, rows as (string | number)[][], `stops-report-${dateStr}.csv`);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap py-3">
+        <div className="flex gap-4 flex-wrap">
+          <div><div className="text-xs text-muted-foreground">Total Stops</div><div className="text-base font-bold" data-testid="text-stops-total">{totalStops}</div></div>
+          <div><div className="text-xs text-muted-foreground">Vehicles</div><div className="text-base font-bold">{byVehicle.length}</div></div>
+        </div>
+        <Button size="default" variant="outline" onClick={exportCSV} disabled={byVehicle.length === 0} data-testid="button-export-csv-stops"><Download className="h-4 w-4 mr-2" />CSV</Button>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader><TableRow><TableHead>Vehicle</TableHead><TableHead>Total Stops</TableHead><TableHead>Trips</TableHead><TableHead>Idle Time</TableHead><TableHead>Avg Stops/Trip</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {isLoading ? Array.from({ length: 4 }).map((_, i) => <TableRow key={i}>{Array.from({ length: 5 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}</TableRow>)
+              : byVehicle.length === 0 ? <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground">No trips in this period</TableCell></TableRow>
+              : byVehicle.map((r, i) => (
+                <TableRow key={r.vehicleId} data-testid={`row-stops-${i}`}>
+                  <TableCell className="font-medium text-sm">{r.name}</TableCell>
+                  <TableCell className="text-sm font-bold">{r.stopCount}</TableCell>
+                  <TableCell className="text-sm">{r.trips}</TableCell>
+                  <TableCell className="text-sm">{formatDuration(r.totalIdleSec)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.trips > 0 ? (r.stopCount / r.trips).toFixed(1) : "0.0"}</TableCell>
+                </TableRow>
+              ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Speeding Report ──────────────────────────────────────────────────────────
 interface SpeedEvent {
   id: string;
@@ -1196,6 +1371,9 @@ export default function Reports() {
                   <SelectItem value="trips">Trip Reports</SelectItem>
                   <SelectItem value="mileage">Mileage Reports</SelectItem>
                   <SelectItem value="activity">Activity Reports</SelectItem>
+                  <SelectItem value="idle">Idle Time Report</SelectItem>
+                  <SelectItem value="fuel">Fuel Consumption</SelectItem>
+                  <SelectItem value="stops">Stops Report</SelectItem>
                   <SelectItem value="speeding">Speeding Report</SelectItem>
                   <SelectItem value="zone">Zone Visits</SelectItem>
                 </SelectContent>
@@ -1265,6 +1443,12 @@ export default function Reports() {
         <MileageView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
       ) : reportType === "activity" ? (
         <ActivityView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
+      ) : reportType === "idle" ? (
+        <IdleTimeView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
+      ) : reportType === "fuel" ? (
+        <FuelView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
+      ) : reportType === "stops" ? (
+        <StopsView segments={safeSegments} vehicles={safeVehicles} isLoading={isLoading} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
       ) : reportType === "speeding" ? (
         <SpeedingView vehicles={safeVehicles} selectedVehicle={selectedVehicle} startDate={startDate} endDate={endDate} />
       ) : reportType === "zone" ? (

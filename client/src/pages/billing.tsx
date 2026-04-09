@@ -29,6 +29,9 @@ interface SlotLimitError {
   message: string;
   currentCount: number;
   maxVehicles: number;
+  upgradePlans?: Array<{ id: string; name: string; maxVehicles: number; pricePerYear: number }>;
+  razorpayOrderId?: string | null;
+  razorpayKeyId?: string | null;
 }
 
 interface BillingPageProps {
@@ -216,17 +219,36 @@ export default function BillingPage({ defaultTab = "plans" }: BillingPageProps) 
                         </div>
                       </div>
                     </div>
-                    <div className="text-sm font-medium">To add more vehicles, upgrade your plan:</div>
+                    <div className="text-sm font-medium">Upgrade your plan to add more vehicles:</div>
                     <div className="flex flex-wrap gap-2">
-                      {plans.filter(p => p.maxVehicles > slotLimitError.maxVehicles).map(p => (
+                      {(slotLimitError.upgradePlans ?? plans.filter(p => p.maxVehicles > slotLimitError.maxVehicles)).map(p => (
                         <Button key={p.id} size="default" variant="outline" className="flex-1 min-w-0" data-testid={`button-upgrade-${p.id}`}
-                          onClick={() => toast({ title: "Contact support", description: `To upgrade to ${p.name} (up to ${p.maxVehicles} vehicles), contact your Nistagps administrator or call support.` })}>
+                          onClick={() => {
+                            if (slotLimitError.razorpayOrderId && slotLimitError.razorpayKeyId && (window as { Razorpay?: unknown }).Razorpay) {
+                              const RazorpayConstructor = (window as { Razorpay: new (opts: unknown) => { open: () => void } }).Razorpay;
+                              const rzp = new RazorpayConstructor({
+                                key: slotLimitError.razorpayKeyId,
+                                order_id: slotLimitError.razorpayOrderId,
+                                name: "Nistagps",
+                                description: `Upgrade to ${p.name} plan`,
+                                currency: "INR",
+                                amount: p.pricePerYear * 100,
+                                handler: () => {
+                                  toast({ title: "Payment received", description: `Your plan upgrade to ${p.name} is being processed. Please contact support to activate additional slots.` });
+                                  setSlotLimitError(null);
+                                },
+                              });
+                              rzp.open();
+                            } else {
+                              toast({ title: `Upgrade to ${p.name}`, description: `₹${p.pricePerYear.toLocaleString("en-IN")}/vehicle/year. Please contact your Nistagps administrator to complete the upgrade payment.` });
+                            }
+                          }}>
                           <CreditCard className="h-4 w-4 mr-2 shrink-0" />
                           <span className="truncate">Upgrade to {p.name} — ₹{p.pricePerYear.toLocaleString("en-IN")}/vehicle/yr</span>
                         </Button>
                       ))}
-                      {plans.filter(p => p.maxVehicles > slotLimitError.maxVehicles).length === 0 && (
-                        <p className="text-xs text-muted-foreground">Contact support for enterprise options.</p>
+                      {(slotLimitError.upgradePlans ?? plans.filter(p => p.maxVehicles > slotLimitError.maxVehicles)).length === 0 && (
+                        <p className="text-xs text-muted-foreground">You are on the highest plan. Contact support for enterprise options.</p>
                       )}
                     </div>
                   </div>
