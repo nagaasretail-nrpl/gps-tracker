@@ -88,8 +88,8 @@ const adminMenuItems: MenuItem[] = [
   { title: "User Management", url: "/admin-users", icon: Users },
   { title: "Settings", url: "/admin-settings", icon: Settings },
   { title: "Devices", url: "/admin-devices", icon: Cpu },
-  { title: "Device Models", url: "/admin-device-models", icon: LayoutDashboard },
-  { title: "Control Panel", url: "/admin-control-panel", icon: Shield },
+  { title: "Device Models", url: "/admin/device-models", icon: LayoutDashboard },
+  { title: "Control Panel", url: "/admin/control-panel", icon: Shield },
 ];
 
 const userMenuItems: MenuItem[] = [

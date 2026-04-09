@@ -238,16 +238,16 @@ function TemplatesTab() {
   );
 }
 
-function AuditTab() {
-  const { data: settings } = useQuery<AppSetting[]>({ queryKey: ["/api/settings"] });
+type Activity = {
+  id: string;
+  userId: string | null;
+  action: string;
+  detail: string | null;
+  createdAt: string | null;
+};
 
-  const auditItems = [
-    { event: "Admin login", actor: "admin", time: new Date(Date.now() - 1000 * 60 * 5).toISOString(), detail: "From 192.168.1.1" },
-    { event: "User created", actor: "admin", time: new Date(Date.now() - 1000 * 60 * 30).toISOString(), detail: "User: fleet_user_1" },
-    { event: "Settings updated", actor: "admin", time: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), detail: "Key: renewal_amount" },
-    { event: "Vehicle added", actor: "admin", time: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), detail: "IMEI: 864285060001234" },
-    { event: "Subscription renewed", actor: "admin", time: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), detail: "Via Razorpay" },
-  ];
+function AuditTab() {
+  const { data: auditItems = [], isLoading } = useQuery<Activity[]>({ queryKey: ["/api/audit-log"] });
 
   return (
     <div className="space-y-4">
@@ -257,20 +257,28 @@ function AuditTab() {
           <CardDescription>Recent administrative actions (read-only)</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {auditItems.map((item, i) => (
-              <div key={i} className="flex flex-wrap items-start gap-3 py-2 border-b last:border-b-0" data-testid={`row-audit-${i}`}>
-                <div className="text-xs text-muted-foreground whitespace-nowrap w-32">
-                  {new Date(item.time).toLocaleString("en-IN", { hour12: false, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+          {isLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <div key={i} className="h-10 bg-muted animate-pulse rounded-md" />)}
+            </div>
+          ) : auditItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No audit entries yet</p>
+          ) : (
+            <div className="space-y-0">
+              {auditItems.map((item, i) => (
+                <div key={item.id ?? i} className="flex flex-wrap items-start gap-3 py-2 border-b last:border-b-0" data-testid={`row-audit-${i}`}>
+                  <div className="text-xs text-muted-foreground whitespace-nowrap w-32">
+                    {item.createdAt ? new Date(item.createdAt).toLocaleString("en-IN", { hour12: false, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium">{item.action}</div>
+                    {item.detail && <div className="text-xs text-muted-foreground truncate">{item.detail}</div>}
+                  </div>
+                  <Badge variant="secondary" className="text-xs shrink-0">{item.userId ? "admin" : "system"}</Badge>
                 </div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium">{item.event}</div>
-                  <div className="text-xs text-muted-foreground">{item.detail}</div>
-                </div>
-                <Badge variant="secondary" className="text-xs">{item.actor}</Badge>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

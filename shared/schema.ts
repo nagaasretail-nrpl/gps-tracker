@@ -407,6 +407,30 @@ export const updateDeviceModelSchema = insertDeviceModelSchema.partial();
 export type InsertDeviceModel = z.infer<typeof insertDeviceModelSchema>;
 export type DeviceModel = typeof deviceModels.$inferSelect;
 
+// Audit logs — administrative action trail
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  action: text("action").notNull(),
+  detail: text("detail"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type AuditLog = typeof auditLogs.$inferSelect;
+
+// Vehicle subscriptions — per-vehicle billing records
+export const vehicleSubscriptions = pgTable("vehicle_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vehicleId: varchar("vehicle_id").notNull(),
+  plan: text("plan").notNull().default("basic"), // basic, pro, fleet
+  status: text("status").notNull().default("active"), // active, expired, cancelled
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertVehicleSubscriptionSchema = createInsertSchema(vehicleSubscriptions).omit({ id: true, createdAt: true });
+export type InsertVehicleSubscription = z.infer<typeof insertVehicleSubscriptionSchema>;
+export type VehicleSubscription = typeof vehicleSubscriptions.$inferSelect;
+
 // Push notification subscriptions (Web Push API)
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

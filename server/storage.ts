@@ -29,6 +29,9 @@ import {
   type InsertExpense,
   type DeviceModel,
   type InsertDeviceModel,
+  type VehicleSubscription,
+  type InsertVehicleSubscription,
+  type AuditLog,
   vehicles,
   locations,
   geofences,
@@ -45,6 +48,8 @@ import {
   maintenanceRecords,
   expenses,
   deviceModels,
+  vehicleSubscriptions,
+  auditLogs,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db, neonSql } from "./db";
@@ -114,32 +119,41 @@ export interface IStorage {
   createEvent(event: InsertEvent): Promise<Event>;
 
   // Drivers
-  getDrivers(): Promise<Driver[]>;
+  getDrivers(allowedVehicleIds?: string[] | null): Promise<Driver[]>;
   getDriver(id: string): Promise<Driver | undefined>;
   createDriver(driver: InsertDriver): Promise<Driver>;
-  updateDriver(id: string, driver: Partial<Driver>): Promise<Driver | undefined>;
+  updateDriver(id: string, driver: Partial<InsertDriver>): Promise<Driver | undefined>;
   deleteDriver(id: string): Promise<boolean>;
 
   // Maintenance Records
-  getMaintenanceRecords(vehicleId?: string): Promise<MaintenanceRecord[]>;
+  getMaintenanceRecords(vehicleId?: string, allowedVehicleIds?: string[] | null): Promise<MaintenanceRecord[]>;
   getMaintenanceRecord(id: string): Promise<MaintenanceRecord | undefined>;
   createMaintenanceRecord(record: InsertMaintenance): Promise<MaintenanceRecord>;
-  updateMaintenanceRecord(id: string, record: Partial<MaintenanceRecord>): Promise<MaintenanceRecord | undefined>;
+  updateMaintenanceRecord(id: string, record: Partial<InsertMaintenance>): Promise<MaintenanceRecord | undefined>;
   deleteMaintenanceRecord(id: string): Promise<boolean>;
 
   // Expenses
-  getExpenses(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Expense[]>;
+  getExpenses(vehicleId?: string, startDate?: Date, endDate?: Date, allowedVehicleIds?: string[] | null): Promise<Expense[]>;
   getExpense(id: string): Promise<Expense | undefined>;
   createExpense(expense: InsertExpense): Promise<Expense>;
-  updateExpense(id: string, expense: Partial<Expense>): Promise<Expense | undefined>;
+  updateExpense(id: string, expense: Partial<InsertExpense>): Promise<Expense | undefined>;
   deleteExpense(id: string): Promise<boolean>;
 
   // Device Models
   getDeviceModels(): Promise<DeviceModel[]>;
   getDeviceModel(id: string): Promise<DeviceModel | undefined>;
   createDeviceModel(model: InsertDeviceModel): Promise<DeviceModel>;
-  updateDeviceModel(id: string, model: Partial<DeviceModel>): Promise<DeviceModel | undefined>;
+  updateDeviceModel(id: string, model: Partial<InsertDeviceModel>): Promise<DeviceModel | undefined>;
   deleteDeviceModel(id: string): Promise<boolean>;
+
+  // Vehicle Subscriptions
+  getVehicleSubscriptions(vehicleId?: string): Promise<VehicleSubscription[]>;
+  createVehicleSubscription(sub: InsertVehicleSubscription): Promise<VehicleSubscription>;
+  updateVehicleSubscription(vehicleId: string, updates: Partial<InsertVehicleSubscription>): Promise<void>;
+
+  // Audit Logs
+  getAuditLogs(limit?: number): Promise<AuditLog[]>;
+  addAuditLog(userId: string | null, action: string, detail?: string): Promise<void>;
 
   // Trips
   getTrips(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Trip[]>;
@@ -688,9 +702,12 @@ export class DbStorage implements IStorage {
   }
 
   // Drivers
-  async getDrivers(): Promise<Driver[]> {
+  async getDrivers(allowedVehicleIds?: string[] | null): Promise<Driver[]> {
     try {
-      return await db.select().from(drivers).orderBy(drivers.name);
+      const all = await db.select().from(drivers).orderBy(drivers.name);
+      if (allowedVehicleIds === null) return all; // admin
+      if (!allowedVehicleIds || allowedVehicleIds.length === 0) return [];
+      return all.filter(d => !d.assignedVehicleId || allowedVehicleIds.includes(d.assignedVehicleId));
     } catch (err) {
       if (err instanceof TypeError && String(err.message).includes("map")) return [];
       throw err;
@@ -707,10 +724,8 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async updateDriver(id: string, updates: Partial<Driver>): Promise<Driver | undefined> {
-    if (Object.keys(updates).length === 0) {
-      return this.getDriver(id);
-    }
+  async updateDriver(id: string, updates: Partial<InsertDriver>): Promise<Driver | undefined> {
+    if (Object.keys(updates).length === 0) return this.getDriver(id);
     const set: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(updates)) {
       set[key] = val === null ? sql`NULL` : val;
@@ -725,12 +740,16 @@ export class DbStorage implements IStorage {
   }
 
   // Maintenance Records
-  async getMaintenanceRecords(vehicleId?: string): Promise<MaintenanceRecord[]> {
+  async getMaintenanceRecords(vehicleId?: string, allowedVehicleIds?: string[] | null): Promise<MaintenanceRecord[]> {
     try {
       const query = vehicleId
         ? db.select().from(maintenanceRecords).where(eq(maintenanceRecords.vehicleId, vehicleId)).orderBy(desc(maintenanceRecords.serviceDate))
         : db.select().from(maintenanceRecords).orderBy(desc(maintenanceRecords.serviceDate));
-      return await query;
+      const all = await query;
+      if (allowedVehicleIds === null) return all;
+      if (vehicleId) return all; // already filtered
+      if (!allowedVehicleIds || allowedVehicleIds.length === 0) return [];
+      return all.filter(r => allowedVehicleIds.includes(r.vehicleId));
     } catch (err) {
       if (err instanceof TypeError && String(err.message).includes("map")) return [];
       throw err;
@@ -743,15 +762,29 @@ export class DbStorage implements IStorage {
   }
 
   async createMaintenanceRecord(record: InsertMaintenance): Promise<MaintenanceRecord> {
-    const result = await db.insert(maintenanceRecords).values(record as any).returning();
+    const values = {
+      vehicleId: record.vehicleId,
+      serviceType: record.serviceType,
+      serviceDate: record.serviceDate,
+      odometer: record.odometer ?? null,
+      cost: record.cost != null ? String(record.cost) : null,
+      notes: record.notes ?? null,
+      nextDueOdometer: record.nextDueOdometer ?? null,
+      nextDueDate: record.nextDueDate ?? null,
+    };
+    const result = await db.insert(maintenanceRecords).values(values).returning();
     return result[0];
   }
 
-  async updateMaintenanceRecord(id: string, updates: Partial<MaintenanceRecord>): Promise<MaintenanceRecord | undefined> {
+  async updateMaintenanceRecord(id: string, updates: Partial<InsertMaintenance>): Promise<MaintenanceRecord | undefined> {
     if (Object.keys(updates).length === 0) return this.getMaintenanceRecord(id);
     const set: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(updates)) {
-      set[key] = val === null ? sql`NULL` : val;
+      if (key === "cost" || key === "liters") {
+        set[key] = val != null ? String(val) : sql`NULL`;
+      } else {
+        set[key] = val === null || val === undefined ? sql`NULL` : val;
+      }
     }
     await db.update(maintenanceRecords).set(set).where(eq(maintenanceRecords.id, id));
     return this.getMaintenanceRecord(id);
@@ -763,7 +796,7 @@ export class DbStorage implements IStorage {
   }
 
   // Expenses
-  async getExpenses(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Expense[]> {
+  async getExpenses(vehicleId?: string, startDate?: Date, endDate?: Date, allowedVehicleIds?: string[] | null): Promise<Expense[]> {
     const conditions = [];
     if (vehicleId) conditions.push(eq(expenses.vehicleId, vehicleId));
     if (startDate) conditions.push(gte(expenses.date, startDate));
@@ -771,7 +804,11 @@ export class DbStorage implements IStorage {
     let query = db.select().from(expenses);
     if (conditions.length > 0) query = query.where(and(...conditions)) as typeof query;
     try {
-      return await query.orderBy(desc(expenses.date));
+      const all = await query.orderBy(desc(expenses.date));
+      if (allowedVehicleIds === null) return all;
+      if (vehicleId) return all;
+      if (!allowedVehicleIds || allowedVehicleIds.length === 0) return [];
+      return all.filter(e => allowedVehicleIds.includes(e.vehicleId));
     } catch (err) {
       if (err instanceof TypeError && String(err.message).includes("map")) return [];
       throw err;
@@ -784,15 +821,27 @@ export class DbStorage implements IStorage {
   }
 
   async createExpense(expense: InsertExpense): Promise<Expense> {
-    const result = await db.insert(expenses).values(expense as any).returning();
+    const values = {
+      vehicleId: expense.vehicleId,
+      category: expense.category ?? "other",
+      date: expense.date,
+      amount: String(expense.amount),
+      liters: expense.liters != null ? String(expense.liters) : null,
+      notes: expense.notes ?? null,
+    };
+    const result = await db.insert(expenses).values(values).returning();
     return result[0];
   }
 
-  async updateExpense(id: string, updates: Partial<Expense>): Promise<Expense | undefined> {
+  async updateExpense(id: string, updates: Partial<InsertExpense>): Promise<Expense | undefined> {
     if (Object.keys(updates).length === 0) return this.getExpense(id);
     const set: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(updates)) {
-      set[key] = val === null ? sql`NULL` : val;
+      if (key === "amount" || key === "liters") {
+        set[key] = val != null ? String(val) : sql`NULL`;
+      } else {
+        set[key] = val === null || val === undefined ? sql`NULL` : val;
+      }
     }
     await db.update(expenses).set(set).where(eq(expenses.id, id));
     return this.getExpense(id);
@@ -819,15 +868,23 @@ export class DbStorage implements IStorage {
   }
 
   async createDeviceModel(model: InsertDeviceModel): Promise<DeviceModel> {
-    const result = await db.insert(deviceModels).values(model as any).returning();
+    const values = {
+      manufacturer: model.manufacturer,
+      modelName: model.modelName,
+      protocol: model.protocol ?? "gt06",
+      port: model.port ?? null,
+      connectionType: model.connectionType ?? "tcp",
+      activationNotes: model.activationNotes ?? null,
+    };
+    const result = await db.insert(deviceModels).values(values).returning();
     return result[0];
   }
 
-  async updateDeviceModel(id: string, updates: Partial<DeviceModel>): Promise<DeviceModel | undefined> {
+  async updateDeviceModel(id: string, updates: Partial<InsertDeviceModel>): Promise<DeviceModel | undefined> {
     if (Object.keys(updates).length === 0) return this.getDeviceModel(id);
     const set: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(updates)) {
-      set[key] = val === null ? sql`NULL` : val;
+      set[key] = val === null || val === undefined ? sql`NULL` : val;
     }
     await db.update(deviceModels).set(set).where(eq(deviceModels.id, id));
     return this.getDeviceModel(id);
@@ -836,6 +893,51 @@ export class DbStorage implements IStorage {
   async deleteDeviceModel(id: string): Promise<boolean> {
     const result = await db.delete(deviceModels).where(eq(deviceModels.id, id));
     return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Vehicle Subscriptions
+  async getVehicleSubscriptions(vehicleId?: string): Promise<VehicleSubscription[]> {
+    try {
+      const query = vehicleId
+        ? db.select().from(vehicleSubscriptions).where(eq(vehicleSubscriptions.vehicleId, vehicleId)).orderBy(desc(vehicleSubscriptions.createdAt))
+        : db.select().from(vehicleSubscriptions).orderBy(desc(vehicleSubscriptions.createdAt));
+      return await query;
+    } catch (err) {
+      if (err instanceof TypeError && String(err.message).includes("map")) return [];
+      throw err;
+    }
+  }
+
+  async createVehicleSubscription(sub: InsertVehicleSubscription): Promise<VehicleSubscription> {
+    const result = await db.insert(vehicleSubscriptions).values(sub).returning();
+    return result[0];
+  }
+
+  async updateVehicleSubscription(vehicleId: string, updates: Partial<InsertVehicleSubscription>): Promise<void> {
+    if (Object.keys(updates).length === 0) return;
+    const set: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(updates)) {
+      set[key] = val === null || val === undefined ? sql`NULL` : val;
+    }
+    await db.update(vehicleSubscriptions).set(set).where(eq(vehicleSubscriptions.vehicleId, vehicleId));
+  }
+
+  // Audit Logs
+  async getAuditLogs(limit = 200): Promise<AuditLog[]> {
+    try {
+      return await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(limit);
+    } catch (err) {
+      if (err instanceof TypeError && String(err.message).includes("map")) return [];
+      throw err;
+    }
+  }
+
+  async addAuditLog(userId: string | null, action: string, detail?: string): Promise<void> {
+    try {
+      await db.insert(auditLogs).values({ userId: userId ?? null, action, detail: detail ?? null });
+    } catch {
+      // non-critical — silently ignore
+    }
   }
 
   async getTrips(vehicleId?: string, startDate?: Date, endDate?: Date): Promise<Trip[]> {

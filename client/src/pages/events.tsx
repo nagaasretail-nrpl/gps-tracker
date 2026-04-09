@@ -4,16 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, ChevronLeft, ChevronRight, Activity } from "lucide-react";
+import { CalendarIcon, ChevronLeft, ChevronRight, Activity, ChevronDown } from "lucide-react";
 import { format, subDays } from "date-fns";
 import type { Vehicle, Event } from "@shared/schema";
 
-const EVENT_TYPES = [
-  { value: "all", label: "All Types" },
+const EVENT_TYPE_OPTIONS = [
   { value: "geofence_entry", label: "Geofence Entry" },
   { value: "geofence_exit", label: "Geofence Exit" },
   { value: "speed_violation", label: "Speed Violation" },
@@ -44,13 +44,26 @@ function formatEventType(type: string) {
 
 export default function EventsPage() {
   const [vehicleId, setVehicleId] = useState<string>("all");
-  const [eventType, setEventType] = useState<string>("all");
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
   const [severity, setSeverity] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [startDate, setStartDate] = useState<Date>(subDays(new Date(), 7));
   const [endDate, setEndDate] = useState<Date>(new Date());
   const [startOpen, setStartOpen] = useState(false);
   const [endOpen, setEndOpen] = useState(false);
+
+  const toggleType = (type: string) => {
+    setSelectedTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type); else next.add(type);
+      return next;
+    });
+    setPage(1);
+  };
+
+  const typeLabel = selectedTypes.size === 0 ? "All Types" : selectedTypes.size === 1
+    ? EVENT_TYPE_OPTIONS.find(t => t.value === Array.from(selectedTypes)[0])?.label ?? "1 type"
+    : `${selectedTypes.size} types`;
 
   const { data: vehicleData } = useQuery<Vehicle[]>({ queryKey: ["/api/vehicles"] });
   const vehicles = vehicleData ?? [];
@@ -62,11 +75,11 @@ export default function EventsPage() {
     endDate: endDate.toISOString(),
   });
   if (vehicleId !== "all") params.set("vehicleId", vehicleId);
-  if (eventType !== "all") params.set("type", eventType);
+  if (selectedTypes.size === 1) params.set("type", Array.from(selectedTypes)[0]);
   if (severity !== "all") params.set("severity", severity);
 
   const { data, isLoading } = useQuery<{ events: Event[]; total: number; page: number }>({
-    queryKey: ["/api/events", vehicleId, eventType, severity, page, startDate, endDate],
+    queryKey: ["/api/events", vehicleId, Array.from(selectedTypes).sort().join(","), severity, page, startDate, endDate],
     queryFn: async () => {
       const res = await fetch(`/api/events?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch events");
@@ -74,7 +87,6 @@ export default function EventsPage() {
     },
   });
 
-  const events = data?.events ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / 50) || 1;
 
@@ -82,12 +94,17 @@ export default function EventsPage() {
 
   const resetFilters = () => {
     setVehicleId("all");
-    setEventType("all");
+    setSelectedTypes(new Set());
     setSeverity("all");
     setPage(1);
     setStartDate(subDays(new Date(), 7));
     setEndDate(new Date());
   };
+
+  // Client-side multi-type filtering when >1 type selected
+  const filteredEvents = selectedTypes.size > 1
+    ? (data?.events ?? []).filter(e => selectedTypes.has(e.type))
+    : (data?.events ?? []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -110,16 +127,26 @@ export default function EventsPage() {
             </SelectContent>
           </Select>
 
-          <Select value={eventType} onValueChange={(v) => { setEventType(v); setPage(1); }}>
-            <SelectTrigger className="w-44" data-testid="select-type-filter">
-              <SelectValue placeholder="All Types" />
-            </SelectTrigger>
-            <SelectContent>
-              {EVENT_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="w-44 justify-between" data-testid="select-type-filter">
+                <span className="truncate">{typeLabel}</span>
+                <ChevronDown className="h-4 w-4 ml-2 shrink-0 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-48" data-testid="dropdown-type-options">
+              {EVENT_TYPE_OPTIONS.map((t) => (
+                <DropdownMenuCheckboxItem
+                  key={t.value}
+                  checked={selectedTypes.has(t.value)}
+                  onCheckedChange={() => toggleType(t.value)}
+                  data-testid={`check-type-${t.value}`}
+                >
+                  {t.label}
+                </DropdownMenuCheckboxItem>
               ))}
-            </SelectContent>
-          </Select>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Select value={severity} onValueChange={(v) => { setSeverity(v); setPage(1); }}>
             <SelectTrigger className="w-40" data-testid="select-severity-filter">
@@ -203,14 +230,14 @@ export default function EventsPage() {
                       ))}
                     </TableRow>
                   ))
-                ) : events.length === 0 ? (
+                ) : filteredEvents.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
                       No events found for the selected filters
                     </TableCell>
                   </TableRow>
                 ) : (
-                  events.map((evt) => (
+                  filteredEvents.map((evt) => (
                     <TableRow key={evt.id} data-testid={`row-event-${evt.id}`}>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {evt.timestamp ? format(new Date(evt.timestamp), "dd MMM HH:mm:ss") : "—"}

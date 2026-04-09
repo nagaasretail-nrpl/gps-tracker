@@ -162,8 +162,8 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
       <Route path="/admin-users" component={AdminUsers} />
       <Route path="/admin-settings" component={AdminSettings} />
       <Route path="/admin-devices" component={AdminDevices} />
-      <Route path="/admin-device-models" component={AdminDeviceModels} />
-      <Route path="/admin-control-panel" component={AdminControlPanel} />
+      <Route path="/admin/device-models" component={AdminDeviceModels} />
+      <Route path="/admin/control-panel" component={AdminControlPanel} />
       <Route path="/renew" component={() =>
         currentUser ? (
           <Renew

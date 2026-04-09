@@ -1112,25 +1112,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Events (protected routes)
-  app.get("/api/events", requireAuth, async (req, res) => {
-    try {
-      const { vehicleId, startDate, endDate } = req.query;
-      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
-      if (vehicleId && allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
-        return res.json([]);
-      }
-      const evts = (await storage.getEvents(
-        vehicleId as string,
-        startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
-      )) ?? [];
-      const filtered = allowedIds === null ? evts : evts.filter(e => e.vehicleId && allowedIds.includes(e.vehicleId));
-      res.json(filtered);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch events" });
-    }
-  });
-
   app.post("/api/events", requireAuth, async (req, res) => {
     try {
       const validatedData = insertEventSchema.parse(req.body);
@@ -1226,6 +1207,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const { password, ...userWithoutPassword } = user;
+      const adminUser = req.user as User;
+      await storage.addAuditLog(adminUser.id, "user_created", `Created user ${user.phone} (${user.name}) with role ${user.role}`);
       res.status(201).json(userWithoutPassword);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1304,10 +1287,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/users/:id", requireAdmin, async (req, res) => {
     try {
+      const adminUser = req.user as User;
       const deleted = await storage.deleteUser(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "User not found" });
       }
+      await storage.addAuditLog(adminUser.id, "user_deleted", `Deleted user ${req.params.id}`);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete user" });
@@ -1439,6 +1424,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const schema = z.object({ value: z.string() });
       const { value } = schema.parse(req.body);
       const setting = await storage.setSetting(req.params.key, value);
+      const adminUser = req.user as User;
+      await storage.addAuditLog(adminUser.id, "setting_updated", `Updated setting ${req.params.key}`);
       res.json(setting);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1544,19 +1531,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/events", requireAuth, async (req, res) => {
     try {
       const { vehicleId, type, severity, startDate, endDate, page, limit } = req.query;
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      // If a specific vehicleId is requested, check access first
+      if (vehicleId && allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
-      const evts = await storage.getEvents(
-        vehicleId as string | undefined,
-        start,
-        end,
-        type as string | undefined,
-        severity as string | undefined
-      );
+      const filterVehicleId = vehicleId as string | undefined;
+      const evts = await storage.getEvents(filterVehicleId, start, end, type as string | undefined, severity as string | undefined);
+      // Apply vehicle-level scoping for non-admin users
+      const filtered = allowedIds === null ? evts : evts.filter(e => allowedIds.includes(e.vehicleId));
       const pageNum = parseInt((page as string) || "1", 10);
       const pageSize = parseInt((limit as string) || "50", 10);
-      const total = evts.length;
-      const paginated = evts.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+      const total = filtered.length;
+      const paginated = filtered.slice((pageNum - 1) * pageSize, pageNum * pageSize);
       res.json({ events: paginated, total, page: pageNum, pageSize });
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch events" });
@@ -1566,9 +1555,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ────────────────────────────────────────────
   // DRIVERS — full CRUD
   // ────────────────────────────────────────────
-  app.get("/api/drivers", requireAuth, async (_req, res) => {
+  app.get("/api/drivers", requireAuth, async (req, res) => {
     try {
-      const all = await storage.getDrivers();
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      const all = await storage.getDrivers(allowedIds);
       res.json(all);
     } catch { res.status(500).json({ error: "Failed to fetch drivers" }); }
   });
@@ -1579,7 +1569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(driver);
   });
 
-  app.post("/api/drivers", requireAuth, async (req, res) => {
+  app.post("/api/drivers", requireAuth, requireAdmin, async (req, res) => {
     try {
       const data = insertDriverSchema.parse(req.body);
       const driver = await storage.createDriver(data);
@@ -1590,7 +1580,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/drivers/:id", requireAuth, async (req, res) => {
+  app.put("/api/drivers/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
       const data = updateDriverSchema.parse(req.body);
       const driver = await storage.updateDriver(req.params.id, data);
@@ -1614,7 +1604,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/maintenance", requireAuth, async (req, res) => {
     try {
       const { vehicleId } = req.query;
-      const records = await storage.getMaintenanceRecords(vehicleId as string | undefined);
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (vehicleId && allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const records = await storage.getMaintenanceRecords(vehicleId as string | undefined, allowedIds);
       res.json(records);
     } catch { res.status(500).json({ error: "Failed to fetch maintenance records" }); }
   });
@@ -1628,6 +1622,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/maintenance", requireAuth, async (req, res) => {
     try {
       const data = insertMaintenanceSchema.parse(req.body);
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (allowedIds !== null && !allowedIds.includes(data.vehicleId)) {
+        return res.status(403).json({ error: "Access denied to this vehicle" });
+      }
       const record = await storage.createMaintenanceRecord(data);
       res.status(201).json(record);
     } catch (err) {
@@ -1638,9 +1636,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/maintenance/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getMaintenanceRecord(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Record not found" });
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (allowedIds !== null && !allowedIds.includes(existing.vehicleId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const data = updateMaintenanceSchema.parse(req.body);
-      const record = await storage.updateMaintenanceRecord(req.params.id, data as any);
-      if (!record) return res.status(404).json({ error: "Record not found" });
+      const record = await storage.updateMaintenanceRecord(req.params.id, data);
       res.json(record);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
@@ -1649,8 +1652,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/maintenance/:id", requireAuth, async (req, res) => {
-    const ok = await storage.deleteMaintenanceRecord(req.params.id);
-    if (!ok) return res.status(404).json({ error: "Record not found" });
+    const existing = await storage.getMaintenanceRecord(req.params.id);
+    if (!existing) return res.status(404).json({ error: "Record not found" });
+    const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+    if (allowedIds !== null && !allowedIds.includes(existing.vehicleId)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    await storage.deleteMaintenanceRecord(req.params.id);
     res.json({ ok: true });
   });
 
@@ -1660,9 +1668,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/expenses", requireAuth, async (req, res) => {
     try {
       const { vehicleId, startDate, endDate } = req.query;
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (vehicleId && allowedIds !== null && !allowedIds.includes(vehicleId as string)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
-      const all = await storage.getExpenses(vehicleId as string | undefined, start, end);
+      const all = await storage.getExpenses(vehicleId as string | undefined, start, end, allowedIds);
       res.json(all);
     } catch { res.status(500).json({ error: "Failed to fetch expenses" }); }
   });
@@ -1670,12 +1682,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/expenses/:id", requireAuth, async (req, res) => {
     const expense = await storage.getExpense(req.params.id);
     if (!expense) return res.status(404).json({ error: "Expense not found" });
+    const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+    if (allowedIds !== null && !allowedIds.includes(expense.vehicleId)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
     res.json(expense);
   });
 
   app.post("/api/expenses", requireAuth, async (req, res) => {
     try {
       const data = insertExpenseSchema.parse(req.body);
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (allowedIds !== null && !allowedIds.includes(data.vehicleId)) {
+        return res.status(403).json({ error: "Access denied to this vehicle" });
+      }
       const expense = await storage.createExpense(data);
       res.status(201).json(expense);
     } catch (err) {
@@ -1686,9 +1706,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/expenses/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getExpense(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Expense not found" });
+      const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+      if (allowedIds !== null && !allowedIds.includes(existing.vehicleId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const data = updateExpenseSchema.parse(req.body);
-      const expense = await storage.updateExpense(req.params.id, data as any);
-      if (!expense) return res.status(404).json({ error: "Expense not found" });
+      const expense = await storage.updateExpense(req.params.id, data);
       res.json(expense);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
@@ -1697,8 +1722,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
-    const ok = await storage.deleteExpense(req.params.id);
-    if (!ok) return res.status(404).json({ error: "Expense not found" });
+    const existing = await storage.getExpense(req.params.id);
+    if (!existing) return res.status(404).json({ error: "Expense not found" });
+    const allowedIds = await getAllowedVehicleIds(req.user as { id: string; role: string });
+    if (allowedIds !== null && !allowedIds.includes(existing.vehicleId)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    await storage.deleteExpense(req.params.id);
     res.json({ ok: true });
   });
 
@@ -1732,7 +1762,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/device-models/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
       const data = updateDeviceModelSchema.parse(req.body);
-      const model = await storage.updateDeviceModel(req.params.id, data as any);
+      const model = await storage.updateDeviceModel(req.params.id, data);
       if (!model) return res.status(404).json({ error: "Model not found" });
       res.json(model);
     } catch (err) {
@@ -1768,10 +1798,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch { res.status(500).json({ error: "Failed to fetch plans" }); }
   });
 
+  app.get("/api/billing/subscriptions", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const subs = await storage.getVehicleSubscriptions();
+      const vehicles = await storage.getVehicles();
+      const vehicleMap = new Map(vehicles.map(v => [v.id, v]));
+      const result = subs.map(s => ({
+        ...s,
+        vehicleName: vehicleMap.get(s.vehicleId)?.name ?? s.vehicleId,
+        deviceId: vehicleMap.get(s.vehicleId)?.deviceId ?? null,
+      }));
+      res.json(result);
+    } catch { res.status(500).json({ error: "Failed to fetch subscriptions" }); }
+  });
+
   app.post("/api/billing/activate", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const schema = z.object({ imei: z.string().min(10, "IMEI must be at least 10 characters"), name: z.string().optional() });
-      const { imei, name } = schema.parse(req.body);
+      const schema = z.object({
+        imei: z.string().min(10, "IMEI must be at least 10 characters"),
+        name: z.string().optional(),
+        plan: z.string().optional().default("basic"),
+      });
+      const { imei, name, plan } = schema.parse(req.body);
+
+      // Slot-limit check: count active vehicles vs plan limit
+      const plansSetting = await storage.getSetting("subscription_plans");
+      const allPlans = plansSetting?.value ? JSON.parse(plansSetting.value) : [
+        { id: "basic", name: "Basic", maxVehicles: 5 },
+        { id: "pro", name: "Pro", maxVehicles: 20 },
+        { id: "fleet", name: "Fleet", maxVehicles: 100 },
+      ];
+      const planDef = allPlans.find((p: { id: string; name?: string; maxVehicles: number }) => p.id === plan || p.name?.toLowerCase() === plan);
+      if (planDef) {
+        const currentVehicles = await storage.getVehicles();
+        const activeSubs = await storage.getVehicleSubscriptions();
+        const activePlanSubs = activeSubs.filter(s => s.status === "active" && (s.plan === plan || s.plan === planDef.id));
+        if (activePlanSubs.length >= planDef.maxVehicles) {
+          return res.status(422).json({
+            error: "Slot limit reached",
+            message: `Your ${planDef.name} plan allows up to ${planDef.maxVehicles} vehicles. Please upgrade to add more.`,
+            currentCount: currentVehicles.length,
+            maxVehicles: planDef.maxVehicles,
+          });
+        }
+      }
+
       const existing = await storage.getVehicleByDeviceId(imei);
       if (existing) {
         return res.json({ status: "existing", vehicle: existing, message: "Vehicle with this IMEI already exists" });
@@ -1782,11 +1853,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: "car",
         status: "offline",
       });
+      // Create subscription record
+      await storage.createVehicleSubscription({
+        vehicleId: vehicle.id,
+        plan: plan ?? "basic",
+        status: "active",
+      });
       res.status(201).json({ status: "created", vehicle, message: "Vehicle registered successfully" });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ error: "Invalid data", details: err.errors });
       res.status(500).json({ error: "Failed to activate device" });
     }
+  });
+
+  app.get("/api/audit-log", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(String(req.query.limit ?? "200"), 10) || 200, 500);
+      const logs = await storage.getAuditLogs(limit);
+      res.json(logs);
+    } catch { res.status(500).json({ error: "Failed to fetch audit log" }); }
   });
 
   // Web Push — VAPID public key (needed by frontend to subscribe)
