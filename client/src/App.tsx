@@ -157,15 +157,6 @@ function MainRoutes({ currentUser, userFetched }: { currentUser: UserWithoutPass
           />
         ) : null
       } />
-      {/* Public marketing pages are also accessible from within the authenticated app */}
-      <Route path="/home" component={HomePage} />
-      <Route path="/features" component={FeaturesPage} />
-      <Route path="/personal" component={PersonalPage} />
-      <Route path="/hosted" component={HostedPage} />
-      <Route path="/mobile/:app" component={MobileAppsPage} />
-      <Route path="/devices" component={DevicesPage} />
-      <Route path="/troubleshooting" component={TroubleshootingPage} />
-      <Route path="/getting-started" component={GettingStartedPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -340,8 +331,11 @@ function PublicSiteSwitch() {
 }
 
 // PublicOrAuthApp handles routing for all users.
-// Public pages (marketing, legal) are served without auth check.
-// App routes require auth; unauthenticated users are redirected to /home.
+// - Legal/utility pages (/terms, /privacy, /install) — always public, no auth check.
+// - Login page (/login) — always public, no auth check.
+// - Public marketing pages (/home, /features, etc.) — only for unauthenticated users;
+//   authenticated users visiting these are redirected to /tracking.
+// - All other routes — require auth; unauthenticated users are redirected to /home.
 function PublicOrAuthApp() {
   const [location] = useLocation();
   const [isTermsMatch] = useRoute("/terms");
@@ -355,11 +349,13 @@ function PublicOrAuthApp() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Skip auth check for always-public pages
-    if (isTermsMatch || isPrivacyMatch || isInstallMatch || isLoginMatch || isMarketingRoute) {
+    // Always-public pages skip auth check entirely
+    if (isTermsMatch || isPrivacyMatch || isInstallMatch || isLoginMatch) {
       setIsLoading(false);
       return;
     }
+    // Marketing routes still need to know auth state so authenticated users
+    // can be redirected to /tracking instead of seeing the marketing page.
     setIsLoading(true);
     const checkAuth = async () => {
       try {
@@ -372,14 +368,14 @@ function PublicOrAuthApp() {
       }
     };
     checkAuth();
-  }, [isTermsMatch, isPrivacyMatch, isInstallMatch, isLoginMatch, isMarketingRoute]);
+  }, [isTermsMatch, isPrivacyMatch, isInstallMatch, isLoginMatch, location]);
 
-  // Always-public legal/utility pages
+  // Always-public legal/utility pages — no auth check needed
   if (isTermsMatch) return <Terms />;
   if (isPrivacyMatch) return <Privacy />;
   if (isInstallMatch) return <InstallPage />;
 
-  // Login page — always public, skip auth check overhead
+  // Login page — always public
   if (isLoginMatch) {
     return (
       <Login
@@ -391,11 +387,7 @@ function PublicOrAuthApp() {
     );
   }
 
-  // Public marketing pages — serve immediately, no auth required
-  if (isMarketingRoute) {
-    return <PublicSiteSwitch />;
-  }
-
+  // Auth check is always needed from here on
   if (isLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
@@ -405,6 +397,11 @@ function PublicOrAuthApp() {
         </div>
       </div>
     );
+  }
+
+  // Authenticated users visiting marketing pages → redirect to the app
+  if (isAuthenticated && isMarketingRoute) {
+    return <Redirect to="/tracking" />;
   }
 
   if (isAuthenticated) {
@@ -418,11 +415,13 @@ function PublicOrAuthApp() {
     );
   }
 
-  // Unauthenticated users visiting app routes → send to home page
-  // (They can reach /login directly via the Get Started CTA in the marketing site)
-  if (location === "/") {
-    return <HomePage />;
+  // Unauthenticated users: show marketing site or redirect to home
+  if (isMarketingRoute) {
+    return <PublicSiteSwitch />;
   }
+
+  // Any other route for unauthenticated users → redirect to /home
+  // (/ treated the same as any app route — redirect to home landing)
   return <Redirect to="/home" />;
 }
 
