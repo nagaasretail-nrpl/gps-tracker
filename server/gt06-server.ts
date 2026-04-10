@@ -436,6 +436,12 @@ export function startGT06Server() {
     socket.on("close",  () => {
       activeConnections.delete(connKey);
       console.log(`[GT06] Connection closed ${remoteAddr} (IMEI: ${imei ?? "unknown"})`);
+      // Mark session as disconnected in DB
+      if (imei) {
+        storage.markDeviceSessionDisconnected(imei).catch((e: Error) => {
+          console.error(`[GT06] Failed to mark session disconnected for ${imei}:`, e.message);
+        });
+      }
     });
     socket.setTimeout(120_000, () => socket.destroy());
   });
@@ -470,13 +476,18 @@ async function handlePacket(
       console.log(`[GT06] Login from IMEI: ${deviceImei} (${remoteAddr}, ${pkt.extended ? "extended 0x79" : "standard 0x78"})`);
       markAttemptLoginComplete(remoteAddr);
 
-      // Register in active connections map
+      // Register in active connections map (in-memory, this worker only)
       activeConnections.set(remoteAddr, {
         imei: deviceImei,
         remoteAddr,
         connectedAt: new Date(),
         lastPacketAt: new Date(),
         packetCount: 1,
+      });
+
+      // Persist session to DB (cross-worker, survives restarts)
+      storage.upsertDeviceSession(deviceImei, remoteAddr).catch((e: Error) => {
+        console.error(`[GT06] Failed to upsert device session for ${deviceImei}:`, e.message);
       });
 
       // Look up the registered vehicle
@@ -557,6 +568,10 @@ async function handlePacket(
         console.log(`[GT06][FILTER] ${deviceImei} rejected: ${filterReason}`);
         logRejection(deviceImei, filterReason);
         logLocationRejected(deviceImei, filterReason);
+        // Persist rejection to DB session
+        storage.locationRejectedDeviceSession(deviceImei, filterReason).catch((e: Error) => {
+          console.error(`[GT06] Failed to update rejection session for ${deviceImei}:`, e.message);
+        });
         socket.write(buildAck(0x12, pkt.serial, pkt.extended));
         break;
       }
@@ -601,8 +616,12 @@ async function handlePacket(
       if (parkedSince !== undefined) vehicleUpdate.parkedSince = parkedSince;
       const updatedVehicle = await storage.updateVehicle(vehicleId, vehicleUpdate);
 
-      // Track accepted location in per-IMEI packet stats
+      // Track accepted location in per-IMEI packet stats (in-memory)
       logLocationAccepted(deviceImei);
+      // Persist location accepted to DB session
+      storage.locationAcceptedDeviceSession(deviceImei).catch((e: Error) => {
+        console.error(`[GT06] Failed to update location session for ${deviceImei}:`, e.message);
+      });
 
       // Trigger geofence checks and broadcast to WebSocket clients
       checkGeofences(location).catch((e) => console.error("[GT06] Geofence error:", e));
@@ -637,6 +656,13 @@ async function handlePacket(
 
       const conn13 = activeConnections.get(remoteAddr);
       if (conn13) { conn13.lastPacketAt = new Date(); conn13.packetCount += 1; }
+
+      // Persist heartbeat to DB session (fire-and-forget)
+      if (deviceImei) {
+        storage.heartbeatDeviceSession(deviceImei).catch((e: Error) => {
+          console.error(`[GT06] Failed to update heartbeat session for ${deviceImei}:`, e.message);
+        });
+      }
 
       if (deviceImei && pkt.data && pkt.data.length >= 1) {
         const statusByte = pkt.data[0];

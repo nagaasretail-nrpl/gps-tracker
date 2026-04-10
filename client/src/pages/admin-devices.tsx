@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Wifi, WifiOff, Cpu, AlertTriangle, Activity, Radio } from "lucide-react";
+import { Wifi, WifiOff, Cpu, AlertTriangle, Activity, Radio, Heart, MapPin, XCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { User } from "@shared/schema";
 
@@ -16,12 +16,19 @@ interface DeviceConnectionInfo {
   remoteAddr: string | null;
   connectedAt: string | null;
   lastPacketAt: string | null;
+  lastHeartbeatAt: string | null;
+  lastLocationAt: string | null;
+  lastDbLocationAt: string | null;
   packetCount: number;
   connected: boolean;
   recentlyActive: boolean;
-  lastLocationAt: string | null;
+  // DB-persisted cumulative counters (survive restarts)
+  dbHeartbeatCount: number;
+  dbLocationCount: number;
+  dbRejectedCount: number;
+  dbLastRejectionReason: string | null;
   lastRejection: { reason: string; at: string; count: number } | null;
-  // Per-IMEI packet stats (since last server start)
+  // Per-IMEI packet stats (since last server start, in-memory)
   packetsReceived: number;
   locationsAccepted: number;
   locationsRejected: number;
@@ -57,6 +64,20 @@ function formatRelative(ts: string | Date | null | undefined): string {
   if (hours < 24) return `${hours}h ago`;
   const d = new Date(ts);
   return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}, ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+}
+
+function StatPill({ icon: Icon, value, label, className }: { icon: React.ElementType; value: number; label: string; className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex items-center gap-1 font-mono text-xs cursor-default ${className ?? ""}`}>
+          <Icon className="h-3 w-3 shrink-0" />
+          {value.toLocaleString()}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export default function AdminDevices() {
@@ -180,10 +201,14 @@ export default function AdminDevices() {
                 <thead>
                   <tr className="border-b bg-muted/40">
                     <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Vehicle</th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">IMEI / Device ID</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">IMEI</th>
                     <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Status</th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Last Location</th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Packets (session / today)</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Remote IP</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Connected Since</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Last Heartbeat</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Last GPS Fix</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Counters (DB)</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Today</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -205,69 +230,69 @@ export default function AdminDevices() {
                       </td>
                       <td className="px-4 py-2.5">
                         {device.connected ? (
-                          <Badge className="gap-1 text-xs bg-green-600 hover:bg-green-600" data-testid={`status-connected-${device.vehicleId}`}>
+                          <Badge className="gap-1 text-xs bg-green-600 no-default-active-elevate" data-testid={`status-connected-${device.vehicleId}`}>
                             <Wifi className="h-3 w-3" />
                             Connected
                           </Badge>
                         ) : device.recentlyActive ? (
-                          <Badge className="gap-1 text-xs bg-amber-500 hover:bg-amber-500" data-testid={`status-recent-${device.vehicleId}`}>
+                          <Badge className="gap-1 text-xs bg-amber-500 no-default-active-elevate" data-testid={`status-recent-${device.vehicleId}`}>
                             <Activity className="h-3 w-3" />
-                            Recently Active
+                            Recent
                           </Badge>
                         ) : (
                           <Badge variant="secondary" className="gap-1 text-xs" data-testid={`status-disconnected-${device.vehicleId}`}>
                             <WifiOff className="h-3 w-3" />
-                            Disconnected
+                            Offline
                           </Badge>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                        {device.lastLocationAt
-                          ? formatRelative(device.lastLocationAt)
-                          : "—"}
+                      <td className="px-4 py-2.5 text-xs font-mono text-muted-foreground">
+                        {device.remoteAddr ?? "—"}
                       </td>
-                      <td className="px-4 py-2.5 text-xs">
-                        {device.packetsReceived > 0 ? (
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-1.5 font-mono flex-wrap">
-                              <span className="text-muted-foreground">Recv</span>
-                              <span className="font-medium">{device.packetsReceived.toLocaleString()}</span>
-                              <span className="text-muted-foreground/50">·</span>
-                              <span className="text-green-600 dark:text-green-400">OK {device.locationsAccepted.toLocaleString()}</span>
-                              <span className="text-muted-foreground/50">·</span>
-                              {device.locationsRejected > 0 ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="text-destructive cursor-help underline decoration-dotted">
-                                      Rej {device.locationsRejected.toLocaleString()}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="left" className="max-w-72">
-                                    <p className="font-medium text-xs mb-0.5">Last rejection reason:</p>
-                                    <p className="text-xs">{device.lastRejectionReason}</p>
-                                    {device.lastRejectionAt && (
-                                      <p className="text-xs text-muted-foreground mt-0.5">{formatRelative(device.lastRejectionAt)}</p>
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                <span className="text-muted-foreground">Rej 0</span>
-                              )}
-                            </div>
-                            <p className="text-muted-foreground">
-                              Today: {device.storedToday > 0 ? device.storedToday.toLocaleString() : "0"}
-                            </p>
-                          </div>
-                        ) : device.storedToday > 0 ? (
-                          <div>
-                            <span className="text-muted-foreground">—</span>
-                            <p className="text-muted-foreground">
-                              Today: {device.storedToday.toLocaleString()}
-                            </p>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        {device.connectedAt ? formatRelative(device.connectedAt) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        {device.lastHeartbeatAt ? formatRelative(device.lastHeartbeatAt) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        {device.lastLocationAt ? formatRelative(device.lastLocationAt) : "—"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <StatPill
+                            icon={Heart}
+                            value={device.dbHeartbeatCount}
+                            label="Total heartbeats received (DB, survives restart)"
+                            className="text-green-700 dark:text-green-400"
+                          />
+                          <StatPill
+                            icon={MapPin}
+                            value={device.dbLocationCount}
+                            label="Total locations stored (DB, survives restart)"
+                            className="text-blue-600 dark:text-blue-400"
+                          />
+                          {device.dbRejectedCount > 0 && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-1 font-mono text-xs text-destructive cursor-help underline decoration-dotted">
+                                  <XCircle className="h-3 w-3 shrink-0" />
+                                  {device.dbRejectedCount.toLocaleString()}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-72">
+                                <p className="font-medium text-xs mb-0.5">Last rejection reason:</p>
+                                <p className="text-xs">{device.dbLastRejectionReason ?? device.lastRejectionReason ?? "Unknown"}</p>
+                                {device.lastRejectionAt && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">{formatRelative(device.lastRejectionAt)}</p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        {device.storedToday > 0 ? device.storedToday.toLocaleString() : "—"}
                       </td>
                     </tr>
                   ))}
@@ -366,7 +391,9 @@ export default function AdminDevices() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        <strong>Connected</strong> = active TCP session right now. <strong>Recently Active</strong> = location received within last 3 minutes (TCP session dropped after restart — device will reconnect automatically). Data refreshes every 5 seconds.
+        <strong>Connected</strong> = active TCP session (DB-persisted, survives process restarts).{" "}
+        <strong>Counters</strong> are cumulative since the device first connected — they do not reset on server restart.{" "}
+        Data refreshes every 5 seconds.
       </p>
     </div>
   );

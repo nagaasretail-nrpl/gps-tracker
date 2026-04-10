@@ -32,6 +32,7 @@ import {
   type VehicleSubscription,
   type InsertVehicleSubscription,
   type AuditLog,
+  type DeviceSession,
   vehicles,
   locations,
   geofences,
@@ -52,6 +53,7 @@ import {
   auditLogs,
   hostedPlans,
   subscriptions,
+  deviceSessions,
 } from "@shared/schema";
 import type { HostedPlan, InsertHostedPlan, Subscription, InsertSubscription } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -205,6 +207,15 @@ export interface IStorage {
   deletePushSubscription(userId: string, endpoint: string): Promise<boolean>;
   getPushSubscriptionsByUser(userId: string): Promise<PushSubscription[]>;
   getAllPushSubscriptions(): Promise<PushSubscription[]>;
+
+  // Device Sessions (persisted TCP connection state)
+  upsertDeviceSession(imei: string, remoteAddr: string): Promise<void>;
+  heartbeatDeviceSession(imei: string): Promise<void>;
+  locationAcceptedDeviceSession(imei: string): Promise<void>;
+  locationRejectedDeviceSession(imei: string, reason: string): Promise<void>;
+  markDeviceSessionDisconnected(imei: string): Promise<void>;
+  getDeviceSession(imei: string): Promise<DeviceSession | undefined>;
+  getAllDeviceSessions(): Promise<DeviceSession[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -1144,6 +1155,69 @@ export class DbStorage implements IStorage {
 
   async getAllPushSubscriptions(): Promise<PushSubscription[]> {
     return await db.select().from(pushSubscriptions);
+  }
+
+  // ─── Device Sessions ──────────────────────────────────────────────────────
+  // Uses raw neonSql for all writes to avoid Neon HTTP driver issues with
+  // complex ON CONFLICT clauses. Reads use drizzle ORM selects.
+
+  async upsertDeviceSession(imei: string, remoteAddr: string): Promise<void> {
+    await neonSql`
+      INSERT INTO device_sessions (imei, remote_addr, connected_at, last_heartbeat_at, heartbeat_count, location_count, rejected_count, is_connected, updated_at)
+      VALUES (${imei}, ${remoteAddr}, NOW(), NOW(), 0, 0, 0, TRUE, NOW())
+      ON CONFLICT (imei) DO UPDATE SET
+        remote_addr = EXCLUDED.remote_addr,
+        connected_at = NOW(),
+        last_heartbeat_at = NOW(),
+        heartbeat_count = 0,
+        location_count = 0,
+        rejected_count = 0,
+        is_connected = TRUE,
+        updated_at = NOW()
+    `;
+  }
+
+  async heartbeatDeviceSession(imei: string): Promise<void> {
+    await neonSql`
+      UPDATE device_sessions
+      SET last_heartbeat_at = NOW(), heartbeat_count = heartbeat_count + 1, is_connected = TRUE, updated_at = NOW()
+      WHERE imei = ${imei}
+    `;
+  }
+
+  async locationAcceptedDeviceSession(imei: string): Promise<void> {
+    await neonSql`
+      UPDATE device_sessions
+      SET last_location_at = NOW(), location_count = location_count + 1, updated_at = NOW()
+      WHERE imei = ${imei}
+    `;
+  }
+
+  async locationRejectedDeviceSession(imei: string, reason: string): Promise<void> {
+    await neonSql`
+      UPDATE device_sessions
+      SET rejected_count = rejected_count + 1, last_rejection_reason = ${reason}, updated_at = NOW()
+      WHERE imei = ${imei}
+    `;
+  }
+
+  async markDeviceSessionDisconnected(imei: string): Promise<void> {
+    await neonSql`
+      UPDATE device_sessions
+      SET is_connected = FALSE, updated_at = NOW()
+      WHERE imei = ${imei}
+    `;
+  }
+
+  async getDeviceSession(imei: string): Promise<DeviceSession | undefined> {
+    const rows = await safeSelect(() =>
+      db.select().from(deviceSessions).where(eq(deviceSessions.imei, imei)).limit(1)
+    );
+    return rows[0];
+  }
+
+  async getAllDeviceSessions(): Promise<DeviceSession[]> {
+    return await safeSelect(() => db.select().from(deviceSessions));
   }
 }
 

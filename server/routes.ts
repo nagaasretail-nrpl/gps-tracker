@@ -1173,7 +1173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const reqUser = req.user as { id: string; role: string };
     const isAdmin = reqUser.role === "admin";
 
-    // In-memory active TCP connections (keyed by IMEI)
+    // In-memory active TCP connections (keyed by IMEI) — per-process, fast
     const tcpConns = getActiveConnections();
     const tcpByImei = new Map(tcpConns.map((c) => [c.imei, c]));
 
@@ -1184,17 +1184,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Single batch query for all latest location timestamps (avoids N+1)
     const vehicleIds = scoped.map((v) => v.id);
-    const [latestTimestamps, storedTodayCounts] = await Promise.all([
+    const [latestTimestamps, storedTodayCounts, dbSessions] = await Promise.all([
       storage.getLatestLocationTimestampsForVehicles(vehicleIds),
       isAdmin
         ? storage.getLocationCountsForVehicles(vehicleIds, new Date(now - 24 * 60 * 60 * 1000))
         : Promise.resolve(new Map<string, number>()),
+      isAdmin
+        ? storage.getAllDeviceSessions()
+        : Promise.resolve([]),
     ]);
+
+    // Build DB sessions map keyed by IMEI (survives process restarts / PM2 cluster)
+    const dbSessionByImei = new Map(dbSessions.map((s) => [s.imei, s]));
 
     const result = scoped.map((v) => {
       const imei = v.deviceId ?? "";
       const tcp = imei ? tcpByImei.get(imei) : undefined;
-      const isConnected = !!tcp;
+      const dbSess = imei ? dbSessionByImei.get(imei) : undefined;
+
+      // A device is "connected" if either this process has a live TCP socket
+      // OR the DB session shows is_connected=true (another worker/process has it)
+      const isConnected = !!tcp || (dbSess?.isConnected === true);
 
       const lastLocationAt = latestTimestamps.get(v.id) ?? null;
       const recentlyActive = lastLocationAt
@@ -1202,24 +1212,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : false;
 
       if (isAdmin) {
-        // Full diagnostic payload for admins
+        // Full diagnostic payload for admins — prefer live TCP data, fall back to DB session
         const rejection = imei ? getRejectionForImei(imei) : undefined;
         const pktStats = imei ? getPacketStats(imei) : undefined;
         return {
           imei,
           vehicleId: v.id,
           vehicleName: v.name,
-          remoteAddr: tcp?.remoteAddr ?? null,
-          connectedAt: tcp?.connectedAt ?? null,
-          lastPacketAt: tcp?.lastPacketAt ?? null,
+          // Connection fields: TCP first, then DB session fallback
+          remoteAddr: tcp?.remoteAddr ?? dbSess?.remoteAddr ?? null,
+          connectedAt: tcp?.connectedAt ?? dbSess?.connectedAt ?? null,
+          lastPacketAt: tcp?.lastPacketAt ?? dbSess?.lastHeartbeatAt ?? null,
+          lastHeartbeatAt: dbSess?.lastHeartbeatAt ?? null,
+          lastLocationAt,
+          lastDbLocationAt: dbSess?.lastLocationAt ?? null,
           packetCount: tcp?.packetCount ?? 0,
           connected: isConnected,
           recentlyActive,
-          lastLocationAt,
+          // DB-persisted cumulative counters (survive restarts)
+          dbHeartbeatCount: dbSess?.heartbeatCount ?? 0,
+          dbLocationCount: dbSess?.locationCount ?? 0,
+          dbRejectedCount: dbSess?.rejectedCount ?? 0,
+          dbLastRejectionReason: dbSess?.lastRejectionReason ?? null,
           lastRejection: rejection
             ? { reason: rejection.reason, at: rejection.rejectedAt, count: rejection.count }
             : null,
-          // Per-IMEI packet stats (since last server start)
+          // Per-IMEI packet stats (since last server start, in-memory)
           packetsReceived: pktStats?.packetsReceived ?? 0,
           locationsAccepted: pktStats?.locationsAccepted ?? 0,
           locationsRejected: pktStats?.locationsRejected ?? 0,

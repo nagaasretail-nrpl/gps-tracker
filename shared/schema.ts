@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, integer, jsonb, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, integer, jsonb, boolean, uniqueIndex, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -406,6 +406,26 @@ export const insertDeviceModelSchema = createInsertSchema(deviceModels).omit({ i
 export const updateDeviceModelSchema = insertDeviceModelSchema.partial();
 export type InsertDeviceModel = z.infer<typeof insertDeviceModelSchema>;
 export type DeviceModel = typeof deviceModels.$inferSelect;
+
+// Device sessions — persisted TCP connection state for GT06 devices
+// One row per IMEI; upserted on every connect/heartbeat/location/disconnect.
+// Using serial PK (integer auto-increment) as specified.
+export const deviceSessions = pgTable("device_sessions", {
+  id: serial("id").primaryKey(),
+  imei: varchar("imei", { length: 20 }).notNull().unique(),
+  remoteAddr: varchar("remote_addr", { length: 60 }),
+  connectedAt: timestamp("connected_at"),
+  lastHeartbeatAt: timestamp("last_heartbeat_at"),
+  lastLocationAt: timestamp("last_location_at"),
+  heartbeatCount: integer("heartbeat_count").notNull().default(0),
+  locationCount: integer("location_count").notNull().default(0),
+  rejectedCount: integer("rejected_count").notNull().default(0),
+  lastRejectionReason: varchar("last_rejection_reason", { length: 500 }),
+  isConnected: boolean("is_connected").notNull().default(false),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type DeviceSession = typeof deviceSessions.$inferSelect;
 
 // Audit logs — administrative action trail
 export const auditLogs = pgTable("audit_logs", {
