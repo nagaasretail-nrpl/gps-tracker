@@ -1169,9 +1169,6 @@ export class DbStorage implements IStorage {
         remote_addr = EXCLUDED.remote_addr,
         connected_at = NOW(),
         last_heartbeat_at = NOW(),
-        heartbeat_count = 0,
-        location_count = 0,
-        rejected_count = 0,
         is_connected = TRUE,
         updated_at = NOW()
     `;

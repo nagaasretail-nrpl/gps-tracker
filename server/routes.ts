@@ -1197,14 +1197,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Build DB sessions map keyed by IMEI (survives process restarts / PM2 cluster)
     const dbSessionByImei = new Map(dbSessions.map((s) => [s.imei, s]));
 
+    // Heartbeat staleness window: 90 seconds — if no heartbeat within this window,
+    // treat as disconnected even if is_connected=true (handles crash/unclean disconnect)
+    const HEARTBEAT_WINDOW_MS = 90 * 1000;
+    // GPS staleness threshold: 5 minutes — used for "Heartbeat-only" category
+    const GPS_STALE_MS = 5 * 60 * 1000;
+
     const result = scoped.map((v) => {
       const imei = v.deviceId ?? "";
       const tcp = imei ? tcpByImei.get(imei) : undefined;
       const dbSess = imei ? dbSessionByImei.get(imei) : undefined;
 
-      // A device is "connected" if either this process has a live TCP socket
-      // OR the DB session shows is_connected=true (another worker/process has it)
-      const isConnected = !!tcp || (dbSess?.isConnected === true);
+      // A device is "connected" if:
+      //   1. DB session has is_connected=true AND last heartbeat within 90s
+      //   OR
+      //   2. This process's in-memory TCP map has a live socket (same-worker fallback)
+      const dbHeartbeatFresh = dbSess?.lastHeartbeatAt
+        ? now - new Date(dbSess.lastHeartbeatAt).getTime() < HEARTBEAT_WINDOW_MS
+        : false;
+      const isConnected = (dbSess?.isConnected === true && dbHeartbeatFresh) || !!tcp;
 
       const lastLocationAt = latestTimestamps.get(v.id) ?? null;
       const recentlyActive = lastLocationAt
@@ -1215,6 +1226,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Full diagnostic payload for admins — prefer live TCP data, fall back to DB session
         const rejection = imei ? getRejectionForImei(imei) : undefined;
         const pktStats = imei ? getPacketStats(imei) : undefined;
+
+        // Has a GPS fix if there is a recent location within 5 minutes
+        const hasGpsFix = lastLocationAt
+          ? now - lastLocationAt.getTime() < GPS_STALE_MS
+          : false;
+        // "Heartbeat-only" = connected but no GPS fix (no GPS or GPS stale >5m)
+        const heartbeatOnly = isConnected && !hasGpsFix;
+
         return {
           imei,
           vehicleId: v.id,
@@ -1228,8 +1247,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastDbLocationAt: dbSess?.lastLocationAt ?? null,
           packetCount: tcp?.packetCount ?? 0,
           connected: isConnected,
+          hasGpsFix,
+          heartbeatOnly,
           recentlyActive,
-          // DB-persisted cumulative counters (survive restarts)
+          // DB-persisted per-session counters (reset on new connect, survive restarts)
           dbHeartbeatCount: dbSess?.heartbeatCount ?? 0,
           dbLocationCount: dbSess?.locationCount ?? 0,
           dbRejectedCount: dbSess?.rejectedCount ?? 0,

@@ -21,8 +21,10 @@ interface DeviceConnectionInfo {
   lastDbLocationAt: string | null;
   packetCount: number;
   connected: boolean;
+  hasGpsFix: boolean;
+  heartbeatOnly: boolean;
   recentlyActive: boolean;
-  // DB-persisted cumulative counters (survive restarts)
+  // DB-persisted per-session counters (reset on new connect, survive restarts)
   dbHeartbeatCount: number;
   dbLocationCount: number;
   dbRejectedCount: number;
@@ -114,8 +116,10 @@ export default function AdminDevices() {
 
   const isLoading = connectionsLoading;
 
-  const connectedCount = (connections ?? []).filter((d) => d.connected).length;
-  const recentlyActiveCount = (connections ?? []).filter((d) => !d.connected && d.recentlyActive).length;
+  const totalLive = (connections ?? []).filter((d) => d.connected).length;
+  const heartbeatOnlyCount = (connections ?? []).filter((d) => d.heartbeatOnly).length;
+  const withGpsFixCount = (connections ?? []).filter((d) => d.connected && d.hasGpsFix).length;
+  const disconnectedCount = (connections ?? []).filter((d) => !d.connected).length;
   const unknownCount = (unknownDevices ?? []).length;
   const failedAttempts = (rawAttempts ?? []).filter((r) => !r.loginCompleted).length;
 
@@ -127,37 +131,55 @@ export default function AdminDevices() {
       </div>
 
       {/* Summary row */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground mb-1">Registered Devices</p>
+            <p className="text-xs text-muted-foreground mb-1">Total Live</p>
+            <p className="text-xs text-muted-foreground mb-1.5">(heartbeat within 90s)</p>
             {isLoading ? (
               <Skeleton className="h-7 w-12" />
             ) : (
-              <p className="text-2xl font-bold">{(connections ?? []).length}</p>
+              <p className={`text-2xl font-bold ${totalLive > 0 ? "text-green-600" : ""}`}>{totalLive}</p>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground mb-1">Live TCP Connections</p>
+            <p className="text-xs text-muted-foreground mb-1">With GPS Fix</p>
+            <p className="text-xs text-muted-foreground mb-1.5">(live + GPS &lt;5 min old)</p>
             {isLoading ? (
               <Skeleton className="h-7 w-12" />
             ) : (
-              <p className="text-2xl font-bold text-green-600">{connectedCount}</p>
+              <p className={`text-2xl font-bold ${withGpsFixCount > 0 ? "text-blue-600" : ""}`}>{withGpsFixCount}</p>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground mb-1">Recently Active</p>
+            <p className="text-xs text-muted-foreground mb-1">Heartbeat Only</p>
+            <p className="text-xs text-muted-foreground mb-1.5">(live, GPS stale or none)</p>
             {isLoading ? (
               <Skeleton className="h-7 w-12" />
             ) : (
-              <p className="text-2xl font-bold text-amber-600">{recentlyActiveCount}</p>
+              <p className={`text-2xl font-bold ${heartbeatOnlyCount > 0 ? "text-amber-600" : ""}`}>{heartbeatOnlyCount}</p>
             )}
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">Disconnected</p>
+            <p className="text-xs text-muted-foreground mb-1.5">(no heartbeat in 90s)</p>
+            {isLoading ? (
+              <Skeleton className="h-7 w-12" />
+            ) : (
+              <p className="text-2xl font-bold text-muted-foreground">{disconnectedCount}</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Secondary info row */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground mb-1">Unknown IMEIs Seen</p>
@@ -229,15 +251,15 @@ export default function AdminDevices() {
                         )}
                       </td>
                       <td className="px-4 py-2.5">
-                        {device.connected ? (
+                        {device.connected && device.hasGpsFix ? (
                           <Badge className="gap-1 text-xs bg-green-600 no-default-active-elevate" data-testid={`status-connected-${device.vehicleId}`}>
                             <Wifi className="h-3 w-3" />
-                            Connected
+                            Live + GPS
                           </Badge>
-                        ) : device.recentlyActive ? (
-                          <Badge className="gap-1 text-xs bg-amber-500 no-default-active-elevate" data-testid={`status-recent-${device.vehicleId}`}>
+                        ) : device.heartbeatOnly ? (
+                          <Badge className="gap-1 text-xs bg-amber-500 no-default-active-elevate" data-testid={`status-heartbeat-${device.vehicleId}`}>
                             <Activity className="h-3 w-3" />
-                            Recent
+                            Heartbeat Only
                           </Badge>
                         ) : (
                           <Badge variant="secondary" className="gap-1 text-xs" data-testid={`status-disconnected-${device.vehicleId}`}>
@@ -391,8 +413,8 @@ export default function AdminDevices() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        <strong>Connected</strong> = active TCP session (DB-persisted, survives process restarts).{" "}
-        <strong>Counters</strong> are cumulative since the device first connected — they do not reset on server restart.{" "}
+        <strong>Total Live</strong> = device sent a heartbeat within the last 90 seconds (DB-persisted, accurate across all server processes and restarts).{" "}
+        <strong>Counters</strong> show heartbeats/locations/rejections since the device last connected — they reset on reconnect but survive server restarts.{" "}
         Data refreshes every 5 seconds.
       </p>
     </div>
