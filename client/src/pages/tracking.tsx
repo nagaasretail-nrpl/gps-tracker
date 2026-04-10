@@ -73,6 +73,9 @@ export default function Tracking() {
   const [mobileListOpen, setMobileListOpen] = useState(true);
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
   const [objectDetailsSearch, setObjectDetailsSearch] = useState("");
+  const [objectDetailsStatusFilter, setObjectDetailsStatusFilter] = useState<"all" | "moving" | "stopped" | "offline">("all");
+  const [objectDetailsSortCol, setObjectDetailsSortCol] = useState<"name" | "time" | "speed" | "status">("name");
+  const [objectDetailsSortDir, setObjectDetailsSortDir] = useState<"asc" | "desc">("asc");
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   // lastNotified[vehicleId][alertType] = timestamp of last notification
@@ -537,35 +540,99 @@ export default function Tracking() {
   const objectDetailsRows = useMemo(() => {
     const allVehicles = vehicles ?? [];
     const q = objectDetailsSearch.toLowerCase().trim();
-    return allVehicles
-      .filter((v) => !q || v.name.toLowerCase().includes(q) || (v.deviceId ?? "").toLowerCase().includes(q) || (v.licensePlate ?? "").toLowerCase().includes(q))
-      .map((vehicle) => {
-        const loc = latestLocations?.find((l) => l.vehicleId === vehicle.id);
-        const conn = (activeConnections ?? []).find((c) => c.imei === vehicle.deviceId);
-        const connected = !!(conn?.connected || conn?.recentlyActive);
-        const speed = loc ? Math.round(parseFloat(String(loc.speed ?? "0"))) : null;
-        const altitude = loc?.altitude != null ? Math.round(parseFloat(String(loc.altitude))) : null;
-        const heading = loc?.heading != null ? Math.round(parseFloat(String(loc.heading))) : null;
-        const lat = loc?.latitude != null ? parseFloat(String(loc.latitude)).toFixed(5) : null;
-        const lng = loc?.longitude != null ? parseFloat(String(loc.longitude)).toFixed(5) : null;
-        return { vehicle, loc, connected, speed, altitude, heading, lat, lng };
-      });
-  }, [vehicles, latestLocations, activeConnections, objectDetailsSearch]);
+
+    // Build rows with computed fields
+    const rows = allVehicles.map((vehicle) => {
+      const loc = latestLocations?.find((l) => l.vehicleId === vehicle.id);
+      const conn = (activeConnections ?? []).find((c) => c.imei === vehicle.deviceId);
+      const connected = !!(conn?.connected || conn?.recentlyActive);
+      const speed = loc ? Math.round(parseFloat(String(loc.speed ?? "0"))) : null;
+      const altitude = loc?.altitude != null ? Math.round(parseFloat(String(loc.altitude))) : null;
+      const heading = loc?.heading != null ? Math.round(parseFloat(String(loc.heading))) : null;
+      const lat = loc?.latitude != null ? parseFloat(String(loc.latitude)).toFixed(5) : null;
+      const lng = loc?.longitude != null ? parseFloat(String(loc.longitude)).toFixed(5) : null;
+      const isMoving = (speed ?? 0) > 2;
+      const statusLabel: "moving" | "stopped" | "offline" =
+        connected && isMoving ? "moving"
+        : connected || loc ? "stopped"
+        : "offline";
+      return { vehicle, loc, connected, speed, altitude, heading, lat, lng, statusLabel };
+    });
+
+    // Apply text search filter
+    const filtered = q
+      ? rows.filter((r) =>
+          r.vehicle.name.toLowerCase().includes(q) ||
+          (r.vehicle.deviceId ?? "").toLowerCase().includes(q) ||
+          (r.vehicle.licensePlate ?? "").toLowerCase().includes(q)
+        )
+      : rows;
+
+    // Apply status filter
+    const statusFiltered = objectDetailsStatusFilter === "all"
+      ? filtered
+      : filtered.filter((r) => r.statusLabel === objectDetailsStatusFilter);
+
+    // Apply sorting
+    return [...statusFiltered].sort((a, b) => {
+      let cmp = 0;
+      if (objectDetailsSortCol === "name") {
+        cmp = a.vehicle.name.localeCompare(b.vehicle.name);
+      } else if (objectDetailsSortCol === "time") {
+        const ta = a.loc?.timestamp ? new Date(a.loc.timestamp).getTime() : 0;
+        const tb = b.loc?.timestamp ? new Date(b.loc.timestamp).getTime() : 0;
+        cmp = ta - tb;
+      } else if (objectDetailsSortCol === "speed") {
+        cmp = (a.speed ?? -1) - (b.speed ?? -1);
+      } else if (objectDetailsSortCol === "status") {
+        const order = { moving: 0, stopped: 1, offline: 2 };
+        cmp = order[a.statusLabel] - order[b.statusLabel];
+      }
+      return objectDetailsSortDir === "asc" ? cmp : -cmp;
+    });
+  }, [vehicles, latestLocations, activeConnections, objectDetailsSearch, objectDetailsStatusFilter, objectDetailsSortCol, objectDetailsSortDir]);
+
+  const handleSortChange = (col: "name" | "time" | "speed" | "status") => {
+    if (objectDetailsSortCol === col) {
+      setObjectDetailsSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setObjectDetailsSortCol(col);
+      setObjectDetailsSortDir("asc");
+    }
+  };
 
   const objectDetailsPanel = (
     <div className="flex flex-col h-full bg-background">
-      {/* Header */}
+      {/* Header: title + search + status filter */}
       <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0 flex-wrap">
         <LayoutList className="h-4 w-4 text-primary shrink-0" />
         <span className="font-semibold text-sm">Object Details</span>
-        <span className="text-xs text-muted-foreground">({objectDetailsRows.length} vehicles)</span>
+        {/* Status filter */}
+        <div className="flex items-center gap-1">
+          {(["all", "moving", "stopped", "offline"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setObjectDetailsStatusFilter(s)}
+              data-testid={`filter-status-${s}`}
+              className={`text-[10px] font-semibold px-2 py-0.5 rounded capitalize transition-colors ${
+                objectDetailsStatusFilter === s
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-muted-foreground">({objectDetailsRows.length})</span>
+        {/* Search */}
         <div className="relative ml-auto">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <Input
             placeholder="Search vehicles…"
             value={objectDetailsSearch}
             onChange={(e) => setObjectDetailsSearch(e.target.value)}
-            className="pl-8 h-8 text-sm w-52"
+            className="pl-8 h-8 text-sm w-48"
             data-testid="input-object-details-search"
           />
           {objectDetailsSearch && (
@@ -586,18 +653,26 @@ export default function Tracking() {
           <table className="w-full text-xs border-collapse" data-testid="table-object-details">
             <thead className="sticky top-0 bg-muted z-10">
               <tr>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Name</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">IMEI</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Protocol</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Time (position)</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Position</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Alt</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Angle</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Speed</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Status</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">GPRS</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Engine</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Plate</th>
+                {/* Sortable column header helper */}
+                {(["name", null, null, "time", null, null, null, "speed", "status", null, null, null] as const).map((sortKey, i) => {
+                  const labels = ["Name", "IMEI", "Protocol", "Time (position)", "Position", "Alt", "Angle", "Speed", "Status", "GPRS", "Engine", "Plate"];
+                  const isSorted = sortKey && objectDetailsSortCol === sortKey;
+                  return (
+                    <th
+                      key={i}
+                      className={`text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap ${sortKey ? "cursor-pointer select-none hover:text-foreground" : ""}`}
+                      onClick={sortKey ? () => handleSortChange(sortKey) : undefined}
+                      data-testid={sortKey ? `th-sort-${sortKey}` : undefined}
+                    >
+                      <span className="inline-flex items-center gap-0.5">
+                        {labels[i]}
+                        {isSorted && (
+                          <span className="text-primary">{objectDetailsSortDir === "asc" ? " ↑" : " ↓"}</span>
+                        )}
+                      </span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -608,17 +683,12 @@ export default function Tracking() {
                   </td>
                 </tr>
               ) : (
-                objectDetailsRows.map(({ vehicle, loc, connected, speed, altitude, heading, lat, lng }) => {
+                objectDetailsRows.map(({ vehicle, loc, connected, speed, altitude, heading, lat, lng, statusLabel }) => {
                   const isMoving = (speed ?? 0) > 2;
-                  const statusLabel =
-                    connected && isMoving ? "Moving"
-                    : connected ? "Idle"
-                    : loc ? "Stopped"
-                    : "Offline";
+                  const statusDisplay = statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1);
                   const statusColor =
-                    statusLabel === "Moving" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
-                    : statusLabel === "Idle" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
-                    : statusLabel === "Stopped" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                    statusLabel === "moving" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                    : statusLabel === "stopped" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
                     : "bg-muted text-muted-foreground";
                   const posTime = loc?.timestamp
                     ? new Date(loc.timestamp).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
@@ -646,7 +716,7 @@ export default function Tracking() {
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusColor}`}>
-                          {statusLabel}
+                          {statusDisplay}
                         </span>
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">
@@ -682,7 +752,7 @@ export default function Tracking() {
 
       {/* Footer count */}
       <div className="border-t px-4 py-1.5 shrink-0 text-xs text-muted-foreground">
-        View {objectDetailsRows.length} of {vehicles?.length ?? 0} vehicles
+        Showing {objectDetailsRows.length} of {vehicles?.length ?? 0} vehicles
       </div>
     </div>
   );
