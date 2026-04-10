@@ -143,6 +143,7 @@ export default function AdminUsers() {
   const [openMenuPanels, setOpenMenuPanels] = useState<Record<string, boolean>>({});
   const [vehicleSearches, setVehicleSearches] = useState<Record<string, string>>({});
   const [userToDelete, setUserToDelete] = useState<UserWithoutPassword | null>(null);
+  const [userSearch, setUserSearch] = useState("");
   const [deleteUserConfirmText, setDeleteUserConfirmText] = useState("");
   const [passwordInputs, setPasswordInputs] = useState<Record<string, string>>({});
 
@@ -356,6 +357,17 @@ export default function AdminUsers() {
     </span>
   );
 
+  const filteredUsers = userSearch.trim()
+    ? users.filter((u) => {
+        const q = userSearch.toLowerCase();
+        return (
+          (u.name ?? "").toLowerCase().includes(q) ||
+          (u.phone ?? "").toLowerCase().includes(q) ||
+          (u.email ?? "").toLowerCase().includes(q)
+        );
+      })
+    : users;
+
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -364,6 +376,28 @@ export default function AdminUsers() {
           <Plus className="h-4 w-4 mr-2" />
           Create User
         </Button>
+      </div>
+
+      {/* User search */}
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          placeholder="Search by name, phone or email…"
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          className="pl-9 pr-9"
+          data-testid="input-user-search"
+        />
+        {userSearch && (
+          <button
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            onClick={() => setUserSearch("")}
+            aria-label="Clear search"
+            data-testid="button-clear-user-search"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Create User Form */}
@@ -425,10 +459,12 @@ export default function AdminUsers() {
       <div className="space-y-2">
         {isLoading ? (
           <div className="text-center p-8 text-muted-foreground">Loading users...</div>
-        ) : users.length === 0 ? (
-          <div className="text-center p-8 text-muted-foreground">No users found</div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="text-center p-8 text-muted-foreground">
+            {userSearch ? `No users match "${userSearch}"` : "No users found"}
+          </div>
         ) : (
-          users.map((user) => {
+          filteredUsers.map((user) => {
             const isExpanded = expandedUserId === user.id;
             const state = editStates[user.id];
             const expiry = user.subscriptionExpiry ? new Date(user.subscriptionExpiry) : null;

@@ -4,7 +4,7 @@ import { MapComponent } from "@/components/map-component";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, List, X, KeyRound } from "lucide-react";
+import { Search, List, X, KeyRound, LayoutList, Map } from "lucide-react";
 import type { Vehicle, Location, UserAlertSettings } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -42,15 +42,6 @@ function SignalBars({ level, color, title }: { level: number; color: string; tit
   );
 }
 
-/** Convert satellite count to 0-4 signal bars */
-function satellitesToBars(sats: number | null | undefined): number {
-  const n = sats ?? 0;
-  if (n >= 10) return 4;
-  if (n >= 8) return 3;
-  if (n >= 6) return 2;
-  if (n >= 4) return 1;
-  return 0;
-}
 
 function usePrevious<T>(value: T): T | undefined {
   const ref = useRef<T | undefined>(undefined);
@@ -80,6 +71,8 @@ export default function Tracking() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
   const [mobileListOpen, setMobileListOpen] = useState(true);
+  const [viewMode, setViewMode] = useState<"map" | "list">("map");
+  const [objectDetailsSearch, setObjectDetailsSearch] = useState("");
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   // lastNotified[vehicleId][alertType] = timestamp of last notification
@@ -378,10 +371,6 @@ export default function Tracking() {
               const pngImg = getVehicleImg(vehicle.type ?? "car");
               const iconColor = vehicle.iconColor ?? "#e4006e";
               const isMoving = parseFloat(String(location?.speed ?? "0")) > 2;
-              const signalColor = hasLocation ? "#22c55e" : "#9ca3af";
-              const gpsLevel = hasLocation
-                ? Math.max(satellitesToBars(location?.satellites ?? 0), 1)
-                : 0;
               const gprsLevel = connected ? 4 : 0;
 
               return (
@@ -423,13 +412,8 @@ export default function Tracking() {
                         {vehicle.name}
                       </span>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {/* Signal indicators: GPS (satellite) + GPRS (SIM connection) */}
+                        {/* GPRS signal indicator only */}
                         <div className="flex items-center gap-1" data-testid={`signal-${vehicle.id}`}>
-                          <SignalBars
-                            level={gpsLevel}
-                            color={signalColor}
-                            title={`GPS: ${location?.satellites ?? 0} satellites`}
-                          />
                           <SignalBars
                             level={gprsLevel}
                             color={connected ? "#22c55e" : "#9ca3af"}
@@ -488,11 +472,16 @@ export default function Tracking() {
                       )}
                       {vehicle.ignitionOn != null && (
                         <span
-                          className={`flex items-center gap-0.5 text-xs flex-shrink-0 ${vehicle.ignitionOn ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}
+                          className={`flex items-center gap-0.5 text-[10px] font-bold flex-shrink-0 px-1.5 py-0.5 rounded ${
+                            vehicle.ignitionOn
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                              : "bg-muted text-muted-foreground"
+                          }`}
                           data-testid={`text-ignition-${vehicle.id}`}
-                          title={`Ignition ${vehicle.ignitionOn ? "on" : "off"}`}
+                          title={`ACC ${vehicle.ignitionOn ? "ON" : "OFF"}`}
                         >
-                          <KeyRound className="h-3 w-3" />
+                          <KeyRound className="h-2.5 w-2.5 mr-0.5" />
+                          {vehicle.ignitionOn ? "ACC ON" : "ACC OFF"}
                         </span>
                       )}
                       {isSelected && selectedTrailCount > 1 && (
@@ -544,6 +533,160 @@ export default function Tracking() {
     </div>
   );
 
+  // Object details table data
+  const objectDetailsRows = useMemo(() => {
+    const allVehicles = vehicles ?? [];
+    const q = objectDetailsSearch.toLowerCase().trim();
+    return allVehicles
+      .filter((v) => !q || v.name.toLowerCase().includes(q) || (v.deviceId ?? "").toLowerCase().includes(q) || (v.licensePlate ?? "").toLowerCase().includes(q))
+      .map((vehicle) => {
+        const loc = latestLocations?.find((l) => l.vehicleId === vehicle.id);
+        const conn = (activeConnections ?? []).find((c) => c.imei === vehicle.deviceId);
+        const connected = !!(conn?.connected || conn?.recentlyActive);
+        const speed = loc ? Math.round(parseFloat(String(loc.speed ?? "0"))) : null;
+        const altitude = loc?.altitude != null ? Math.round(parseFloat(String(loc.altitude))) : null;
+        const heading = loc?.heading != null ? Math.round(parseFloat(String(loc.heading))) : null;
+        const lat = loc?.latitude != null ? parseFloat(String(loc.latitude)).toFixed(5) : null;
+        const lng = loc?.longitude != null ? parseFloat(String(loc.longitude)).toFixed(5) : null;
+        return { vehicle, loc, connected, speed, altitude, heading, lat, lng };
+      });
+  }, [vehicles, latestLocations, activeConnections, objectDetailsSearch]);
+
+  const objectDetailsPanel = (
+    <div className="flex flex-col h-full bg-background">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0 flex-wrap">
+        <LayoutList className="h-4 w-4 text-primary shrink-0" />
+        <span className="font-semibold text-sm">Object Details</span>
+        <span className="text-xs text-muted-foreground">({objectDetailsRows.length} vehicles)</span>
+        <div className="relative ml-auto">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Search vehicles…"
+            value={objectDetailsSearch}
+            onChange={(e) => setObjectDetailsSearch(e.target.value)}
+            className="pl-8 h-8 text-sm w-52"
+            data-testid="input-object-details-search"
+          />
+          {objectDetailsSearch && (
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+              onClick={() => setObjectDetailsSearch("")}
+              data-testid="button-clear-object-search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Table */}
+      <ScrollArea className="flex-1">
+        <div className="min-w-max">
+          <table className="w-full text-xs border-collapse" data-testid="table-object-details">
+            <thead className="sticky top-0 bg-muted z-10">
+              <tr>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Name</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">IMEI</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Protocol</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Time (position)</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Position</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Alt</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Angle</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Speed</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Status</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">GPRS</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Engine</th>
+                <th className="text-left px-3 py-2 font-semibold text-muted-foreground border-b whitespace-nowrap">Plate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {objectDetailsRows.length === 0 ? (
+                <tr>
+                  <td colSpan={12} className="text-center py-8 text-muted-foreground">
+                    {vehiclesLoading ? "Loading vehicles…" : "No vehicles found"}
+                  </td>
+                </tr>
+              ) : (
+                objectDetailsRows.map(({ vehicle, loc, connected, speed, altitude, heading, lat, lng }) => {
+                  const isMoving = (speed ?? 0) > 2;
+                  const statusLabel =
+                    connected && isMoving ? "Moving"
+                    : connected ? "Idle"
+                    : loc ? "Stopped"
+                    : "Offline";
+                  const statusColor =
+                    statusLabel === "Moving" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                    : statusLabel === "Idle" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                    : statusLabel === "Stopped" ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                    : "bg-muted text-muted-foreground";
+                  const posTime = loc?.timestamp
+                    ? new Date(loc.timestamp).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+                    : "—";
+                  return (
+                    <tr
+                      key={vehicle.id}
+                      className="border-b border-border/40 hover-elevate cursor-pointer"
+                      onClick={() => { setViewMode("map"); setSelectedVehicle(vehicle.id); }}
+                      data-testid={`row-object-${vehicle.id}`}
+                    >
+                      <td className="px-3 py-2 font-medium whitespace-nowrap">{vehicle.name}</td>
+                      <td className="px-3 py-2 font-mono text-muted-foreground whitespace-nowrap">{vehicle.deviceId ?? "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{vehicle.deviceModel ?? "GT06"}</td>
+                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{posTime}</td>
+                      <td className="px-3 py-2 font-mono whitespace-nowrap">
+                        {lat && lng ? `${lat}, ${lng}` : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{altitude != null ? `${altitude} m` : "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{heading != null ? `${heading}°` : "—"}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span style={{ color: isMoving ? "#16a34a" : undefined }}>
+                          {speed != null ? `${speed} km/h` : "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusColor}`}>
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <SignalBars
+                          level={connected ? 4 : 0}
+                          color={connected ? "#22c55e" : "#9ca3af"}
+                          title={connected ? "GPRS: Connected" : "GPRS: Disconnected"}
+                        />
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {vehicle.ignitionOn == null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            vehicle.ignitionOn
+                              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                              : "bg-muted text-muted-foreground"
+                          }`}>
+                            <KeyRound className="h-2.5 w-2.5" />
+                            {vehicle.ignitionOn ? "ON" : "OFF"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-muted-foreground whitespace-nowrap">{vehicle.licensePlate ?? "—"}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </ScrollArea>
+
+      {/* Footer count */}
+      <div className="border-t px-4 py-1.5 shrink-0 text-xs text-muted-foreground">
+        View {objectDetailsRows.length} of {vehicles?.length ?? 0} vehicles
+      </div>
+    </div>
+  );
+
   return (
     <div className="relative flex h-full w-full overflow-hidden" style={{ height: "calc(100vh - 3.5rem)" }}>
       {/* Desktop sidebar */}
@@ -552,85 +695,119 @@ export default function Tracking() {
       </div>
 
       {/* Mobile full-screen vehicle list */}
-      {mobileListOpen && (
+      {mobileListOpen && viewMode === "map" && (
         <div className="md:hidden absolute inset-0 z-50 flex flex-col">
           {vehicleListPanel}
         </div>
       )}
 
-      {/* Map + Detail Panel */}
+      {/* Main content area */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
-        {/* Map */}
-        <div className="flex-1 relative min-h-0">
-          {locationsLoading && !latestLocations ? (
-            <Skeleton className="h-full w-full" />
-          ) : (
-            <MapComponent
-              key={validLatestLocations && validLatestLocations.length > 0 ? "has-locations" : "no-locations"}
-              vehicles={vehicles}
-              locations={validLatestLocations}
-              center={mapCenter}
-              zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
-              className="h-full w-full"
-              onVehicleClick={(id) => {
-                setSelectedVehicle((prev) => (prev === id ? null : id));
-              }}
-              onMapClick={() => {}}
-              routePolylines={routePolylines}
-              bearingData={bearingData}
-              focusVehicleId={selectedVehicle}
-              connectedImeis={new Set(
-                (activeConnections ?? [])
-                  .filter((c) => c.connected || c.recentlyActive)
-                  .map((c) => c.imei)
-              )}
-            />
-          )}
-
-          {/* Mobile controls (only when list is closed) */}
-          {!mobileListOpen && (
-            <>
-              {/* Small list button at top-left */}
-              <Button
-                size="icon"
-                variant="secondary"
-                className="md:hidden absolute top-3 left-3 z-40 shadow-md"
-                onClick={() => setMobileListOpen(true)}
-                data-testid="button-open-vehicle-list"
-                aria-label="Open vehicle list"
-              >
-                <List className="h-4 w-4" />
-              </Button>
-
-              {/* Mobile bottom pill — only shown when detail panel is closed */}
-              {selectedVehicle && !latestLocations?.find((l) => l.vehicleId === selectedVehicle) && (
-                <div className="md:hidden absolute bottom-4 left-4 right-4 z-40">
-                  <Button
-                    variant="default"
-                    className="w-full shadow-xl justify-between bg-primary text-primary-foreground"
-                    onClick={() => setMobileListOpen(true)}
-                    data-testid="button-change-vehicle"
-                  >
-                    <span className="truncate flex-1 text-left font-bold text-sm">
-                      {vehicles?.find((v) => v.id === selectedVehicle)?.name ?? "Selected Vehicle"}
-                    </span>
-                    <span className="text-xs font-medium opacity-80 shrink-0 ml-2">Change Vehicle</span>
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
+        {/* View toggle bar */}
+        <div className="flex items-center gap-1 px-3 py-1.5 border-b bg-background shrink-0">
+          <Button
+            size="sm"
+            variant={viewMode === "map" ? "default" : "ghost"}
+            onClick={() => setViewMode("map")}
+            data-testid="button-view-map"
+            className="h-7 text-xs gap-1"
+          >
+            <Map className="h-3.5 w-3.5" />
+            Map
+          </Button>
+          <Button
+            size="sm"
+            variant={viewMode === "list" ? "default" : "ghost"}
+            onClick={() => setViewMode("list")}
+            data-testid="button-view-list"
+            className="h-7 text-xs gap-1"
+          >
+            <LayoutList className="h-3.5 w-3.5" />
+            Object Details
+          </Button>
         </div>
 
-        {/* Vehicle detail panel (desktop) — slides in below map when vehicle selected */}
-        {selectedVehicle && vehicles && latestLocations && (
-          <div className="hidden md:block shrink-0">
-            <VehicleDetailPanel
-              vehicleId={selectedVehicle}
-              vehicles={vehicles}
-              locations={latestLocations}
-              onClose={() => setSelectedVehicle(null)}
-            />
+        {viewMode === "list" ? (
+          /* Object Details table */
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {objectDetailsPanel}
+          </div>
+        ) : (
+          /* Map + Detail Panel */
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Map */}
+            <div className="flex-1 relative min-h-0">
+              {locationsLoading && !latestLocations ? (
+                <Skeleton className="h-full w-full" />
+              ) : (
+                <MapComponent
+                  key={validLatestLocations && validLatestLocations.length > 0 ? "has-locations" : "no-locations"}
+                  vehicles={vehicles}
+                  locations={validLatestLocations}
+                  center={mapCenter}
+                  zoom={latestLocations && latestLocations.length > 0 ? 13 : 5}
+                  className="h-full w-full"
+                  onVehicleClick={(id) => {
+                    setSelectedVehicle((prev) => (prev === id ? null : id));
+                  }}
+                  onMapClick={() => {}}
+                  routePolylines={routePolylines}
+                  bearingData={bearingData}
+                  focusVehicleId={selectedVehicle}
+                  connectedImeis={new Set(
+                    (activeConnections ?? [])
+                      .filter((c) => c.connected || c.recentlyActive)
+                      .map((c) => c.imei)
+                  )}
+                />
+              )}
+
+              {/* Mobile controls (only when list is closed) */}
+              {!mobileListOpen && (
+                <>
+                  {/* Small list button at top-left */}
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="md:hidden absolute top-3 left-3 z-40 shadow-md"
+                    onClick={() => setMobileListOpen(true)}
+                    data-testid="button-open-vehicle-list"
+                    aria-label="Open vehicle list"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+
+                  {/* Mobile bottom pill — only shown when detail panel is closed */}
+                  {selectedVehicle && !latestLocations?.find((l) => l.vehicleId === selectedVehicle) && (
+                    <div className="md:hidden absolute bottom-4 left-4 right-4 z-40">
+                      <Button
+                        variant="default"
+                        className="w-full shadow-xl justify-between bg-primary text-primary-foreground"
+                        onClick={() => setMobileListOpen(true)}
+                        data-testid="button-change-vehicle"
+                      >
+                        <span className="truncate flex-1 text-left font-bold text-sm">
+                          {vehicles?.find((v) => v.id === selectedVehicle)?.name ?? "Selected Vehicle"}
+                        </span>
+                        <span className="text-xs font-medium opacity-80 shrink-0 ml-2">Change Vehicle</span>
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Vehicle detail panel (desktop) — slides in below map when vehicle selected */}
+            {selectedVehicle && vehicles && latestLocations && (
+              <div className="hidden md:block shrink-0">
+                <VehicleDetailPanel
+                  vehicleId={selectedVehicle}
+                  vehicles={vehicles}
+                  locations={latestLocations}
+                  onClose={() => setSelectedVehicle(null)}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
