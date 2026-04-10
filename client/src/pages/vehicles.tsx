@@ -25,7 +25,7 @@ import {
 import {
   Plus, Trash2, Copy, Check, Radio, Globe, Signal, AlertCircle,
   Pencil, ChevronDown, ChevronRight, Search, Upload, Download,
-  FileSpreadsheet, X, AlertTriangle,
+  FileSpreadsheet, X, AlertTriangle, Navigation2,
 } from "lucide-react";
 import type { Vehicle, InsertVehicle } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
@@ -402,13 +402,40 @@ export default function Vehicles() {
     });
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "active": return "default";
-      case "stopped": return "secondary";
-      case "offline": return "outline";
-      default: return "outline";
+  const formatLastSeen = (ts: string | Date | null | undefined): string => {
+    if (!ts) return "Never";
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return "Never";
+    const now = Date.now();
+    const diff = now - d.getTime();
+    if (diff < 60_000) return "Just now";
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) +
+      " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  };
+
+  const StatusBadge = ({ status, "data-testid": testId }: { status: string; "data-testid"?: string }) => {
+    const base = "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium capitalize";
+    if (status === "active") {
+      return (
+        <span data-testid={testId} className={`${base} bg-green-500/10 text-green-700 dark:text-green-400 border border-green-500/30`}>
+          {status}
+        </span>
+      );
     }
+    if (status === "stopped") {
+      return (
+        <span data-testid={testId} className={`${base} bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/30`}>
+          {status}
+        </span>
+      );
+    }
+    return (
+      <span data-testid={testId} className={`${base} bg-muted text-muted-foreground border border-border`}>
+        {status}
+      </span>
+    );
   };
 
   const useDeviceId = (deviceId: string) => {
@@ -1192,63 +1219,86 @@ export default function Vehicles() {
       {isLoading ? (
         <div className="flex flex-col gap-1">
           {[1, 2, 3, 4, 5].map(i => (
-            <Skeleton key={i} className="h-12 w-full" />
+            <Skeleton key={i} className="h-10 w-full" />
           ))}
         </div>
       ) : filteredVehicles && filteredVehicles.length > 0 ? (
-        <Card>
-          <div className="divide-y">
-            {filteredVehicles.map((vehicle) => (
-              <div
-                key={vehicle.id}
-                className="flex items-center gap-3 px-4 py-3 min-h-[48px]"
-                data-testid={`row-vehicle-${vehicle.id}`}
-              >
-                <div className="w-9 h-9 rounded-lg bg-neutral-900 flex items-center justify-center shrink-0 overflow-hidden" data-testid={`dot-vehicle-${vehicle.id}`}>
-                  {getVehicleImg(vehicle.type ?? "car") ? (
-                    <img src={getVehicleImg(vehicle.type ?? "car")!} alt={vehicle.type ?? "car"} className="w-8 h-8 object-contain" />
-                  ) : (
-                    <span
-                      dangerouslySetInnerHTML={{ __html: getMarkerSvg(vehicle.type ?? "car", vehicle.iconColor ?? "#2563eb", 0) }}
-                      className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
-                    />
-                  )}
-                </div>
-
-                <span className="font-medium text-sm flex-1 min-w-0 truncate" data-testid={`text-vehicle-name-${vehicle.id}`}>
-                  {vehicle.name}
-                </span>
-
-                <div className="flex flex-col min-w-0 max-w-[120px] sm:max-w-[200px]">
-                  <span className="text-xs text-muted-foreground font-mono truncate" title={vehicle.deviceId} data-testid={`text-vehicle-deviceid-${vehicle.id}`}>
-                    {vehicle.deviceId}
-                  </span>
-                  {vehicle.devicePhone && (
-                    <span className="text-xs text-muted-foreground/70 truncate" title={vehicle.devicePhone} data-testid={`text-vehicle-devicephone-${vehicle.id}`}>
-                      {vehicle.devicePhone}
-                    </span>
-                  )}
-                  {vehicle.deviceModel && (
-                    <span className="text-xs text-muted-foreground/60 truncate" data-testid={`text-vehicle-devicemodel-${vehicle.id}`}>
-                      {vehicle.deviceModel}
-                    </span>
-                  )}
-                </div>
-
-                <Badge variant={getStatusBadge(vehicle.status)} className="shrink-0 capitalize" data-testid={`badge-vehicle-status-${vehicle.id}`}>
-                  {vehicle.status}
-                </Badge>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(vehicle)} data-testid={`button-edit-${vehicle.id}`} title="Edit vehicle">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => setVehicleToDelete(vehicle)} disabled={deleteMutation.isPending} data-testid={`button-delete-${vehicle.id}`} title="Delete vehicle" className="text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40">
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Vehicle</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">IMEI</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Phone</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Last Seen</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Protocol</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Port</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredVehicles.map((vehicle) => (
+                  <tr
+                    key={vehicle.id}
+                    className="hover-elevate"
+                    data-testid={`row-vehicle-${vehicle.id}`}
+                  >
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: vehicle.iconColor ?? "#2563eb" }}
+                          data-testid={`dot-vehicle-${vehicle.id}`}
+                        >
+                          <Navigation2 className="h-4 w-4 text-white" />
+                        </div>
+                        <span className="font-medium truncate max-w-[140px] sm:max-w-[200px]" data-testid={`text-vehicle-name-${vehicle.id}`}>
+                          {vehicle.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="font-mono text-xs text-muted-foreground" data-testid={`text-vehicle-deviceid-${vehicle.id}`}>
+                        {vehicle.deviceId}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 hidden sm:table-cell">
+                      <span className="text-xs text-muted-foreground" data-testid={`text-vehicle-devicephone-${vehicle.id}`}>
+                        {vehicle.devicePhone ?? "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap" data-testid={`text-vehicle-lastseen-${vehicle.id}`}>
+                        {formatLastSeen(vehicle.lastSeenAt)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 hidden sm:table-cell">
+                      <span className="text-xs text-muted-foreground" data-testid={`text-vehicle-devicemodel-${vehicle.id}`}>
+                        {vehicle.deviceModel ?? "GT06"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 hidden sm:table-cell">
+                      <span className="font-mono text-xs text-muted-foreground">5023</span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <StatusBadge status={vehicle.status} data-testid={`badge-vehicle-status-${vehicle.id}`} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-1 justify-end">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(vehicle)} data-testid={`button-edit-${vehicle.id}`} title="Edit vehicle">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setVehicleToDelete(vehicle)} disabled={deleteMutation.isPending} data-testid={`button-delete-${vehicle.id}`} title="Delete vehicle" className="text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
       ) : vehicles && vehicles.length > 0 && searchQuery ? (
