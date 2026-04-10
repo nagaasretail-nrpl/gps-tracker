@@ -1223,25 +1223,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : false;
 
       if (isAdmin) {
-        // Full diagnostic payload for admins — prefer live TCP data, fall back to DB session
+        // Full diagnostic payload for admins — DB session is canonical
         const rejection = imei ? getRejectionForImei(imei) : undefined;
         const pktStats = imei ? getPacketStats(imei) : undefined;
 
-        // Has a GPS fix if there is a recent location within 5 minutes
-        const hasGpsFix = lastLocationAt
-          ? now - lastLocationAt.getTime() < GPS_STALE_MS
+        // GPS fix status uses DB session's lastLocationAt (session-accurate).
+        // This prevents misclassification from pre-reconnect location freshness
+        // in the locations table.
+        const sessionLastLocationAt = dbSess?.lastLocationAt
+          ? new Date(dbSess.lastLocationAt)
+          : null;
+        const hasGpsFix = sessionLastLocationAt
+          ? now - sessionLastLocationAt.getTime() < GPS_STALE_MS
           : false;
-        // "Heartbeat-only" = connected but no GPS fix (no GPS or GPS stale >5m)
+        // "Heartbeat-only" = connected but no GPS fix in this session
         const heartbeatOnly = isConnected && !hasGpsFix;
 
         return {
           imei,
           vehicleId: v.id,
           vehicleName: v.name,
-          // Connection fields: TCP first, then DB session fallback
-          remoteAddr: tcp?.remoteAddr ?? dbSess?.remoteAddr ?? null,
-          connectedAt: tcp?.connectedAt ?? dbSess?.connectedAt ?? null,
-          lastPacketAt: tcp?.lastPacketAt ?? dbSess?.lastHeartbeatAt ?? null,
+          // Connection fields: DB session is canonical (cross-worker consistent)
+          remoteAddr: dbSess?.remoteAddr ?? null,
+          connectedAt: dbSess?.connectedAt ?? null,
+          lastPacketAt: dbSess?.lastHeartbeatAt ?? null,
           lastHeartbeatAt: dbSess?.lastHeartbeatAt ?? null,
           lastLocationAt,
           lastDbLocationAt: dbSess?.lastLocationAt ?? null,
