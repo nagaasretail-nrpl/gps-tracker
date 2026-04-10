@@ -616,16 +616,12 @@ export default function Vehicles() {
                                   data-testid={`button-add-type-${vt.value}`}
                                   className={`flex flex-col items-center gap-1 p-1.5 rounded-md border-2 transition-colors ${field.value === vt.value ? "border-primary bg-primary/10" : "border-border hover:border-muted-foreground/40"}`}
                                 >
-                                  {vt.img ? (
-                                    <div className="w-8 h-8 rounded-md bg-neutral-900 flex items-center justify-center overflow-hidden pointer-events-none">
-                                      <img src={vt.img} alt={vt.label} className="w-7 h-7 object-contain" />
-                                    </div>
-                                  ) : (
-                                    <span
-                                      dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, currentColor, 0) }}
-                                      className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
-                                    />
-                                  )}
+                                  <div
+                                    className="w-8 h-8 rounded-md flex items-center justify-center pointer-events-none"
+                                    style={{ backgroundColor: currentColor }}
+                                  >
+                                    <Navigation2 className="h-4 w-4 text-white" />
+                                  </div>
                                   <span className="text-[9px] text-muted-foreground leading-none">{vt.label}</span>
                                 </button>
                               ))}
@@ -980,16 +976,12 @@ export default function Vehicles() {
                     data-testid={`button-edit-type-${vt.value}`}
                     className={`flex flex-col items-center gap-1 p-1.5 rounded-md border-2 transition-colors ${editType === vt.value ? "border-primary bg-primary/10" : "border-border hover:border-muted-foreground/40"}`}
                   >
-                    {vt.img ? (
-                      <div className="w-8 h-8 rounded-md bg-neutral-900 flex items-center justify-center overflow-hidden pointer-events-none">
-                        <img src={vt.img} alt={vt.label} className="w-7 h-7 object-contain" />
-                      </div>
-                    ) : (
-                      <span
-                        dangerouslySetInnerHTML={{ __html: getMarkerSvg(vt.value, editIconColor, 0) }}
-                        className="w-8 h-8 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full pointer-events-none"
-                      />
-                    )}
+                    <div
+                      className="w-8 h-8 rounded-md flex items-center justify-center pointer-events-none"
+                      style={{ backgroundColor: editIconColor }}
+                    >
+                      <Navigation2 className="h-4 w-4 text-white" />
+                    </div>
                     <span className="text-[9px] text-muted-foreground leading-none">{vt.label}</span>
                   </button>
                 ))}
