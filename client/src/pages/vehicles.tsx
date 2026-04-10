@@ -1259,14 +1259,14 @@ export default function Vehicles() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-2.5">
-                      <span className="font-mono text-xs text-muted-foreground" data-testid={`text-vehicle-deviceid-${vehicle.id}`}>
+                    <td className="px-4 py-2.5 max-w-[160px]">
+                      <span className="font-mono text-xs text-muted-foreground block truncate" title={vehicle.deviceId} data-testid={`text-vehicle-deviceid-${vehicle.id}`}>
                         {vehicle.deviceId}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 hidden sm:table-cell">
                       <span className="text-xs text-muted-foreground" data-testid={`text-vehicle-devicephone-${vehicle.id}`}>
-                        {vehicle.devicePhone ?? "—"}
+                        {vehicle.devicePhone || "—"}
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
@@ -1276,7 +1276,7 @@ export default function Vehicles() {
                     </td>
                     <td className="px-4 py-2.5 hidden sm:table-cell">
                       <span className="text-xs text-muted-foreground" data-testid={`text-vehicle-devicemodel-${vehicle.id}`}>
-                        {vehicle.deviceModel ?? "GT06"}
+                        {vehicle.deviceModel || "GT06"}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 hidden sm:table-cell">
