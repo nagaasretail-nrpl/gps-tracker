@@ -50,7 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { VEHICLE_TYPE_OPTIONS, getMarkerSvg } from "@/lib/vehicleIcons";
+import { VEHICLE_TYPE_OPTIONS } from "@/lib/vehicleIcons";
 
 import * as XLSX from "xlsx";
 
@@ -1240,11 +1240,11 @@ export default function Vehicles() {
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div
-                          className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
+                          className="w-9 h-9 rounded-md flex items-center justify-center shrink-0"
                           style={{ backgroundColor: vehicle.iconColor ?? "#2563eb" }}
                           data-testid={`dot-vehicle-${vehicle.id}`}
                         >
-                          <Navigation2 className="h-4 w-4 text-white" />
+                          <Navigation2 className="h-5 w-5 text-white" />
                         </div>
                         <span className="font-medium truncate max-w-[140px] sm:max-w-[200px]" data-testid={`text-vehicle-name-${vehicle.id}`}>
                           {vehicle.name}
