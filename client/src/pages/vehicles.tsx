@@ -406,13 +406,13 @@ export default function Vehicles() {
     if (!ts) return "Never";
     const d = new Date(ts);
     if (isNaN(d.getTime())) return "Never";
-    const now = Date.now();
-    const diff = now - d.getTime();
-    if (diff < 60_000) return "Just now";
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) +
-      " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = months[d.getMonth()];
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${dd} ${mm} ${yyyy} ${hh}:${min}`;
   };
 
   const StatusBadge = ({ status, "data-testid": testId }: { status: string; "data-testid"?: string }) => {
@@ -1224,10 +1224,10 @@ export default function Vehicles() {
         </div>
       ) : filteredVehicles && filteredVehicles.length > 0 ? (
         <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b bg-muted/90 backdrop-blur-sm">
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Vehicle</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">IMEI</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide hidden sm:table-cell">Phone</th>
