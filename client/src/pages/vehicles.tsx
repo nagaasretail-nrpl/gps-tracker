@@ -28,7 +28,6 @@ import {
   FileSpreadsheet, X, AlertTriangle, Navigation2,
 } from "lucide-react";
 import type { Vehicle, InsertVehicle } from "@shared/schema";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,7 +50,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { VEHICLE_TYPE_OPTIONS, getMarkerSvg, getVehicleImg } from "@/lib/vehicleIcons";
+import { VEHICLE_TYPE_OPTIONS, getMarkerSvg } from "@/lib/vehicleIcons";
+
 import * as XLSX from "xlsx";
 
 const FUEL_TYPE_OPTIONS = [
