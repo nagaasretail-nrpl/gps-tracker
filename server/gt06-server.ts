@@ -531,6 +531,10 @@ async function handlePacket(
         // Always ACK location packets even if discarded (prevents device retransmits).
         logRejection(deviceImei, loc.reason);
         logLocationRejected(deviceImei, loc.reason);
+        // Persist parse-level rejection to DB session
+        storage.locationRejectedDeviceSession(deviceImei, loc.reason).catch((e: Error) => {
+          console.error(`[GT06] Failed to update parse rejection session for ${deviceImei}:`, e.message);
+        });
         socket.write(buildAck(0x12, pkt.serial, pkt.extended));
         break;
       }

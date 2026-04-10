@@ -1162,13 +1162,20 @@ export class DbStorage implements IStorage {
   // complex ON CONFLICT clauses. Reads use drizzle ORM selects.
 
   async upsertDeviceSession(imei: string, remoteAddr: string): Promise<void> {
+    // On reconnect: reset all per-session counters/fields to start fresh.
+    // This means counters always reflect the *current* TCP session, not lifetime totals.
     await neonSql`
-      INSERT INTO device_sessions (imei, remote_addr, connected_at, last_heartbeat_at, heartbeat_count, location_count, rejected_count, is_connected, updated_at)
-      VALUES (${imei}, ${remoteAddr}, NOW(), NOW(), 0, 0, 0, TRUE, NOW())
+      INSERT INTO device_sessions (imei, remote_addr, connected_at, last_heartbeat_at, last_location_at, heartbeat_count, location_count, rejected_count, last_rejection_reason, is_connected, updated_at)
+      VALUES (${imei}, ${remoteAddr}, NOW(), NOW(), NULL, 0, 0, 0, NULL, TRUE, NOW())
       ON CONFLICT (imei) DO UPDATE SET
         remote_addr = EXCLUDED.remote_addr,
         connected_at = NOW(),
         last_heartbeat_at = NOW(),
+        last_location_at = NULL,
+        heartbeat_count = 0,
+        location_count = 0,
+        rejected_count = 0,
+        last_rejection_reason = NULL,
         is_connected = TRUE,
         updated_at = NOW()
     `;

@@ -1184,14 +1184,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Single batch query for all latest location timestamps (avoids N+1)
     const vehicleIds = scoped.map((v) => v.id);
+    // DB sessions are always fetched for all roles — needed for cross-worker
+    // connected-state accuracy (PM2 cluster: TCP in one worker, HTTP in another).
     const [latestTimestamps, storedTodayCounts, dbSessions] = await Promise.all([
       storage.getLatestLocationTimestampsForVehicles(vehicleIds),
       isAdmin
         ? storage.getLocationCountsForVehicles(vehicleIds, new Date(now - 24 * 60 * 60 * 1000))
         : Promise.resolve(new Map<string, number>()),
-      isAdmin
-        ? storage.getAllDeviceSessions()
-        : Promise.resolve([]),
+      storage.getAllDeviceSessions(),
     ]);
 
     // Build DB sessions map keyed by IMEI (survives process restarts / PM2 cluster)
@@ -1208,14 +1208,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tcp = imei ? tcpByImei.get(imei) : undefined;
       const dbSess = imei ? dbSessionByImei.get(imei) : undefined;
 
-      // A device is "connected" if:
-      //   1. DB session has is_connected=true AND last heartbeat within 90s
-      //   OR
-      //   2. This process's in-memory TCP map has a live socket (same-worker fallback)
+      // A device is "connected" if the DB session says is_connected=true AND
+      // a heartbeat was received within the 90-second staleness window.
+      // DB is the sole source of truth here — this works correctly across PM2
+      // cluster workers because the TCP worker writes to DB on every heartbeat.
       const dbHeartbeatFresh = dbSess?.lastHeartbeatAt
         ? now - new Date(dbSess.lastHeartbeatAt).getTime() < HEARTBEAT_WINDOW_MS
         : false;
-      const isConnected = (dbSess?.isConnected === true && dbHeartbeatFresh) || !!tcp;
+      const isConnected = dbSess?.isConnected === true && dbHeartbeatFresh;
 
       const lastLocationAt = latestTimestamps.get(v.id) ?? null;
       const recentlyActive = lastLocationAt
